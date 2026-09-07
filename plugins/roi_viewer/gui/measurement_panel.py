@@ -15,10 +15,16 @@ except ImportError:
 class MeasurementPanel(wx.Panel):
     """
     Panel for measurement tools.
+
+    `controller` is the owning ROIViewerFrame, giving access to the
+    shared picker_3d.PointPicker3D (for picking distance endpoints) and
+    core/measurement.MeasurementManager.
     """
-    
-    def __init__(self, parent):
+
+    def __init__(self, parent, controller):
         wx.Panel.__init__(self, parent)
+        self.controller = controller
+        self._collecting_distance = False
         self._init_ui()
         
     def _init_ui(self):
@@ -103,25 +109,93 @@ class MeasurementPanel(wx.Panel):
         
     def _on_start_distance(self, event):
         """Handle start distance button click."""
-        mode = "3D" if self.rb_dist_3d.GetValue() else "2D"
-        self.btn_start_dist.SetLabel(_("Click 2 points..."))
-        # TODO: Connect to actual measurement tool
-        
+        if not self.rb_dist_3d.GetValue():
+            # 2D polygon/point picking on the slice canvas would need a
+            # mouse-drag hook into InVesalius's own 2D canvas widget,
+            # which isn't wired in this version - see gui/roi_panel.py's
+            # module docstring for the list of known gaps.
+            wx.MessageBox(
+                _("2D distance measurement is not available in this version. "
+                  "Use 3D distance (picks points in the 3D view)."),
+                _("Not available"), wx.OK | wx.ICON_INFORMATION,
+            )
+            return
+
+        if not self.controller.ensure_picker_initialized():
+            self.txt_distance.SetValue(_("No 3D view available yet"))
+            return
+
+        self.controller.measure_mgr.set_spacing((1.0, 1.0, 1.0))
+        self.controller.measure_mgr.start_distance_measurement()
+        self._collecting_distance = True
+        self.controller.picker.add_callback(self._on_distance_point_picked)
+        self.controller.picker.enable()
+        self.btn_start_dist.SetLabel(_("Click 2 points in 3D view..."))
+
+    def _on_distance_point_picked(self, world_point):
+        """
+        Called by the shared PointPicker3D while collecting a 3D
+        distance measurement. world_point is already a real (x, y, z)
+        mm coordinate from VTK, so MeasurementManager's spacing is left
+        at (1, 1, 1) - see _on_start_distance() - to avoid re-scaling an
+        already-physical distance.
+        """
+        if not self._collecting_distance:
+            return
+
+        self.controller.measure_mgr.add_point(*world_point)
+        if len(self.controller.measure_mgr.current_distance_points) < 2:
+            return
+
+        measurement = self.controller.measure_mgr.finish_distance_measurement("3D")
+        self._collecting_distance = False
+        self.controller.picker.remove_callback(self._on_distance_point_picked)
+        wx.CallAfter(self._on_distance_finished, measurement)
+
+    def _on_distance_finished(self, measurement):
+        self.btn_start_dist.SetLabel(_("Start Distance"))
+        if measurement is None:
+            return
+        self.set_distance_result(measurement.distance)
+        self.add_measurement(measurement.name, measurement.distance, measurement.unit)
+
     def _on_measure_area(self, event):
         """Handle measure area button click."""
-        self.txt_volume.SetValue(_("Draw a polygon to measure area"))
-        # TODO: Connect to actual area measurement tool
-        
+        # Same limitation as 2D distance: needs a polygon drawn on the
+        # 2D canvas, which isn't wired in this version.
+        wx.MessageBox(
+            _("Area measurement needs a polygon drawn on the 2D slice, "
+              "which isn't wired up in this version."),
+            _("Not available"), wx.OK | wx.ICON_INFORMATION,
+        )
+
     def _on_measure_volume(self, event):
-        """Handle measure volume button click."""
-        self.txt_volume.SetValue(_("Select a mask to measure volume"))
-        # TODO: Connect to actual volume calculation
-        
+        """Handle measure volume button click - real current-mask volume."""
+        try:
+            from ..interface.project_interface import ProjectInterface
+
+            pi = ProjectInterface()
+            mask = pi.get_current_mask()
+            if mask is None or mask.matrix is None:
+                self.txt_volume.SetValue(_("No mask selected"))
+                return
+
+            self.controller.measure_mgr.set_spacing(pi.get_spacing())
+            measurement = self.controller.measure_mgr.add_volume_measurement(
+                name="", mask_index=mask.index, mask=mask.matrix
+            )
+            self.txt_volume.SetValue(f"{measurement.volume:.2f} {measurement.unit}")
+            self.add_measurement(measurement.name, measurement.volume, measurement.unit)
+        except Exception as e:
+            self.txt_volume.SetValue(_("Volume measurement failed"))
+            print(f"ROI Viewer: volume measurement failed - {e}")
+
     def _on_clear_all(self, event):
         """Handle clear all button click."""
         self.measure_list.Clear()
         self.txt_distance.SetValue("")
         self.txt_volume.SetValue("")
+        self.controller.measure_mgr.clear()
         
     def add_measurement(self, name, value, unit):
         """Add a measurement to the list."""

@@ -17,11 +17,17 @@ except ImportError:
 class AnnotationPanel(wx.Panel):
     """
     Panel for annotation tools.
+
+    `controller` is the owning ROIViewerFrame - annotations are stored
+    in the shared core/annotation.AnnotationManager (controller.
+    annotation_mgr) rather than a panel-local list, so they survive
+    switching tabs and stay consistent with anything else that reads
+    controller.annotation_mgr.
     """
-    
-    def __init__(self, parent):
+
+    def __init__(self, parent, controller):
         wx.Panel.__init__(self, parent)
-        self.annotations = []
+        self.controller = controller
         self._init_ui()
         
     def _init_ui(self):
@@ -136,96 +142,119 @@ class AnnotationPanel(wx.Panel):
         if not text:
             wx.MessageBox(_("Please enter annotation text."), _("Warning"), wx.OK | wx.ICON_WARNING)
             return
-            
+
         color = self.color_picker.GetColour()
-        
-        # Create annotation object
-        annotation = {
-            'text': text,
-            'color': (color.Red(), color.Green(), color.Blue()),
-            'timestamp': datetime.datetime.now(),
-            'position': (0, 0, 0),  # Will be updated by actual position
-            'slice_index': 0
-        }
-        
-        self.annotations.append(annotation)
-        
-        # Update list
-        display_text = f"{len(self.annotations)}. {text[:30]}{'...' if len(text) > 30 else ''}"
+
+        # NOTE: there's no full 3D-cursor position tracker wired to this
+        # panel, so "current position" is the last point picked in the
+        # 3D view (shared picker_3d.PointPicker3D - see
+        # gui/interaction_panel.py), if any; otherwise the annotation is
+        # tagged with the current 2D slice only, with a (0, 0, 0)
+        # world position placeholder.
+        plane, slice_index = "AXIAL", 0
+        position = (0.0, 0.0, 0.0)
+        try:
+            from ..interface.view_interface import ViewInterface
+
+            plane, slice_index = ViewInterface().get_slice_position()
+            last_point = self.controller.picker.get_last_point()
+            if last_point is not None:
+                position = last_point
+        except Exception:
+            pass
+
+        annotation_id = self.controller.annotation_mgr.add_annotation(
+            text=text,
+            position=position,
+            voxel_position=(0, 0, 0),
+            slice_index=slice_index,
+            plane=plane,
+            color=(color.Red(), color.Green(), color.Blue()),
+        )
+
+        display_text = f"{annotation_id + 1}. {text[:30]}{'...' if len(text) > 30 else ''}"
         self.annotation_list.Append(display_text)
-        
-        # Clear input
         self.txt_annotation.Clear()
-        
-        # Notify
-        self._notify_annotation_added(annotation)
-        
+        self._notify_annotation_added(annotation_id)
+
     def _on_select_annotation(self, event):
         """Handle annotation selection."""
         index = event.GetInt()
-        if 0 <= index < len(self.annotations):
-            self.current_annotation = self.annotations[index]
-            
+        self.controller.annotation_mgr.set_current_annotation(index)
+
     def _on_goto_annotation(self, event):
-        """Handle go to annotation button click."""
+        """Handle go to annotation button click - moves the real 2D view."""
         index = self.annotation_list.GetSelection()
-        if index >= 0:
-            self._notify_goto_annotation(self.annotations[index])
-            
+        if index < 0:
+            return
+        annotation = self.controller.annotation_mgr.get_annotation(index)
+        if annotation is None:
+            return
+        try:
+            from ..interface.view_interface import ViewInterface
+
+            ViewInterface().set_slice_position(annotation.plane, annotation.slice_index)
+        except Exception as e:
+            print(f"ROI Viewer: goto annotation failed - {e}")
+        self._notify_goto_annotation(annotation)
+
     def _on_edit_annotation(self, event):
         """Handle edit annotation button click."""
         index = self.annotation_list.GetSelection()
-        if index >= 0:
-            # Show edit dialog
-            annotation = self.annotations[index]
-            dlg = wx.TextEntryDialog(
-                self, 
-                _("Edit annotation:"), 
-                _("Edit Annotation"),
-                annotation['text']
-            )
-            if dlg.ShowModal() == wx.ID_OK:
-                new_text = dlg.GetValue()
-                annotation['text'] = new_text
-                display_text = f"{index+1}. {new_text[:30]}{'...' if len(new_text) > 30 else ''}"
-                self.annotation_list.SetString(index, display_text)
-            dlg.Destroy()
-            
+        if index < 0:
+            return
+        annotation = self.controller.annotation_mgr.get_annotation(index)
+        if annotation is None:
+            return
+        dlg = wx.TextEntryDialog(
+            self,
+            _("Edit annotation:"),
+            _("Edit Annotation"),
+            annotation.text
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            new_text = dlg.GetValue()
+            self.controller.annotation_mgr.update_annotation(index, text=new_text)
+            display_text = f"{index+1}. {new_text[:30]}{'...' if len(new_text) > 30 else ''}"
+            self.annotation_list.SetString(index, display_text)
+        dlg.Destroy()
+
     def _on_delete_annotation(self, event):
         """Handle delete annotation button click."""
         index = self.annotation_list.GetSelection()
-        if index >= 0:
-            del self.annotations[index]
-            self.annotation_list.Delete(index)
-            self._notify_annotation_deleted(index)
+        if index < 0:
+            return
+        self.controller.annotation_mgr.delete_annotation(index)
+        self.annotation_list.Delete(index)
+        self._notify_annotation_deleted(index)
             
     def _on_prev_annotation(self, event):
         """Handle previous annotation button click."""
         current = self.annotation_list.GetSelection()
         if current > 0:
             self.annotation_list.SetSelection(current - 1)
-            self._on_select_annotation(wx.CommandEvent())
-            
+            self.controller.annotation_mgr.set_current_annotation(current - 1)
+
     def _on_next_annotation(self, event):
         """Handle next annotation button click."""
         current = self.annotation_list.GetSelection()
         if current < self.annotation_list.GetCount() - 1:
             self.annotation_list.SetSelection(current + 1)
-            self._on_select_annotation(wx.CommandEvent())
-            
-    def _notify_annotation_added(self, annotation):
+            self.controller.annotation_mgr.set_current_annotation(current + 1)
+
+    def _notify_annotation_added(self, annotation_id):
         """Notify that an annotation was added."""
         try:
             from invesalius.pubsub import pub as Publisher
-            Publisher.sendMessage("ROI Viewer: Annotation added", annotation=annotation)
+            Publisher.sendMessage("ROI Viewer: Annotation added", annotation_id=annotation_id)
         except ImportError:
             pass
-            
+
     def _notify_goto_annotation(self, annotation):
         """Notify that we should go to an annotation."""
         try:
             from invesalius.pubsub import pub as Publisher
-            Publisher.sendMessage("ROI Viewer: Go to annotation", position=annotation['position'])
+            Publisher.sendMessage("ROI Viewer: Go to annotation", position=annotation.position)
         except ImportError:
             pass
             

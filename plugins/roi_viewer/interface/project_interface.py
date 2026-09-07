@@ -36,7 +36,19 @@ class ProjectInterface:
         
         # Subscribe to project events
         self._subscribe_events()
-        
+
+        # NOTE: this is a lazily-created singleton - the first
+        # ProjectInterface() call can happen well after a project was
+        # already loaded (e.g. the plugin is loaded from the menu after
+        # DICOM import, and nothing touched ProjectInterface before
+        # that). Pubsub only delivers messages sent *after* a listener
+        # subscribes, so without this call _project/_slice would stay
+        # None forever - every method here would silently report "no
+        # project" even with one wide open. Sync to whatever already
+        # exists right now instead of only reacting to future loads.
+        self._refresh_project_data()
+
+
     def _subscribe_events(self):
         """Subscribe to pubsub events for project data."""
         try:
@@ -188,23 +200,35 @@ class ProjectInterface:
         return -1024, 3071  # Default CT range
         
     def world_to_voxel(self, x: float, y: float, z: float) -> Tuple[int, int, int]:
-        """Convert world coordinates to voxel indices."""
-        i = int(x / self._spacing[0]) if self._spacing[0] != 0 else 0
-        j = int(y / self._spacing[1]) if self._spacing[1] != 0 else 0
-        k = int(z / self._spacing[2]) if self._spacing[2] != 0 else 0
-        
+        """
+        Convert a VTK world-space point (mm) to a (axial, coronal,
+        sagital) index into self._shape / Slice().matrix.
+
+        NOTE: self._spacing is index-aligned with self._shape
+        (Slice().matrix.shape): axis 0 = AXIAL, 1 = CORONAL, 2 = SAGITAL
+        (see the axis-swap code in invesalius/data/slice_.py, which
+        permutes both together). InVesalius's VTK actors use the
+        standard convention where world X is the fastest-varying image
+        axis (SAGITAL), Y is CORONAL, and Z is the AXIAL slice stack -
+        see core/sync_2d3d.py's world_to_voxel() for the same mapping,
+        used for the exact same reason.
+        """
+        axial = int(z / self._spacing[0]) if self._spacing[0] != 0 else 0
+        coronal = int(y / self._spacing[1]) if self._spacing[1] != 0 else 0
+        sagital = int(x / self._spacing[2]) if self._spacing[2] != 0 else 0
+
         # Clamp to valid range
-        i = max(0, min(i, self._shape[2] - 1))
-        j = max(0, min(j, self._shape[1] - 1))
-        k = max(0, min(k, self._shape[0] - 1))
-        
-        return i, j, k
-        
-    def voxel_to_world(self, i: int, j: int, k: int) -> Tuple[float, float, float]:
-        """Convert voxel indices to world coordinates."""
-        x = i * self._spacing[0]
-        y = j * self._spacing[1]
-        z = k * self._spacing[2]
+        axial = max(0, min(axial, self._shape[0] - 1))
+        coronal = max(0, min(coronal, self._shape[1] - 1))
+        sagital = max(0, min(sagital, self._shape[2] - 1))
+
+        return axial, coronal, sagital
+
+    def voxel_to_world(self, axial: int, coronal: int, sagital: int) -> Tuple[float, float, float]:
+        """Inverse of world_to_voxel() - see its docstring for the axis mapping."""
+        x = sagital * self._spacing[2]
+        y = coronal * self._spacing[1]
+        z = axial * self._spacing[0]
         return x, y, z
         
     def get_mask_dict(self) -> Dict[int, Any]:

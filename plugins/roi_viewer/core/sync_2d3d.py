@@ -30,18 +30,23 @@ class SyncManager2D3D:
         self.mask_update_callbacks: List[Callable] = []
         self.world_coords_callbacks: List[Callable] = []
         
-        # Volume info (will be set from project)
-        self.spacing = (1.0, 1.0, 1.0)  # (x, y, z) in mm
-        self.dimensions = (0, 0, 0)  # (width, height, depth) in voxels
-        
-    def set_volume_info(self, spacing: Tuple[float, float, float], 
+        # Volume info (will be set from project). Both are index-aligned
+        # with Slice().matrix.shape: axis 0 = AXIAL, 1 = CORONAL,
+        # 2 = SAGITAL - see world_to_voxel()'s docstring below.
+        self.spacing = (1.0, 1.0, 1.0)
+        self.dimensions = (0, 0, 0)
+
+    def set_volume_info(self, spacing: Tuple[float, float, float],
                         dimensions: Tuple[int, int, int]):
         """
         Set volume information for coordinate conversion.
-        
+
         Args:
-            spacing: Voxel spacing in mm (x, y, z)
-            dimensions: Volume dimensions in voxels (width, height, depth)
+            spacing: ProjectInterface().get_spacing() /
+                Slice().spacing - (axial, coronal, sagital) mm per voxel.
+            dimensions: ProjectInterface().get_shape() /
+                Slice().matrix.shape - (axial, coronal, sagital) voxel
+                counts. NOT a generic (width, height, depth).
         """
         self.spacing = spacing
         self.dimensions = dimensions
@@ -64,65 +69,82 @@ class SyncManager2D3D:
     def set_world_coords(self, x: float, y: float, z: float):
         """
         Set the current world coordinates and update slice position.
-        
+
         Args:
-            x: World X coordinate in mm
-            y: World Y coordinate in mm
-            z: World Z coordinate in mm
+            x: World X coordinate in mm (VTK convention: fastest-varying
+               axis, matches Slice().matrix's last axis / "SAGITAL")
+            y: World Y coordinate in mm (matches matrix's middle axis /
+               "CORONAL")
+            z: World Z coordinate in mm (matches matrix's first axis /
+               "AXIAL" slice stack)
         """
         self.current_world_coords = (x, y, z)
-        
+
         # Convert to voxel coordinates
         voxel_coords = self.world_to_voxel(x, y, z)
         self.current_voxel_coords = voxel_coords
-        
-        # Determine which plane/slice based on z coordinate
+
+        # NOTE: voxel_coords is (axial_index, coronal_index, sagital_index)
+        # - see world_to_voxel()'s docstring for why.
         if self.current_plane == "AXIAL":
-            self.current_slice_index = int(voxel_coords[2])
+            self.current_slice_index = voxel_coords[0]
         elif self.current_plane == "CORONAL":
-            self.current_slice_index = int(voxel_coords[1])
-        else:  # SAGITTAL
-            self.current_slice_index = int(voxel_coords[0])
-            
+            self.current_slice_index = voxel_coords[1]
+        else:  # SAGITAL
+            self.current_slice_index = voxel_coords[2]
+
         # Notify callbacks
         for callback in self.world_coords_callbacks:
             callback(x, y, z, self.current_plane, self.current_slice_index)
-            
+
     def world_to_voxel(self, x: float, y: float, z: float) -> Tuple[int, int, int]:
         """
-        Convert world coordinates to voxel coordinates.
-        
+        Convert a VTK world-space point (mm) to a
+        Slice().matrix-style voxel index.
+
+        NOTE on axis order: invesalius.data.slice_.Slice keeps
+        `self.spacing` index-aligned with `self.matrix.shape` (see the
+        axis-swap code in slice_.py, which permutes both together) -
+        axis 0 is the AXIAL slice stack, axis 1 is CORONAL, axis 2 is
+        SAGITAL. InVesalius builds its VTK volume/actors with the
+        standard medical-imaging convention where VTK world X is the
+        fastest-varying image axis (SAGITAL / matrix axis 2), Y is
+        CORONAL (matrix axis 1), and Z is the slice stack (AXIAL /
+        matrix axis 0). So the mapping is world (x, y, z) -> voxel
+        (axis0, axis1, axis2) = (z/spacing[0], y/spacing[1], x/spacing[2]).
+        `dimensions` must be set from Slice().matrix.shape directly
+        (that axis order), not a generic "(width, height, depth)".
+
         Args:
             x, y, z: World coordinates in mm
-            
+
         Returns:
-            Tuple of (i, j, k) voxel coordinates
+            Tuple of (axial_index, coronal_index, sagital_index)
         """
-        i = int(x / self.spacing[0]) if self.spacing[0] != 0 else 0
-        j = int(y / self.spacing[1]) if self.spacing[1] != 0 else 0
-        k = int(z / self.spacing[2]) if self.spacing[2] != 0 else 0
-        
+        axial = int(z / self.spacing[0]) if self.spacing[0] != 0 else 0
+        coronal = int(y / self.spacing[1]) if self.spacing[1] != 0 else 0
+        sagital = int(x / self.spacing[2]) if self.spacing[2] != 0 else 0
+
         # Clamp to valid range
-        i = max(0, min(i, self.dimensions[0] - 1))
-        j = max(0, min(j, self.dimensions[1] - 1))
-        k = max(0, min(k, self.dimensions[2] - 1))
-        
-        return (i, j, k)
-        
-    def voxel_to_world(self, i: int, j: int, k: int) -> Tuple[float, float, float]:
+        axial = max(0, min(axial, self.dimensions[0] - 1))
+        coronal = max(0, min(coronal, self.dimensions[1] - 1))
+        sagital = max(0, min(sagital, self.dimensions[2] - 1))
+
+        return (axial, coronal, sagital)
+
+    def voxel_to_world(self, axial: int, coronal: int, sagital: int) -> Tuple[float, float, float]:
         """
-        Convert voxel coordinates to world coordinates.
-        
-        Args:
-            i, j, k: Voxel coordinates
-            
+        Convert a Slice().matrix-style voxel index (axial, coronal,
+        sagital) back to a VTK world-space point (mm). Inverse of
+        world_to_voxel() - see its docstring for the axis mapping.
+
         Returns:
             Tuple of (x, y, z) world coordinates in mm
         """
-        x = i * self.spacing[0]
-        y = j * self.spacing[1]
-        z = k * self.spacing[2]
-        
+        x = sagital * self.spacing[2]
+        y = coronal * self.spacing[1]
+        z = axial * self.spacing[0]
+
         return (x, y, z)
         
     def request_3d_update(self):

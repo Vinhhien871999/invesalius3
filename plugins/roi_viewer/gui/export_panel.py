@@ -16,10 +16,18 @@ except ImportError:
 class ExportPanel(wx.Panel):
     """
     Panel for export tools.
+
+    `controller` is the owning ROIViewerFrame, giving access to the
+    shared core/exporters.ExporterManager (controller.exporter) used for
+    the VTK PolyData surface format and current-slice image export
+    (mask/STL/PLY/OBJ export instead delegate to InVesalius's own real
+    export dialogs/pipeline - see _export_mask_to_file() and
+    _export_surface_to_file() below).
     """
-    
-    def __init__(self, parent):
+
+    def __init__(self, parent, controller):
         wx.Panel.__init__(self, parent)
+        self.controller = controller
         self._init_ui()
         
     def _init_ui(self):
@@ -126,7 +134,11 @@ class ExportPanel(wx.Panel):
         self.spin_scale = wx.SpinCtrl(self, wx.ID_ANY, "1", min=1, max=4)
         res_row.Add(self.spin_scale, 0, wx.ALL, 3)
         
-        res_row.Add(wx.StaticText(self, wx.ID_ANY, "x")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3
+        # NOTE: a misplaced ")" here used to close res_row.Add(...) right
+        # after the widget argument, leaving ", 0, wx.ALL | ..., 3" as a
+        # dangling no-op tuple statement - the "x" label was silently
+        # added with default (no padding/centering) flags instead.
+        res_row.Add(wx.StaticText(self, wx.ID_ANY, "x"), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         
         img_sizer.Add(res_row, 0, wx.EXPAND, 5)
         
@@ -278,20 +290,108 @@ class ExportPanel(wx.Panel):
         except ImportError:
             wx.MessageBox(_("Export not available."), _("Error"), wx.OK | wx.ICON_ERROR)
             
+    def _get_current_surface(self):
+        """
+        Find the "current" surface (there's no InVesalius singleton for
+        this reachable from a plugin the way Slice().current_mask is for
+        masks - SurfaceManager.last_surface_index lives on
+        Controller().surface_manager, which isn't exposed anywhere
+        public). Falls back to the highest-indexed surface in
+        Project().surface_dict, i.e. the most recently created one.
+        """
+        try:
+            from ..interface.project_interface import ProjectInterface
+
+            surfaces = ProjectInterface().get_surface_dict()
+            if not surfaces:
+                return None
+            return surfaces[max(surfaces.keys())]
+        except Exception:
+            return None
+
     def _export_surface_to_file(self, filepath):
         """Export surface to file."""
-        try:
-            from invesalius.pubsub import pub as Publisher
-            # TODO: Implement surface export
-            wx.MessageBox(_("Surface export will be implemented."), _("Info"), wx.OK | wx.ICON_INFORMATION)
-        except ImportError:
-            pass
-            
+        surface = self._get_current_surface()
+        if surface is None:
+            wx.MessageBox(_("No surface available. Create one first."), _("Error"), wx.OK | wx.ICON_ERROR)
+            return
+
+        selection = self.choice_surf_format.GetSelection()
+
+        if selection in (0, 1, 2, 3):  # STL Binary/ASCII, PLY, OBJ
+            try:
+                from invesalius.pubsub import pub as Publisher
+                import invesalius.constants as const
+
+                filetype = {
+                    0: const.FILETYPE_STL,
+                    1: const.FILETYPE_STL_ASCII,
+                    2: const.FILETYPE_PLY,
+                    3: const.FILETYPE_OBJ,
+                }[selection]
+
+                # NOTE: this is the same topic InVesalius's own File menu
+                # uses (see app.py's export() helper and
+                # invesalius/data/surface.py's OnExportSurface) - it
+                # exports the *current* surface directly from real VTK
+                # polydata, so it's used here instead of duplicating
+                # that logic through core/exporters.py.
+                Publisher.sendMessage(
+                    "Export surface to file", filename=filepath, filetype=filetype
+                )
+                self.controller.exporter.last_export_path = filepath
+            except ImportError as e:
+                wx.MessageBox(_("Export not available."), _("Error"), wx.OK | wx.ICON_ERROR)
+                print(f"ROI Viewer: surface export failed - {e}")
+        else:  # VTK PolyData (.vtk) - no InVesalius pubsub path for this
+            try:
+                from vtkmodules.util.numpy_support import vtk_to_numpy
+
+                polydata = surface.polydata
+                vertices = vtk_to_numpy(polydata.GetPoints().GetData())
+                conn = vtk_to_numpy(polydata.GetPolys().GetData())
+                # VTK's flat cell-connectivity array is
+                # [n0, id0_0, id0_1, ..., n1, id1_0, ...]; InVesalius
+                # surfaces are always triangulated (n == 3 everywhere),
+                # so every 4th value is a count column we can drop.
+                faces = conn.reshape(-1, 4)[:, 1:4]
+                ok = self.controller.exporter.export_surface_vtk(vertices, faces, filepath)
+                if not ok:
+                    wx.MessageBox(_("VTK export failed."), _("Error"), wx.OK | wx.ICON_ERROR)
+            except Exception as e:
+                wx.MessageBox(_("VTK export failed."), _("Error"), wx.OK | wx.ICON_ERROR)
+                print(f"ROI Viewer: VTK surface export failed - {e}")
+
     def _export_image_to_file(self, filepath):
-        """Export current view to image file."""
+        """
+        Export the current 2D slice (windowed to the real current
+        window/level, like what's actually shown on screen) to an image
+        file. "Current view" here means the current 2D slice raster, not
+        a full 3D viewport screenshot.
+        """
         try:
-            from invesalius.pubsub import pub as Publisher
-            # TODO: Implement image export
-            wx.MessageBox(_("Image export will be implemented."), _("Info"), wx.OK | wx.ICON_INFORMATION)
-        except ImportError:
-            pass
+            from ..interface.project_interface import ProjectInterface
+            from ..interface.view_interface import ViewInterface
+
+            pi = ProjectInterface()
+            plane, index = ViewInterface().get_slice_position()
+            slice_2d = pi.get_slice(plane, index)
+            if slice_2d is None:
+                wx.MessageBox(_("No slice available."), _("Error"), wx.OK | wx.ICON_ERROR)
+                return
+
+            window, level = pi.get_window_level()
+            window = window if window else 1
+            lower = level - window / 2.0
+            import numpy as np
+
+            windowed = np.clip(slice_2d, lower, lower + window)
+            image_8bit = ((windowed - lower) / window * 255.0).astype(np.uint8)
+
+            scale = self.spin_scale.GetValue()
+            ok = self.controller.exporter.export_image_png(image_8bit, filepath, scale=scale)
+            if not ok:
+                wx.MessageBox(_("Image export failed."), _("Error"), wx.OK | wx.ICON_ERROR)
+        except Exception as e:
+            wx.MessageBox(_("Image export failed."), _("Error"), wx.OK | wx.ICON_ERROR)
+            print(f"ROI Viewer: image export failed - {e}")

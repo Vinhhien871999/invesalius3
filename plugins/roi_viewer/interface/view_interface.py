@@ -71,7 +71,39 @@ class ViewInterface:
     def set_frame(self, frame: wx.Frame):
         """Set the main frame reference."""
         self._frame = frame
-        
+
+    def get_volume_viewer(self):
+        """
+        Find InVesalius's real 3D volume viewer widget
+        (invesalius.data.viewer_volume.Viewer) by walking the window tree
+        from the top-level frame.
+
+        NOTE: the Viewer instance is created as a local variable inside
+        VolumeInteraction.__init_aui_manager() (see
+        invesalius/gui/default_viewers.py) and is not exposed as a public
+        attribute anywhere, so there is no documented path to it. wx still
+        keeps it alive as a child window, so it can be found by walking
+        the widget tree once. Returns None if no project/3D view exists
+        yet (e.g. nothing imported).
+        """
+        try:
+            import invesalius.data.viewer_volume as viewer_volume
+        except ImportError:
+            return None
+
+        top_window = wx.GetApp().GetTopWindow() if wx.GetApp() else None
+        if top_window is None:
+            return None
+
+        stack = [top_window]
+        while stack:
+            window = stack.pop()
+            if isinstance(window, viewer_volume.Viewer):
+                return window
+            stack.extend(window.GetChildren())
+        return None
+
+
     def get_frame(self) -> Optional[wx.Frame]:
         """Get the main frame."""
         return self._frame

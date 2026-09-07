@@ -16,17 +16,23 @@ except ImportError:
 class InteractionPanel(scrolled.ScrolledPanel):
     """
     Panel for 2D-3D interaction tools.
+
+    `controller` is the owning ROIViewerFrame, giving access to the
+    shared picker_3d.PointPicker3D and sync_2d3d.SyncManager2D3D
+    instances.
     """
-    
-    def __init__(self, parent):
+
+    def __init__(self, parent, controller):
         scrolled.ScrolledPanel.__init__(self, parent)
-        
+        self.controller = controller
+        self._callback_registered = False
+
         # State
         self.sync_3d_2d_enabled = True
         self.sync_2d_3d_enabled = True
         self.realtime_update_enabled = True
         self.update_delay = 100
-        
+
         self._init_ui()
         self.SetupScrolling()
         
@@ -152,32 +158,74 @@ class InteractionPanel(scrolled.ScrolledPanel):
     def _on_sync_3d_2d_changed(self, event):
         """Handle sync 3D to 2D checkbox change."""
         self.sync_3d_2d_enabled = event.IsChecked()
+        if self.sync_3d_2d_enabled:
+            self.controller.sync_mgr.enable_sync_3d_2d()
+        else:
+            self.controller.sync_mgr.disable_sync_3d_2d()
         self._update_status()
-        
+
     def _on_sync_2d_3d_changed(self, event):
         """Handle sync 2D to 3D checkbox change."""
         self.sync_2d_3d_enabled = event.IsChecked()
+        if self.sync_2d_3d_enabled:
+            self.controller.sync_mgr.enable_sync_2d_3d()
+        else:
+            self.controller.sync_mgr.disable_sync_2d_3d()
         self._update_status()
-        
+
     def _on_realtime_changed(self, event):
         """Handle real-time update checkbox change."""
         self.realtime_update_enabled = event.IsChecked()
         self._update_status()
-        
+
     def _on_delay_changed(self, event):
         """Handle update delay slider change."""
         self.update_delay = event.GetInt()
         self.lbl_delay_value.SetLabel(f"{self.update_delay} ms")
-        
+        self.controller.sync_mgr.set_update_delay(self.update_delay)
+
     def _on_brush_size_changed(self, event):
         """Handle brush size slider change."""
         size = event.GetInt()
         self.lbl_brush_size.SetLabel(f"{size} px")
-        
+
+    def _on_point_picked(self, world_point):
+        """
+        Called by PointPicker3D with a real-world (x, y, z) mm
+        coordinate every time the user clicks in the 3D view.
+        """
+        x, y, z = world_point
+        wx.CallAfter(self.update_coordinates, x, y, z)
+
+        if not self.sync_3d_2d_enabled:
+            return
+
+        try:
+            from ..interface.project_interface import ProjectInterface
+            from ..interface.view_interface import ViewInterface
+
+            self.controller.sync_mgr.set_volume_info(
+                ProjectInterface().get_spacing(), ProjectInterface().get_shape()
+            )
+            self.controller.sync_mgr.set_world_coords(x, y, z)
+            plane, index = (
+                self.controller.sync_mgr.current_plane,
+                self.controller.sync_mgr.current_slice_index,
+            )
+            wx.CallAfter(ViewInterface().set_slice_position, plane, index)
+        except Exception as e:
+            print(f"ROI Viewer: 3D->2D sync failed - {e}")
+
     def _on_pick_point(self, event):
         """Handle pick point button click."""
-        self.status_text.SetLabel(_("Pick a point in the 3D view..."))
-        # This will be connected to the actual picker
+        if not self.controller.ensure_picker_initialized():
+            self.status_text.SetLabel(_("Status: No 3D view available yet"))
+            return
+        if not self._callback_registered:
+            self.controller.picker.add_callback(self._on_point_picked)
+            self._callback_registered = True
+        self.controller.picker.enable()
+        self.status_text.SetLabel(_("Click a point in the 3D view..."))
         
     def _update_status(self):
         """Update status text."""
