@@ -214,23 +214,23 @@
 - [x] F5: Window/Level — dùng để xuất ảnh slice PNG windowed đúng (xem ảnh CT hàm/răng đã xuất)
 
 ### Nhóm B: Tương tác (F6-F7)
-- [x] F6: Tương tác với mô hình 3D — `PointPicker3D` nối vào renderer/interactor thật (tìm qua widget tree)
-- [x] F7: Liên kết 2D-3D — pick điểm 3D di chuyển đúng slice 2D thật (qua `Set scroll position`)
+- [x] F6: Tương tác với mô hình 3D — `PointPicker3D` nối vào renderer/interactor thật; **verify bằng pick thật trên hình học đã render** (không phải điểm giả lập): `pick(267,164)` trên surface thật trả về toạ độ world thật `(124.6, -203.9, 78.8)`
+- [x] F7: Liên kết 2D-3D — từ điểm pick thật ở trên, `sync_mgr` cập nhật đúng slice AXIAL #107 và di chuyển slice 2D thật qua `Set scroll position`
 
 ### Nhóm C: Segmentation (F8-F9)
 - [x] F8: Segmentation cơ bản — threshold (auto Otsu + thủ công) tạo mask thật qua đúng pubsub topic core dùng
 - [x] F9: Chỉnh sửa ROI/mask — brush/eraser **remote-control** công cụ vẽ tay thật của InVesalius (không tự bắt chuột, tránh xung đột); Undo/Redo thao tác trực tiếp trên ma trận voxel thật của mask, verify bằng checksum khớp trước/sau
 
 ### Nhóm D: Measurement (F10-F11)
-- [x] F10: Đo khoảng cách — 3D: 2 điểm pick thật, tính khoảng cách mm thật; 2D: kích hoạt công cụ đo thật của InVesalius (kết quả hiện ở tab Measures gốc)
+- [x] F10: Đo khoảng cách — **3D: verify bằng 2 điểm pick thật trên hình học đã render** (`(94.6,-188.9,78.8)` và `(154.1,-191.7,78.8)`) → khoảng cách tính ra **59.56mm**, đã lưu vào `measure_mgr` thật; 2D: kích hoạt công cụ đo thật của InVesalius (kết quả hiện ở tab Measures gốc, xem giới hạn bên dưới)
 - [x] F11: Đo diện tích/thể tích — Volume: đọc mask + spacing thật (verify: 9575.83 mm³); Diện tích: kích hoạt công cụ polygon thật của InVesalius
 
 ### Nhóm E: Annotation & Export (F12-F14)
 - [x] F12: Annotation — dùng `AnnotationManager` dùng chung, verify add/goto/delete round-trip đúng
 - [x] F13: Lưu kết quả phân đoạn — xuất mask qua đúng dialog thật của InVesalius (`Show export mask dialog`, tự lấy đúng mask đang chọn)
-- [x] F14: Xuất mô hình 3D — STL/PLY/OBJ qua pipeline VTK gốc; ảnh slice PNG verify xuất ra file thật, đúng windowing
+- [x] F14: Xuất mô hình 3D — **verify bằng cách xuất file thật cho cả 4 định dạng** trên surface thật vừa tạo: STL (90.5MB), PLY (144.3MB), OBJ (191.8MB), VTK (74.5MB) — file size lớn vì threshold Otsu tự động chọn dải rộng, tạo mesh rất chi tiết (không phải lỗi); ảnh slice PNG verify xuất ra file thật, đúng windowing
 
-**Giới hạn đã biết (ghi rõ, không che giấu)**: đo khoảng cách/diện tích 2D và kết quả brush vẽ tay chưa được đọc ngược lại vào panel của plugin (dữ liệu hiển thị ở tab "Measures" gốc của InVesalius thay vì danh sách riêng của plugin) — do việc đọc cấu trúc dữ liệu đo lường nội bộ của InVesalius cần thêm thời gian nghiên cứu, để dành cho Phase 5.
+**Giới hạn đã biết (ghi rõ, không che giấu)**: đo khoảng cách/diện tích **2D** (không phải 3D — 3D đã verify đầy đủ ở trên) và kết quả brush vẽ tay chưa được đọc ngược lại vào panel của plugin (dữ liệu hiển thị ở tab "Measures" gốc của InVesalius thay vì danh sách riêng của plugin) — do việc đọc cấu trúc dữ liệu đo lường nội bộ của InVesalius cần thêm thời gian nghiên cứu, để dành cho Phase 5.
 
 ---
 
