@@ -26,17 +26,44 @@ def load():
     This function is called when the plugin is selected from the menu.
     """
     global _main_frame, _roi_viewer_window
-    
+
+    # NOTE: nothing prevented this from running again while a ROI
+    # Viewer window was already open (selecting "ROI Viewer" from the
+    # Plugins menu more than once) - each call created a whole second
+    # ROIViewerFrame with its own new PointPicker3D, which
+    # initialize_picker() then attached to the *same* real, singleton
+    # VTK interactor (invesalius.data.viewer_volume.Viewer outlives any
+    # single plugin window). Every extra open left one more permanent
+    # observer on that interactor, and _subscribe_events() below
+    # duplicated every pubsub subscription too. If the user later
+    # closed one of the windows, its stale observer/subscriptions kept
+    # firing into now-destroyed widgets - this is exactly the real
+    # crash InVesalius's own crash handler caught ("wrapped C/C++
+    # object of type TextCtrl has been deleted" from interaction_panel.
+    # py's update_coordinates). Reuse the existing window instead of
+    # creating a second one.
+    if _roi_viewer_window is not None:
+        try:
+            _roi_viewer_window.Raise()
+            _roi_viewer_window.SetFocus()
+            print("ROI Viewer: window already open, bringing it to front")
+            return
+        except RuntimeError:
+            # The wx C++ object is gone (window was closed) even though
+            # this module-level reference wasn't cleared - fall through
+            # and create a fresh one.
+            _roi_viewer_window = None
+
     top_window = wx.GetApp().GetTopWindow()
     _main_frame = top_window
-    
+
     # Create main ROI Viewer window
     _roi_viewer_window = roi_panel.ROIViewerFrame(top_window)
     _roi_viewer_window.Show()
-    
+
     # Subscribe to pubsub events
     _subscribe_events()
-    
+
     print("ROI Viewer plugin loaded successfully")
 
 
@@ -181,7 +208,13 @@ def unload():
         pass
     
     if _roi_viewer_window:
-        _roi_viewer_window.Destroy()
+        # NOTE: Close() (not Destroy() directly) so ROIViewerFrame's own
+        # EVT_CLOSE handler runs first and detaches the shared picker
+        # from the real VTK interactor - see picker_3d.PointPicker3D.
+        # cleanup()'s docstring and roi_panel.ROIViewerFrame._on_close().
+        # Calling Destroy() here directly used to skip that cleanup
+        # entirely.
+        _roi_viewer_window.Close()
         _roi_viewer_window = None
     
     print("ROI Viewer plugin unloaded")

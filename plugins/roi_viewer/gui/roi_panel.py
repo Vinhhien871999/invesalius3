@@ -84,6 +84,30 @@ class ROIViewerFrame(wx.Frame):
         self._init_ui()
         self.Centre()
 
+        # Detach the shared picker from the real VTK interactor when
+        # this window closes (e.g. the user hits the [X] button) - see
+        # picker_3d.PointPicker3D.cleanup()'s docstring for the real
+        # crash this prevents (a stale observer from a closed-and-
+        # reopened ROI Viewer window firing into destroyed widgets).
+        #
+        # NOTE: uses EVT_CLOSE, not EVT_WINDOW_DESTROY. EVT_CLOSE is the
+        # event a wx.Frame's own [X] button (and any Close() call)
+        # actually raises, with the default handler then calling
+        # Destroy(). EVT_WINDOW_DESTROY turned out to be unreliable
+        # here in testing - a plain Bind() on the frame did not
+        # consistently fire when the window was torn down, so cleanup()
+        # never ran. Handling EVT_CLOSE ourselves and calling Destroy()
+        # after cleanup covers the real user-facing path (clicking the
+        # window's close button) deterministically.
+        self.Bind(wx.EVT_CLOSE, self._on_close)
+
+    def _on_close(self, event):
+        try:
+            self.picker.cleanup()
+        except Exception as e:
+            print(f"ROI Viewer: picker cleanup on close failed - {e}")
+        self.Destroy()
+
     def _init_ui(self):
         """Initialize the user interface."""
         # Create notebook for organizing tools

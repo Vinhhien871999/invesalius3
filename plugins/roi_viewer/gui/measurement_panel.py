@@ -195,11 +195,20 @@ class MeasurementPanel(wx.Panel):
         wx.CallAfter(self._on_distance_finished, measurement)
 
     def _on_distance_finished(self, measurement):
-        self.btn_start_dist.SetLabel(_("Start Distance"))
-        if measurement is None:
-            return
-        self.set_distance_result(measurement.distance)
-        self.add_measurement(measurement.name, measurement.distance, measurement.unit)
+        # NOTE: reached via wx.CallAfter from _on_distance_point_picked(),
+        # so - same as interaction_panel.py's update_coordinates() - this
+        # can run after this panel was destroyed if the ROI Viewer window
+        # closed between the pick and this callback firing. Guarded as
+        # defense in depth alongside the picker-observer cleanup in
+        # picker_3d.PointPicker3D.cleanup().
+        try:
+            self.btn_start_dist.SetLabel(_("Start Distance"))
+            if measurement is None:
+                return
+            self.set_distance_result(measurement.distance)
+            self.add_measurement(measurement.name, measurement.distance, measurement.unit)
+        except RuntimeError:
+            pass
 
     def _on_measure_area(self, event):
         """

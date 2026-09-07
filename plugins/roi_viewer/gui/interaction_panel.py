@@ -250,8 +250,24 @@ class InteractionPanel(scrolled.ScrolledPanel):
     # =================
     
     def update_coordinates(self, x, y, z):
-        """Update coordinate display."""
-        self.txt_coords.SetValue(f"X: {x:.2f}, Y: {y:.2f}, Z: {z:.2f}")
+        """
+        Update coordinate display.
+
+        NOTE: called via wx.CallAfter from _on_point_picked(), so it can
+        run one event-loop tick after the pick happened - if this panel
+        was destroyed in that window (e.g. the user closed the ROI
+        Viewer, or reopened it, in between), self.txt_coords is a
+        deleted wx C++ object and touching it raises RuntimeError. This
+        is now also prevented at the source (the picker's VTK observer
+        is removed on close - see picker_3d.PointPicker3D.cleanup()),
+        but that fix only covers *this* window's own lifecycle; guard
+        here too as defense in depth, since InVesalius's own crash
+        handler caught this crashing for real.
+        """
+        try:
+            self.txt_coords.SetValue(f"X: {x:.2f}, Y: {y:.2f}, Z: {z:.2f}")
+        except RuntimeError:
+            pass
         
     def get_brush_config(self):
         """Get current brush configuration."""
