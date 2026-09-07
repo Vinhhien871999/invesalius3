@@ -1,0 +1,5 @@
+{
+    "name": "ROI Viewer",
+    "description": "Interactive 3D CT visualization and ROI editing plugin with 2D-3D synchronization, measurements, and annotations",
+    "enable-startup": true
+}
