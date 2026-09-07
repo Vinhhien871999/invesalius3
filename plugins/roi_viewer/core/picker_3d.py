@@ -29,7 +29,11 @@ class PointPicker3D:
             interactor: VTK render window interactor
         """
         try:
-            from vtkmodules.vtkCommonCore import vtkCellPicker, vtkPointPicker
+            # NOTE: vtkCellPicker/vtkPointPicker live in vtkRenderingCore, not
+            # vtkCommonCore (the previous import silently broke all 3D
+            # picking: ImportError was swallowed below and self.picker was
+            # left as None).
+            from vtkmodules.vtkRenderingCore import vtkCellPicker, vtkPointPicker
             from vtkmodules.vtkInteractionStyle import vtkInteractorStyleRubberBandPick
             
             # Use cell picker for surface picking

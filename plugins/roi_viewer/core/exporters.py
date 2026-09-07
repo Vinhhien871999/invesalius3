@@ -9,6 +9,32 @@ from typing import Optional, Tuple, List
 import tempfile
 
 
+def _build_vtk_polydata(vertices: np.ndarray, faces: np.ndarray):
+    """
+    Build a vtkPolyData triangle mesh from vertex/face arrays.
+
+    Shared by the STL and VTK exporters below.
+    """
+    from vtkmodules.vtkCommonCore import vtkPoints
+    from vtkmodules.vtkCommonDataModel import vtkPolyData, vtkCellArray, vtkTriangle
+
+    points = vtkPoints()
+    for v in vertices:
+        points.InsertNextPoint(*(float(c) for c in v))
+
+    triangles = vtkCellArray()
+    for face in faces:
+        triangle = vtkTriangle()
+        for i, idx in enumerate(face):
+            triangle.GetPointIds().SetId(i, int(idx))
+        triangles.InsertNextCell(triangle)
+
+    polydata = vtkPolyData()
+    polydata.SetPoints(points)
+    polydata.SetPolys(triangles)
+    return polydata
+
+
 class ExporterManager:
     """
     Manages all export operations.
@@ -129,22 +155,30 @@ class ExporterManager:
         Returns:
             True if successful
         """
+        # NOTE: originally implemented with the third-party `numpy-stl`
+        # package, which is not an InVesalius dependency and isn't
+        # installed, so this always failed. InVesalius core already ships
+        # vtkSTLWriter (see invesalius/data/surface.py) - reuse that
+        # instead of adding a new dependency.
         try:
-            from stl import mesh
-            
-            # Create mesh
-            stl_mesh = mesh.Mesh(np.zeros(faces.shape[0], dtype=mesh.Mesh.dtype))
-            for i, face in enumerate(faces):
-                stl_mesh.vectors[i] = vertices[face]
-                
-            # Save
-            stl_mesh.save(filepath, mode=binary and 'binary' or 'ascii')
-            
+            from vtkmodules.vtkIOGeometry import vtkSTLWriter
+
+            polydata = _build_vtk_polydata(vertices, faces)
+
+            writer = vtkSTLWriter()
+            writer.SetFileName(filepath)
+            writer.SetInputData(polydata)
+            if binary:
+                writer.SetFileTypeToBinary()
+            else:
+                writer.SetFileTypeToASCII()
+            writer.Write()
+
             self.last_export_path = filepath
             return True
-            
-        except ImportError:
-            print("STL export requires numpy-stl: pip install numpy-stl")
+
+        except ImportError as e:
+            print(f"STL export requires VTK: {e}")
             return False
         except Exception as e:
             print(f"STL export error: {e}")
@@ -247,39 +281,23 @@ class ExporterManager:
             True if successful
         """
         try:
-            from vtkmodules.vtkCommonDataModel import (
-                vtkPolyData, vtkPoints, vtkCellArray, vtkPolyLine
-            )
-            
-            # Create VTK objects
-            points = vtkPoints()
-            for v in vertices:
-                points.InsertNextPoint(v)
-                
-            polygons = vtkCellArray()
-            for face in faces:
-                polygon = vtkPolyLine()
-                polygon.GetPointIds().SetNumberOfIds(3)
-                for i, idx in enumerate(face):
-                    polygon.GetPointIds().SetId(i, idx)
-                polygons.InsertNextCell(polygon)
-                
-            polydata = vtkPolyData()
-            polydata.SetPoints(points)
-            polydata.SetPolys(polygons)
-            
-            # Save using VTK writer
-            from vtkmodules.vtkIOCore import vtkPolyDataWriter
+            # NOTE: vtkPolyDataWriter lives in vtkIOLegacy, not vtkIOCore
+            # (the old import raised ImportError every time, silently
+            # caught below).
+            from vtkmodules.vtkIOLegacy import vtkPolyDataWriter
+
+            polydata = _build_vtk_polydata(vertices, faces)
+
             writer = vtkPolyDataWriter()
             writer.SetFileName(filepath)
             writer.SetInputData(polydata)
             writer.Write()
-            
+
             self.last_export_path = filepath
             return True
-            
-        except ImportError:
-            print("VTK export requires VTK library")
+
+        except ImportError as e:
+            print(f"VTK export requires VTK library: {e}")
             return False
         except Exception as e:
             print(f"VTK export error: {e}")

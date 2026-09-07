@@ -44,23 +44,43 @@ class ProjectInterface:
             
             Publisher.subscribe(self._on_project_load, "Load project data")
             Publisher.subscribe(self._on_project_close, "Close project data")
-            Publisher.subscribe(self._on_slice_change, "Set scroll position")
+            # NOTE: "Set scroll position" is only ever sent as
+            # ("Set scroll position", "AXIAL"/"SAGITAL"/"CORONAL") with a
+            # single `index` kwarg - see invesalius/data/viewer_slice.py.
+            # Subscribing to the bare string with a (plane, index) handler
+            # raises TypeError from pypubsub on every scroll. Same bug as
+            # the one fixed in main.py's _subscribe_events - see that
+            # comment for the full explanation.
+            for _plane in ("AXIAL", "SAGITAL", "CORONAL"):
+                Publisher.subscribe(
+                    lambda index, _plane=_plane: self._on_slice_change(_plane, index),
+                    ("Set scroll position", _plane),
+                )
             Publisher.subscribe(self._on_window_level_change, "Update window level value")
             Publisher.subscribe(self._on_mask_update, "Reload actual slice")
-            
+
         except ImportError:
             pass
-            
-    def _on_project_load(self):
-        """Handle project load event."""
+
+    def _on_project_load(self, create_default_mask=True, end_busy_cursor=True):
+        """
+        Handle project load event.
+
+        NOTE: pypubsub infers this topic's accepted arguments from
+        invesalius.control.Controller.LoadProject, the first subscriber
+        (`create_default_mask=True, end_busy_cursor=True` - see
+        invesalius/control.py:853), and requires every subscriber to
+        accept them. A zero-arg handler here raised ListenerMismatchError
+        the moment anything tried to instantiate ProjectInterface().
+        """
         self._refresh_project_data()
-        
+
     def _on_project_close(self):
         """Handle project close event."""
         self._project = None
         self._slice = None
         self._shape = (0, 0, 0)
-        
+
     def _on_slice_change(self, plane, index):
         """Handle slice position change."""
         pass  # Events are handled by the UI
@@ -126,7 +146,13 @@ class ProjectInterface:
         elif plane.upper() == "CORONAL":
             if 0 <= index < volume.shape[1]:
                 return volume[:, index, :]
-        elif plane.upper() == "SAGITTAL":
+        elif plane.upper() in ("SAGITAL", "SAGITTAL"):
+            # NOTE: real InVesalius pubsub messages use the one-T spelling
+            # "SAGITAL" (see invesalius/control.py, invesalius/data/
+            # viewer_slice.py); this method only ever matched the more
+            # common two-T spelling, so it silently returned None for any
+            # plane string that actually came from real InVesalius data.
+            # Both spellings are accepted here.
             if 0 <= index < volume.shape[2]:
                 return volume[:, :, index]
                 
@@ -215,11 +241,14 @@ class ProjectInterface:
             
     def get_patient_name(self) -> str:
         """Get the patient name from DICOM."""
+        # NOTE: Project has no `dicom_sample` attribute (that was a guess -
+        # it always raised AttributeError, silently swallowed by the bare
+        # except below, so this always returned "Unknown"). The patient's
+        # name is stored directly on Project.name - see the "# patient's
+        # name" comment next to `self.name` in invesalius/project.py.
         try:
             import invesalius.project as prj
-            proj = prj.Project()
-            if proj.dicom_sample:
-                return proj.dicom_sample.patient.name
-        except:
-            pass
-        return "Unknown"
+            name = prj.Project().name
+            return name if name else "Unknown"
+        except Exception:
+            return "Unknown"

@@ -169,18 +169,29 @@ class ROITaskPanel(wx.Panel):
             
     def _on_plane_change(self, event):
         """Handle plane selection change."""
-        planes = ["AXIAL", "CORONAL", "SAGITTAL"]
+        # NOTE: InVesalius core spells this plane "SAGITAL" (one T) - see
+        # invesalius/control.py and invesalius/data/viewer_slice.py. The
+        # extra T here meant this plane's messages never reached any real
+        # listener.
+        planes = ["AXIAL", "CORONAL", "SAGITAL"]
         plane = planes[self.plane_choice.GetSelection()]
         
         try:
             from invesalius.pubsub import pub as Publisher
-            Publisher.sendMessage(f"Set scroll position", plane=plane, index=self.slice_slider.GetValue())
+            # NOTE: real subscribers listen on the per-plane tuple topic
+            # with a single `index` kwarg - see the fix explained in
+            # main.py's _subscribe_events().
+            Publisher.sendMessage(("Set scroll position", plane), index=self.slice_slider.GetValue())
         except ImportError:
             pass
             
     def _on_slice_change(self, event):
         """Handle slice slider change."""
-        planes = ["AXIAL", "CORONAL", "SAGITTAL"]
+        # NOTE: InVesalius core spells this plane "SAGITAL" (one T) - see
+        # invesalius/control.py and invesalius/data/viewer_slice.py. The
+        # extra T here meant this plane's messages never reached any real
+        # listener.
+        planes = ["AXIAL", "CORONAL", "SAGITAL"]
         plane = planes[self.plane_choice.GetSelection()]
         index = self.slice_slider.GetValue()
         
@@ -188,7 +199,7 @@ class ROITaskPanel(wx.Panel):
         
         try:
             from invesalius.pubsub import pub as Publisher
-            Publisher.sendMessage(f"Set scroll position", plane=plane, index=index)
+            Publisher.sendMessage(("Set scroll position", plane), index=index)
         except ImportError:
             pass
             
@@ -222,8 +233,17 @@ class ROITaskPanel(wx.Panel):
         except ImportError:
             pass
             
-    def _on_project_load(self):
-        """Handle project load event."""
+    def _on_project_load(self, create_default_mask=True, end_busy_cursor=True):
+        """
+        Handle project load event.
+
+        NOTE: pypubsub infers this topic's accepted arguments from
+        invesalius.control.Controller.LoadProject, the first subscriber
+        (`create_default_mask=True, end_busy_cursor=True` - see
+        invesalius/control.py:853), and requires every subscriber to
+        accept them. A zero-arg handler here raised ListenerMismatchError
+        the moment anything tried to instantiate this panel.
+        """
         self.project_loaded = True
         self.status_text.SetLabel(_("Status: Project loaded"))
         

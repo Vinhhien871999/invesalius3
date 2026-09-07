@@ -42,12 +42,19 @@ class ViewInterface:
         try:
             from invesalius.pubsub import pub as Publisher
             
-            Publisher.subscribe(self._on_set_scroll_position, "Set scroll position")
+            # NOTE: same "Set scroll position" hierarchical-topic bug fixed
+            # in main.py and project_interface.py - see the comment in
+            # main.py's _subscribe_events() for the full explanation.
+            for _plane in ("AXIAL", "SAGITAL", "CORONAL"):
+                Publisher.subscribe(
+                    lambda index, _plane=_plane: self._on_set_scroll_position(_plane, index),
+                    ("Set scroll position", _plane),
+                )
             Publisher.subscribe(self._on_render_volume, "Render volume viewer")
-            
+
         except ImportError:
             pass
-            
+
     def _on_set_scroll_position(self, plane, index):
         """Handle scroll position change."""
         self._current_plane = plane
@@ -79,13 +86,20 @@ class ViewInterface:
         """
         try:
             from invesalius.pubsub import pub as Publisher
-            
-            topic = f"Set scroll position"
-            Publisher.sendMessage(topic, plane=plane, index=index)
-            
+
+            # NOTE: real InVesalius subscribers listen on the per-plane
+            # tuple topic with a single `index` kwarg - see
+            # invesalius/data/viewer_slice.py's
+            # `Publisher.subscribe(self.ChangeSliceNumber, ("Set scroll
+            # position", self.orientation))` where
+            # `def ChangeSliceNumber(self, index)`. Sending the bare
+            # string with a `plane=` kwarg (as this used to do) reaches no
+            # real listener, so the 2D viewers never actually move.
+            Publisher.sendMessage(("Set scroll position", plane), index=index)
+
             self._current_plane = plane
             self._current_slice_index = index
-            
+
         except ImportError:
             pass
             
@@ -98,20 +112,18 @@ class ViewInterface:
         try:
             from invesalius.pubsub import pub as Publisher
             Publisher.sendMessage(
-                f"Set scroll position", 
-                plane=self._current_plane, 
+                ("Set scroll position", self._current_plane),
                 index=self._current_slice_index + 1
             )
         except ImportError:
             pass
-            
+
     def previous_slice(self):
         """Move to the previous slice."""
         try:
             from invesalius.pubsub import pub as Publisher
             Publisher.sendMessage(
-                f"Set scroll position", 
-                plane=self._current_plane, 
+                ("Set scroll position", self._current_plane),
                 index=max(0, self._current_slice_index - 1)
             )
         except ImportError:

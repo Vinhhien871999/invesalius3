@@ -197,20 +197,13 @@ class ExportPanel(wx.Panel):
         
     def _on_export_mask(self, event):
         """Handle export mask button click."""
-        wildcard = f"{_('Mask files')} (*{self._get_mask_format_ext()})|*{self._get_mask_format_ext()}"
-        
-        dlg = wx.FileDialog(
-            self,
-            message=_("Export Mask"),
-            wildcard=wildcard,
-            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT
-        )
-        
-        if dlg.ShowModal() == wx.ID_OK:
-            filepath = dlg.GetPath()
-            self._export_mask_to_file(filepath)
-            
-        dlg.Destroy()
+        # NOTE: this used to open its own wx.FileDialog first and then
+        # discard the path the user picked, immediately firing InVesalius's
+        # own "Show export mask dialog" (which opens a second, real save
+        # dialog) right after - the user saw two save dialogs in a row and
+        # the first choice was silently thrown away. That dialog is the one
+        # that actually writes the file, so just fire it directly.
+        self._export_mask_to_file()
         
     def _on_export_surface(self, event):
         """Handle export surface button click."""
@@ -262,11 +255,26 @@ class ExportPanel(wx.Panel):
         except ImportError:
             pass
             
-    def _export_mask_to_file(self, filepath):
-        """Export mask to file."""
+    def _export_mask_to_file(self):
+        """Open InVesalius's own export-mask dialog for the current mask."""
         try:
             from invesalius.pubsub import pub as Publisher
-            Publisher.sendMessage("Show export mask dialog", mask_indexes=[0])  # Current mask
+            import invesalius.data.slice_ as sl
+
+            # NOTE: this used to hardcode mask_indexes=[0], so "export mask"
+            # always exported the very first mask ever created regardless
+            # of which one was actually selected. Use the real current
+            # mask's index (Mask.index - see invesalius/data/mask.py).
+            current_mask = sl.Slice().current_mask
+            if current_mask is None:
+                wx.MessageBox(
+                    _("No mask selected."), _("Error"), wx.OK | wx.ICON_ERROR
+                )
+                return
+
+            Publisher.sendMessage(
+                "Show export mask dialog", mask_indexes=[current_mask.index]
+            )
         except ImportError:
             wx.MessageBox(_("Export not available."), _("Error"), wx.OK | wx.ICON_ERROR)
             

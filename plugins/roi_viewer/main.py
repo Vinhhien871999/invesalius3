@@ -14,6 +14,11 @@ from .interface import project_interface, view_interface, task_panel
 _main_frame = None
 _roi_viewer_window = None
 
+# Per-plane slice-change listeners registered in _subscribe_events(), kept
+# around so unload() can unsubscribe the exact same callables (they are
+# lambdas, not _on_slice_change itself - see _subscribe_events()).
+_slice_change_listeners = []
+
 
 def load():
     """
@@ -46,8 +51,25 @@ def _subscribe_events():
         Publisher.subscribe(_on_project_load, "Load project data")
         Publisher.subscribe(_on_project_close, "Close project data")
         
-        # Slice events
-        Publisher.subscribe(_on_slice_change, "Set scroll position")
+        # Slice events.
+        # NOTE: "Set scroll position" is a hierarchical topic in InVesalius
+        # core - it is only ever sent as ("Set scroll position", "AXIAL") /
+        # ("Set scroll position", "SAGITAL") / ("Set scroll position",
+        # "CORONAL") with a single `index` kwarg (see
+        # invesalius/control.py and invesalius/data/viewer_slice.py, which
+        # subscribes with `Publisher.subscribe(handler, ("Set scroll
+        # position", self.orientation))` and `def handler(self, index)`).
+        # Subscribing to the bare string with a (plane, index) handler, as
+        # this used to do, means pypubsub calls the handler with only
+        # `index` and raises a TypeError on every single slice scroll once
+        # this plugin is loaded. Subscribe per-plane instead, matching the
+        # real topic shape exactly.
+        global _slice_change_listeners
+        _slice_change_listeners = []
+        for _plane in ("AXIAL", "SAGITAL", "CORONAL"):
+            listener = lambda index, _plane=_plane: _on_slice_change(_plane, index)
+            Publisher.subscribe(listener, ("Set scroll position", _plane))
+            _slice_change_listeners.append((listener, _plane))
         Publisher.subscribe(_on_mask_update, "Reload actual slice")
         
         # Mask events
@@ -59,8 +81,19 @@ def _subscribe_events():
         print(f"ROI Viewer: Could not import Publisher - {e}")
 
 
-def _on_project_load():
-    """Handle project load event."""
+def _on_project_load(create_default_mask=True, end_busy_cursor=True):
+    """
+    Handle project load event.
+
+    NOTE: pypubsub infers each topic's accepted arguments from every
+    subscriber (invesalius.control.Controller.LoadProject subscribes
+    first, with `create_default_mask=True, end_busy_cursor=True`), and
+    requires every other subscriber on that same topic to be able to
+    accept them too - see invesalius/control.py:853. A zero-arg handler
+    here raised `ListenerMismatchError` at subscribe time, which crashed
+    the whole plugin the instant `load()` ran, before any of the other
+    subscriptions below were even registered.
+    """
     global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_project_load()
@@ -136,12 +169,14 @@ def unload():
         from invesalius.pubsub import pub as Publisher
         
         # Unsubscribe from events
-        Publisher.unsubscribe(_on_project_load)
-        Publisher.unsubscribe(_on_project_close)
-        Publisher.unsubscribe(_on_slice_change)
-        Publisher.unsubscribe(_on_mask_update)
-        Publisher.unsubscribe(_on_mask_created)
-        Publisher.unsubscribe(_on_mask_selected)
+        Publisher.unsubscribe(_on_project_load, "Load project data")
+        Publisher.unsubscribe(_on_project_close, "Close project data")
+        for listener, plane in _slice_change_listeners:
+            Publisher.unsubscribe(listener, ("Set scroll position", plane))
+        _slice_change_listeners.clear()
+        Publisher.unsubscribe(_on_mask_update, "Reload actual slice")
+        Publisher.unsubscribe(_on_mask_created, "Create new mask")
+        Publisher.unsubscribe(_on_mask_selected, "Change mask selected")
     except ImportError:
         pass
     
