@@ -63,20 +63,46 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         sizer.Add(thresh_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
-        # --- Brush tools (configuration only in this version - see
-        # note on _on_undo/_on_redo below for what is actually wired) ---
-        box_brush = wx.StaticBox(self, wx.ID_ANY, _("Brush Tools"))
+        # --- Brush tools ---
+        # NOTE: this does NOT capture mouse events itself (that would
+        # fight InVesalius's own 2D canvas interactor). Instead it
+        # drives InVesalius's real, already-working brush editor through
+        # the exact pubsub topics its own toolbar/task panel use (see
+        # invesalius/gui/task_slice.py and invesalius/data/styles.py):
+        # "Enable style"/"Disable style" (style=SLICE_STATE_EDITOR) to
+        # toggle edit mode on the real 2D canvas, and "Set edition brush
+        # size"/"Set brush format"/"Set edition operation" to configure
+        # it. The actual mouse-drag painting is InVesalius's own,
+        # unmodified - this panel is just a remote control for it.
+        box_brush = wx.StaticBox(self, wx.ID_ANY, _("Brush Tools (real 2D editor)"))
         brush_sizer = wx.StaticBoxSizer(box_brush, wx.VERTICAL)
 
-        brush_note = wx.StaticText(
-            self, wx.ID_ANY,
-            _("Use InVesalius's own 2D brush/eraser tool to paint the "
-              "current mask. Undo/Redo below snapshots and restores the "
-              "real current mask, so it also undoes edits made with the "
-              "native brush."),
+        op_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.rb_brush_draw = wx.RadioButton(self, wx.ID_ANY, _("Draw"), style=wx.RB_GROUP)
+        self.rb_brush_draw.SetValue(True)
+        op_row.Add(self.rb_brush_draw, 0, wx.ALL, 3)
+
+        self.rb_brush_erase = wx.RadioButton(self, wx.ID_ANY, _("Erase"))
+        op_row.Add(self.rb_brush_erase, 0, wx.ALL, 3)
+        brush_sizer.Add(op_row, 0, wx.EXPAND, 3)
+
+        shape_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.rb_brush_circle = wx.RadioButton(self, wx.ID_ANY, _("Circle"), style=wx.RB_GROUP)
+        self.rb_brush_circle.SetValue(True)
+        shape_row.Add(self.rb_brush_circle, 0, wx.ALL, 3)
+
+        self.rb_brush_square = wx.RadioButton(self, wx.ID_ANY, _("Square"))
+        shape_row.Add(self.rb_brush_square, 0, wx.ALL, 3)
+        brush_sizer.Add(shape_row, 0, wx.EXPAND, 3)
+
+        brush_sizer.Add(wx.StaticText(self, wx.ID_ANY, _("Brush size:")), 0, wx.ALL, 3)
+        self.slider_brush_size = wx.Slider(
+            self, wx.ID_ANY, 30, 1, 100, style=wx.SL_HORIZONTAL | wx.SL_LABELS
         )
-        brush_note.Wrap(280)
-        brush_sizer.Add(brush_note, 0, wx.ALL | wx.EXPAND, 5)
+        brush_sizer.Add(self.slider_brush_size, 0, wx.ALL | wx.EXPAND, 3)
+
+        self.btn_toggle_brush = wx.ToggleButton(self, wx.ID_ANY, _("Enable Brush Tool"))
+        brush_sizer.Add(self.btn_toggle_brush, 0, wx.ALL | wx.EXPAND, 5)
 
         sizer.Add(brush_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
@@ -109,6 +135,22 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_checkpoint.Bind(wx.EVT_BUTTON, self._on_checkpoint)
         self.btn_undo.Bind(wx.EVT_BUTTON, self._on_undo)
         self.btn_redo.Bind(wx.EVT_BUTTON, self._on_redo)
+
+        self.btn_toggle_brush.Bind(wx.EVT_TOGGLEBUTTON, self._on_toggle_brush)
+        self.rb_brush_draw.Bind(wx.EVT_RADIOBUTTON, self._on_brush_operation_changed)
+        self.rb_brush_erase.Bind(wx.EVT_RADIOBUTTON, self._on_brush_operation_changed)
+        self.rb_brush_circle.Bind(wx.EVT_RADIOBUTTON, self._on_brush_format_changed)
+        self.rb_brush_square.Bind(wx.EVT_RADIOBUTTON, self._on_brush_format_changed)
+        self.slider_brush_size.Bind(wx.EVT_SLIDER, self._on_brush_size_changed)
+
+        # Auto-disable the real edit style when this panel goes away, so
+        # closing the ROI Viewer window (or switching away mid-edit)
+        # never leaves InVesalius's 2D canvas stuck in brush-edit mode
+        # with no visible way to turn it back off.
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
+
+    def _brush_enabled(self):
+        return self.btn_toggle_brush.GetValue()
 
     # ------------------------------------------------------------------
     # Threshold -> real mask
@@ -228,3 +270,76 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             Publisher.sendMessage("Render volume viewer")
         except ImportError:
             pass
+
+    # ------------------------------------------------------------------
+    # Real brush editor (remote-controls InVesalius's own 2D edit style)
+    # ------------------------------------------------------------------
+    def _on_toggle_brush(self, event):
+        if self.btn_toggle_brush.GetValue():
+            mask = self._current_mask()
+            if mask is None:
+                self.btn_toggle_brush.SetValue(False)
+                wx.MessageBox(
+                    _("Create or select a mask first (see Threshold above)."),
+                    _("No mask selected"), wx.OK | wx.ICON_WARNING,
+                )
+                return
+            try:
+                from invesalius.pubsub import pub as Publisher
+                import invesalius.constants as const
+
+                Publisher.sendMessage("Enable style", style=const.SLICE_STATE_EDITOR)
+                self._push_brush_config()
+                self.btn_toggle_brush.SetLabel(_("Disable Brush Tool"))
+                self.status_text.SetLabel(
+                    _("Status: Brush active - paint on the 2D slice views")
+                )
+            except ImportError as e:
+                self.btn_toggle_brush.SetValue(False)
+                print(f"ROI Viewer: could not enable brush - {e}")
+        else:
+            self._disable_brush()
+
+    def _disable_brush(self):
+        try:
+            from invesalius.pubsub import pub as Publisher
+            import invesalius.constants as const
+
+            Publisher.sendMessage("Disable style", style=const.SLICE_STATE_EDITOR)
+        except ImportError:
+            pass
+        self.btn_toggle_brush.SetLabel(_("Enable Brush Tool"))
+        self.status_text.SetLabel(_("Status: Ready"))
+
+    def _push_brush_config(self):
+        """Send the panel's current operation/shape/size to the real editor style."""
+        if not self._brush_enabled():
+            return
+        try:
+            from invesalius.pubsub import pub as Publisher
+            import invesalius.constants as const
+
+            operation = const.BRUSH_ERASE if self.rb_brush_erase.GetValue() else const.BRUSH_DRAW
+            cursor_format = const.BRUSH_SQUARE if self.rb_brush_square.GetValue() else const.BRUSH_CIRCLE
+
+            Publisher.sendMessage("Set edition operation", operation=operation)
+            Publisher.sendMessage("Set brush format", cursor_format=cursor_format)
+            Publisher.sendMessage("Set edition brush size", size=self.slider_brush_size.GetValue())
+        except ImportError as e:
+            print(f"ROI Viewer: could not update brush config - {e}")
+
+    def _on_brush_operation_changed(self, event):
+        self._push_brush_config()
+
+    def _on_brush_format_changed(self, event):
+        self._push_brush_config()
+
+    def _on_brush_size_changed(self, event):
+        self._push_brush_config()
+
+    def _on_destroy(self, event):
+        event.Skip()
+        if event.GetEventObject() is not self:
+            return
+        if self._brush_enabled():
+            self._disable_brush()

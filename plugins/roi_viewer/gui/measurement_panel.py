@@ -26,7 +26,26 @@ class MeasurementPanel(wx.Panel):
         self.controller = controller
         self._collecting_distance = False
         self._init_ui()
-        
+        # Safety net: don't leave InVesalius's 2D canvas stuck in a
+        # measurement tool mode if this window closes mid-measurement.
+        self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
+
+    def _on_destroy(self, event):
+        event.Skip()
+        if event.GetEventObject() is not self:
+            return
+        try:
+            from invesalius.pubsub import pub as Publisher
+            import invesalius.constants as const
+
+            Publisher.sendMessage("Disable style", style=const.STATE_MEASURE_DISTANCE)
+            Publisher.sendMessage("Disable style", style=const.STATE_MEASURE_DENSITY_POLYGON)
+        except ImportError:
+            pass
+        if self._collecting_distance:
+            self.controller.picker.remove_callback(self._on_distance_point_picked)
+            self._collecting_distance = False
+
     def _init_ui(self):
         """Initialize the measurement panel UI."""
         sizer = wx.BoxSizer(wx.VERTICAL)
@@ -110,15 +129,25 @@ class MeasurementPanel(wx.Panel):
     def _on_start_distance(self, event):
         """Handle start distance button click."""
         if not self.rb_dist_3d.GetValue():
-            # 2D polygon/point picking on the slice canvas would need a
-            # mouse-drag hook into InVesalius's own 2D canvas widget,
-            # which isn't wired in this version - see gui/roi_panel.py's
-            # module docstring for the list of known gaps.
-            wx.MessageBox(
-                _("2D distance measurement is not available in this version. "
-                  "Use 3D distance (picks points in the 3D view)."),
-                _("Not available"), wx.OK | wx.ICON_INFORMATION,
-            )
+            # NOTE: rather than reimplementing 2D point-picking on
+            # InVesalius's own 2D canvas (which would need a mouse-drag
+            # hook fighting the canvas's existing interactor), this
+            # delegates to InVesalius's own real distance-measurement
+            # tool the exact same way its toolbar button does - see
+            # invesalius/gui/frame.py's _ToggleLinearMeasure(). The
+            # result appears in InVesalius's own "Measures" tab; this
+            # plugin does not duplicate it into its own list.
+            try:
+                from invesalius.pubsub import pub as Publisher
+                import invesalius.constants as const
+
+                Publisher.sendMessage("Enable style", style=const.STATE_MEASURE_DISTANCE)
+                self.txt_distance.SetValue(
+                    _("Click 2 points on a 2D slice - result appears in "
+                      "InVesalius's Measures tab")
+                )
+            except ImportError as e:
+                print(f"ROI Viewer: could not enable 2D distance tool - {e}")
             return
 
         if not self.controller.ensure_picker_initialized():
@@ -160,14 +189,24 @@ class MeasurementPanel(wx.Panel):
         self.add_measurement(measurement.name, measurement.distance, measurement.unit)
 
     def _on_measure_area(self, event):
-        """Handle measure area button click."""
-        # Same limitation as 2D distance: needs a polygon drawn on the
-        # 2D canvas, which isn't wired in this version.
-        wx.MessageBox(
-            _("Area measurement needs a polygon drawn on the 2D slice, "
-              "which isn't wired up in this version."),
-            _("Not available"), wx.OK | wx.ICON_INFORMATION,
-        )
+        """
+        Handle measure area button click - delegates to InVesalius's
+        real "density polygon" tool (draw a polygon on a 2D slice; it
+        reports area and density stats for the enclosed region in
+        InVesalius's own Measures tab). Same delegation approach as 2D
+        distance above - see that method's NOTE.
+        """
+        try:
+            from invesalius.pubsub import pub as Publisher
+            import invesalius.constants as const
+
+            Publisher.sendMessage("Enable style", style=const.STATE_MEASURE_DENSITY_POLYGON)
+            self.txt_volume.SetValue(
+                _("Draw a polygon on a 2D slice - result appears in "
+                  "InVesalius's Measures tab")
+            )
+        except ImportError as e:
+            print(f"ROI Viewer: could not enable area tool - {e}")
 
     def _on_measure_volume(self, event):
         """Handle measure volume button click - real current-mask volume."""
