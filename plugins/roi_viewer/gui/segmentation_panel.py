@@ -341,5 +341,23 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         event.Skip()
         if event.GetEventObject() is not self:
             return
-        if self._brush_enabled():
-            self._disable_brush()
+        if not self._brush_enabled():
+            return
+        # NOTE: deliberately not calling self._disable_brush() here - it
+        # also touches this panel's own child widgets (SetLabel on
+        # btn_toggle_brush/status_text), which can themselves already be
+        # mid-destruction at this point during whole-app shutdown.
+        # Just best-effort the one thing that actually matters (not
+        # leaving InVesalius's 2D canvas stuck in edit mode), and never
+        # let a teardown-time failure here crash the app - see the
+        # matching note in measurement_panel.py's _on_destroy, which hit
+        # exactly this class of bug for real (crash_report_
+        # 20260907_153620.txt: "wrapped C/C++ object ... has been
+        # deleted" from InVesalius's own interactor cleanup).
+        try:
+            from invesalius.pubsub import pub as Publisher
+            import invesalius.constants as const
+
+            Publisher.sendMessage("Disable style", style=const.SLICE_STATE_EDITOR)
+        except Exception as e:
+            print(f"ROI Viewer: brush cleanup on destroy failed (likely app shutdown) - {e}")

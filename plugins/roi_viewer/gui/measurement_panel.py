@@ -42,6 +42,19 @@ class MeasurementPanel(wx.Panel):
             Publisher.sendMessage("Disable style", style=const.STATE_MEASURE_DENSITY_POLYGON)
         except ImportError:
             pass
+        except Exception as e:
+            # NOTE: during whole-app shutdown, window destruction order
+            # is not guaranteed - the real 3D viewer's
+            # wxVTKRenderWindowInteractor can already be gone by the
+            # time this fires, and OnDisableStyle()'s cleanup path
+            # (invesalius/data/styles_3d.py's CleanUp -> Unbind) then
+            # raises RuntimeError: "wrapped C/C++ object ... has been
+            # deleted". That's a real crash InVesalius's own error
+            # dialog reported (crash_report_20260907_153620.txt) the
+            # first time this ran, right as the app was closing. This
+            # cleanup is best-effort only - it must never crash the app
+            # it's trying to leave in a clean state.
+            print(f"ROI Viewer: style cleanup on destroy failed (likely app shutdown) - {e}")
         if self._collecting_distance:
             self.controller.picker.remove_callback(self._on_distance_point_picked)
             self._collecting_distance = False
