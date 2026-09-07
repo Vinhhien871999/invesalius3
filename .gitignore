@@ -273,10 +273,6 @@ tags
 # MacOS temporary file
 .DS_Store
 
-# Ignore plugins directory for this PR
-/plugins/
-plugins/**
-
 # Python bytecode
 __pycache__/
 *.py[cod]
