@@ -242,8 +242,22 @@ class MeasurementPanel(wx.Panel):
                 return
 
             self.controller.measure_mgr.set_spacing(pi.get_spacing())
+            # NOTE (bug found + fixed via runtime guide verification):
+            # mask.matrix carries a 1-voxel padding border that is not
+            # real image data - each axial slice's matrix[n, 0, 0] cell
+            # in particular doubles as Slice.do_threshold_to_all_slices()'s
+            # lazy-threshold "already processed" sentinel and gets set
+            # to 1 for real thresholded masks (see
+            # core/annotation.py/ARCHITECTURE.md notes on this same
+            # padding contract elsewhere). Passing the full padded
+            # matrix here made calculate_volume()'s `np.sum(mask > 0)`
+            # count those non-image sentinel/padding cells as if they
+            # were real foreground voxels, inflating the reported
+            # volume slightly (confirmed for real: UI showed 9575.83mm3
+            # vs 9574.80mm3 independently computed from the real
+            # interior voxels only). Use the interior only.
             measurement = self.controller.measure_mgr.add_volume_measurement(
-                name="", mask_index=mask.index, mask=mask.matrix
+                name="", mask_index=mask.index, mask=mask.matrix[1:, 1:, 1:]
             )
             self.txt_volume.SetValue(f"{measurement.volume:.2f} {measurement.unit}")
             self.add_measurement(measurement.name, measurement.volume, measurement.unit)

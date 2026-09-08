@@ -55,8 +55,15 @@ class ExportPanel(wx.Panel):
             choices=[
                 "NIfTI (.nii.gz)",
                 "NRRD (.nrrd)",
-                "MetaImage (.mhd)",
                 "NumPy (.npy)"
+                # NOTE: "MetaImage (.mhd)" was removed here - it had no
+                # real writer anywhere (core/exporters.py has
+                # export_mask_nifti/nrrd/numpy, no export_mask_metaimage
+                # at all) and this dropdown's selection wasn't even
+                # being read by _on_export_mask() until this fix (see
+                # that method's own NOTE) - keeping an option that can
+                # never produce a file would just be a second copy of
+                # the same "advertised but not real" bug.
             ]
         )
         self.choice_mask_format.SetSelection(0)
@@ -181,8 +188,7 @@ class ExportPanel(wx.Panel):
         formats = {
             0: ".nii.gz",  # NIfTI
             1: ".nrrd",    # NRRD
-            2: ".mhd",     # MetaImage
-            3: ".npy"      # NumPy
+            2: ".npy",     # NumPy
         }
         return formats.get(self.choice_mask_format.GetSelection(), ".nii.gz")
         
@@ -209,13 +215,78 @@ class ExportPanel(wx.Panel):
         
     def _on_export_mask(self, event):
         """Handle export mask button click."""
-        # NOTE: this used to open its own wx.FileDialog first and then
-        # discard the path the user picked, immediately firing InVesalius's
-        # own "Show export mask dialog" (which opens a second, real save
-        # dialog) right after - the user saw two save dialogs in a row and
-        # the first choice was silently thrown away. That dialog is the one
-        # that actually writes the file, so just fire it directly.
-        self._export_mask_to_file()
+        # NOTE (bug found + fixed via docs/ROI_VIEWER_USER_GUIDE_VERIFICATION.md's
+        # runtime testing): this used to ALWAYS call
+        # _export_mask_to_file() regardless of the "Format:" dropdown's
+        # selection. That method only ever opens InVesalius's own real
+        # "Export Mask as NIfTI" dialog (see invesalius/control.py's
+        # OnShowExportMaskDialog - it hardcodes wildcard=WILDCARD_NIFTI
+        # and force-appends ".nii.gz" to whatever filename the user
+        # types), so picking "NRRD" or the since-removed "MetaImage" in
+        # the dropdown silently did nothing - the file written was
+        # always NIfTI. Verified for real: selecting NRRD and exporting
+        # produced no .nrrd file at all. Now the dropdown selection is
+        # actually honored: NIfTI still goes through InVesalius's real
+        # dialog (unchanged, still the confirmed-working path); NRRD/
+        # NumPy use this plugin's own real exporter functions
+        # (core/exporters.py - already existed, just were never called
+        # from here) through a plugin-owned file dialog.
+        selection = self.choice_mask_format.GetSelection()
+        if selection == 0:
+            self._export_mask_to_file()
+            return
+
+        try:
+            import invesalius.data.slice_ as sl
+
+            current_mask = sl.Slice().current_mask
+            if current_mask is None:
+                wx.MessageBox(_("No mask selected."), _("Error"), wx.OK | wx.ICON_ERROR)
+                return
+        except ImportError:
+            wx.MessageBox(_("Export not available."), _("Error"), wx.OK | wx.ICON_ERROR)
+            return
+
+        ext = self._get_mask_format_ext()
+        wildcard = f"{_('Mask files')} (*{ext})|*{ext}"
+        dlg = wx.FileDialog(
+            self, message=_("Export Mask"), defaultFile=f"{current_mask.name}{ext}",
+            wildcard=wildcard, style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            filepath = dlg.GetPath()
+            self._export_mask_via_exporter(current_mask, selection, filepath)
+        dlg.Destroy()
+
+    def _export_mask_via_exporter(self, mask, selection, filepath):
+        """
+        Real mask export for the formats InVesalius's own dialog does
+        not support (NRRD/NumPy), using core/exporters.ExporterManager
+        (already implemented, just never wired to this button before).
+        Interior voxel data only (mask.matrix[1:, 1:, 1:]) - matrix
+        carries a 1-voxel padding border that is not real image data
+        (see project_interface.py's notes on this).
+        """
+        try:
+            from ..interface.project_interface import ProjectInterface
+
+            spacing = ProjectInterface().get_spacing()
+            data = (mask.matrix[1:, 1:, 1:] > 0).astype("uint8")
+            if selection == 1:  # NRRD
+                ok = self.controller.exporter.export_mask_nrrd(data, filepath, spacing=spacing)
+            elif selection == 2:  # NumPy
+                ok = self.controller.exporter.export_mask_numpy(data, filepath)
+            else:
+                ok = False
+            if not ok:
+                wx.MessageBox(
+                    _("Mask export failed (see console for details - e.g. a required "
+                      "library like pynrrd may not be installed)."),
+                    _("Error"), wx.OK | wx.ICON_ERROR,
+                )
+        except Exception as e:
+            wx.MessageBox(_("Mask export failed."), _("Error"), wx.OK | wx.ICON_ERROR)
+            print(f"ROI Viewer: mask export via exporter failed - {e}")
         
     def _on_export_surface(self, event):
         """Handle export surface button click."""
