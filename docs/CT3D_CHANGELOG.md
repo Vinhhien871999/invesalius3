@@ -70,10 +70,20 @@
 9. **D9/C7 (Update 3D Surface)**: test với mask NHỎ thật (không phải 16,2 triệu voxel như vòng 1) — verify polydata thật, tìm ra + sửa bug #1 ở trên. Thử `batch_mode: True` (tưởng an toàn hơn về lý thuyết) nhưng THỬ THẬT cho thấy treo 2/2 lần — revert về bản mặc định (có bằng chứng chạy được thật).
 10. Tài liệu cập nhật: cả 5 file `CT3D_*.md` theo yêu cầu vòng 2.
 
+## `498a71c7` — Fix real crash in InVesalius CORE (styles.py) — lần đầu tiên đụng vào `invesalius/`
+
+**Bối cảnh**: người dùng tự phát hiện khi thao tác thật (xoá hết mask → import lại DICOM), gửi kèm traceback đầy đủ. Traceback 100% nằm trong code core (`control.py`, `slice_.py`, `viewer_slice.py`, `styles.py`) — **không có dòng nào của plugin**.
+
+**Nguyên nhân thật**: `Viewer.CloseProject()` (`viewer_slice.py`) đặt `self.canvas = None` khi đóng project (xảy ra khi import DICOM mới, đóng project cũ trước). `DensityMeasureStyle.CleanUp()` (`styles.py` — lớp xử lý công cụ đo diện tích/mật độ polygon 2D, đúng công cụ nút "Measure Area (2D)" của plugin điều khiển, và cũng là công cụ đo mật độ gốc của InVesalius) không kiểm tra `None` trước khi gọi `self.viewer.canvas.unsubscribe_event(...)` — trong khi `viewer_slice.py` đã tự phòng vệ đúng chỗ này ở 4 nơi khác (`if self.canvas: ...`). Tìm thêm 2 chỗ khác cùng lỗi trong `styles.py` (window-level style, crop-rectangle style) — sửa cả 3.
+
+**Verify thật**: viết script tái hiện đúng kịch bản (bật style → đóng project thật → bật lại style mặc định) — xác nhận **crash y hệt lỗi thật** (`AttributeError: 'NoneType' object has no attribute 'unsubscribe_event'`) trên code CHƯA sửa (2/3 check FAIL), rồi xác nhận PASS (3/3) sau khi sửa — kiểm chứng bằng `git stash`/`stash pop` để so sánh trực tiếp.
+
+**Vì sao lần này đụng vào core**: nguyên tắc "không sửa `invesalius/`" trong suốt dự án là để bảo vệ kiến trúc plugin (remote-control qua pubsub, không viết lại tính năng gốc) — không phải cấm tuyệt đối sửa bug thật khi người dùng gặp phải trong lúc dùng app. Đây là 1 bug core có thật, độc lập với plugin (tái hiện được mà không cần cài plugin), sửa tối thiểu (thêm 3 chỗ kiểm tra `None` theo đúng pattern đã có sẵn trong cùng file), không đổi kiến trúc/hành vi gì khác.
+
 ---
 
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc
 
 - **100% code mới của đề tài**: toàn bộ `plugins/roi_viewer/` (main.py, gui/, core/, interface/) — ~4700+ dòng.
-- **Không sửa bất kỳ file nào trong `invesalius/` (core gốc)** trong suốt quá trình phát triển plugin — đúng nguyên tắc "remote-control qua pubsub", không phá kiến trúc.
+- **Không sửa file nào trong `invesalius/` (core gốc) trong suốt quá trình phát triển plugin** — đúng nguyên tắc "remote-control qua pubsub", không phá kiến trúc. **1 ngoại lệ duy nhất**: commit `498a71c7` sửa 1 bug crash thật trong `invesalius/data/styles.py` (không liên quan kiến trúc plugin, tái hiện được độc lập không cần plugin, sửa tối thiểu 3 dòng theo đúng pattern phòng vệ đã có sẵn trong file) — xem chi tiết ở mục commit đó.
 - **Tài liệu đề tài** (`docs/CT3D_*.md`, `docs/HUONG_DAN_SU_DUNG_ROI_VIEWER.md`, `docs/NCKH/`, `docs/DE_TAI_NCKH_TONG_QUAN.md`, `Lộ trình phát triển.md`, `Đề cương NCKH.md`) — 100% viết mới cho đề tài.
