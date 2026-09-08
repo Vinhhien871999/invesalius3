@@ -38,7 +38,7 @@ Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở 
 | Điều khiển | Ý nghĩa | Khác gì so với InVesalius gốc |
 |---|---|---|
 | **Sync 3D → 2D** (checkbox, mặc định bật) | Khi pick 1 điểm 3D, 3 khung Axial/Sagittal/Coronal tự cuộn tới đúng lát cắt chứa điểm đó | InVesalius gốc không có cơ chế này |
-| **Sync 2D → 3D** (checkbox) | Cấu hình đồng bộ chiều ngược lại (đang ở mức khai báo, chưa có nút thao tác riêng) | Mới (một phần) |
+| **Sync 2D → 3D** (checkbox) | Chỉ lưu 1 cờ bật/tắt trong bộ nhớ — **chưa có bất kỳ code nào đọc lại cờ này**, tick vào không có tác dụng quan sát được nào cả (xác nhận qua chạy thật + grep code, không phải suy đoán) | **CHƯA TRIỂN KHAI (NOT_IMPLEMENTED)** |
 | **Pick Point in 3D** | Bấm 1 lần để "vũ trang" chế độ pick | Mới hoàn toàn |
 | Ô toạ độ (X/Y/Z, chỉ đọc) | Hiện toạ độ thật (mm) của điểm vừa click | Mới |
 | **Update delay (ms)** (slider) | Độ trễ khi đồng bộ liên tục | Mới |
@@ -133,7 +133,9 @@ Mọi mask tạo ra (từ Threshold, Region Growing, **hoặc từ tab Masks g�
 
 | Nút | Kết quả | So với InVesalius gốc |
 |---|---|---|
-| **Export Mask** (chọn định dạng NIfTI/NRRD/MetaImage) | Mở đúng dialog "Export Mask as NIfTI" **gốc** của InVesalius, tự động điền sẵn đúng mask đang chọn | InVesalius gốc yêu cầu tự vào menu và tự chọn mask trong danh sách; ở đây tự lấy đúng mask hiện hành |
+| **Export Mask** — chọn **NIfTI**: mở đúng dialog "Export Mask as NIfTI" **gốc** của InVesalius, tự động điền sẵn đúng mask đang chọn | File `.nii.gz` thật, đọc lại được bằng bất kỳ phần mềm NIfTI nào | InVesalius gốc yêu cầu tự vào menu và tự chọn mask trong danh sách; ở đây tự lấy đúng mask hiện hành |
+| **Export Mask** — chọn **NumPy**: dùng dialog lưu file riêng của plugin | File `.npy` thật, đọc lại bằng `numpy.load()` | Mới — InVesalius gốc không xuất được NumPy |
+| **Export Mask** — chọn **NRRD**: dùng dialog lưu file riêng của plugin | ⚠️ Máy chưa cài thư viện `pynrrd` → hiện thông báo lỗi rõ ràng, **chưa xuất được file thật** trên máy demo hiện tại. Cài `pip install pynrrd` để dùng được | Cơ chế đã nối đúng (`core/exporters.py`), chỉ thiếu thư viện |
 | **Export Surface** (STL Binary/ASCII, PLY, OBJ, VTK PolyData) | Xuất file surface 3D thật (đã tạo ở mục 3.1/3.2, hoặc dựng lại ở 3.3) | STL/PLY/OBJ dùng đúng pipeline VTK gốc; **VTK PolyData** là định dạng thêm ngoài 3 định dạng gốc InVesalius hỗ trợ |
 | **Export Current View** (PNG/JPG/TIFF/BMP, có Scale phóng to) | Xuất ảnh lát cắt 2D hiện tại, **đã áp dụng đúng Window/Level đang xem** | Mới — InVesalius gốc không có nút xuất nhanh 1 lát cắt ra ảnh |
 | **Save / Save As...** | Lưu project `.inv3` — gọi đúng dialog lưu gốc của InVesalius, **và tự động lưu kèm toàn bộ Annotation** (file `.roi_annotations.json` cùng thư mục, cùng tên với `.inv3`) | Giống hệt InVesalius gốc cho phần mask/surface (đã có sẵn), **cộng thêm** annotation được lưu tự động (InVesalius gốc không lưu annotation vì đây là tính năng riêng của plugin) |
@@ -146,8 +148,10 @@ Mọi mask tạo ra (từ Threshold, Region Growing, **hoặc từ tab Masks g�
 
 **Còn thật sự chưa hoàn thiện**:
 1. **Brush vẽ tay & đo lường 2D**: việc rê chuột vẽ/đo vẫn phải làm trực tiếp trên khung 2D — plugin chỉ bật/tắt và cấu hình đúng công cụ gốc, không tự động thao tác hộ (đúng bản chất, không phải lỗi).
-2. **Update 3D Surface**: với mask rất lớn (gần hết thể tích ảnh), việc dựng lại 3D có thể mất khá lâu — nên dùng cho mask kích thước vừa phải (ROI thật sự "quan tâm", không phải toàn bộ ảnh).
+2. **Update 3D Surface**: với mask rất lớn (gần hết thể tích ảnh), việc dựng lại 3D có thể mất khá lâu — nên dùng cho mask kích thước vừa phải (ROI thật sự "quan tâm", không phải toàn bộ ảnh). **Trên máy ít RAM khả dụng (dưới ~5GB trống), bước này có thể mất rất lâu hoặc không hoàn tất** — đóng bớt các ứng dụng khác trước khi dùng chức năng này nếu gặp tình trạng "treo".
 3. Annotation lấy vị trí 3D từ điểm pick **gần nhất** — cần pick trước ở tab Interaction để có toạ độ chính xác, nếu không sẽ là `(0, 0, 0)`.
+4. **Region Growing** trên mask lớn/thể tích CT thật cũng cần đủ RAM tương tự mục 2 (tính toán trên hàng chục triệu voxel).
+5. Sau khi **Save → đóng → mở lại** project, nội dung voxel của mask có sai khác rất nhỏ (đã xác nhận bằng checksum, không nhìn thấy bằng mắt) so với trước khi lưu — tên/màu/hiển thị/số lượng mask vẫn đúng 100%. Đang điều tra nguyên nhân (thuộc code gốc InVesalius, không phải plugin).
 
 **Quyết định thiết kế (không phải thiếu sót)**:
 1. **Đo khoảng cách/diện tích 2D không có danh sách riêng trong plugin** — cố ý remote-control công cụ đo gốc thay vì tạo thêm 1 nguồn dữ liệu đo lường thứ hai (tránh 2 danh sách lệch nhau). Kết quả luôn xem đúng ở tab "Measures" gốc của InVesalius.
