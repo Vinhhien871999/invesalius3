@@ -90,64 +90,45 @@ class SegmentationManager:
     def region_growing(self, volume: np.ndarray, seed: Tuple[int, int, int],
                       tolerance: int = 10) -> np.ndarray:
         """
-        Region growing segmentation.
-        
-        Args:
-            volume: 3D numpy array of image data
-            seed: Tuple of (x, y, z) seed point coordinates
-            tolerance: Intensity tolerance for region growing
-            
-        Returns:
-            Binary mask of segmented region
+        Region growing segmentation: the connected component (6-
+        connectivity) reachable from `seed` staying within
+        [seed_value - tolerance, seed_value + tolerance].
+
+        NOTE: this used to be a hand-rolled Python BFS (an explicit
+        stack + a `set()` of visited (x,y,z) tuples). It was
+        functionally correct but, on a real CT volume (~512x512x100+
+        voxels), could take well over a minute for a sizeable region -
+        Python-level per-voxel loops don't scale to tens of millions of
+        voxels. Verified end-to-end (test_regiongrowing_surfaceupdate.py)
+        that a real seed pick did eventually produce a correct real
+        mask, just far too slowly to be usable interactively.
+
+        Replaced with an equivalent but vectorized approach using
+        scipy.ndimage (already a project dependency, no new one added):
+        threshold the whole volume to the tolerance band, label its
+        connected components (ndimage.label's default 3D structure is
+        exactly 6-connected, matching the original BFS's neighbor set),
+        and keep only the component containing the seed. Same
+        algorithm and result, but runs in native/vectorized code -
+        typically well under a second instead of tens of seconds.
         """
-        mask = np.zeros(volume.shape, dtype=bool)
-        
-        if not (0 <= seed[0] < volume.shape[0] and 
-                0 <= seed[1] < volume.shape[1] and 
+        if not (0 <= seed[0] < volume.shape[0] and
+                0 <= seed[1] < volume.shape[1] and
                 0 <= seed[2] < volume.shape[2]):
-            return mask.astype(np.uint8)
-            
+            return np.zeros(volume.shape, dtype=np.uint8)
+
         seed_value = volume[seed]
         min_val = seed_value - tolerance
         max_val = seed_value + tolerance
-        
-        # Use flood fill (BFS)
-        stack = [seed]
-        visited = set()
-        
-        while stack:
-            point = stack.pop()
-            if point in visited:
-                continue
-                
-            x, y, z = point
-            
-            if not (0 <= x < volume.shape[0] and 
-                    0 <= y < volume.shape[1] and 
-                    0 <= z < volume.shape[2]):
-                continue
-                
-            if mask[x, y, z]:
-                continue
-                
-            if not (min_val <= volume[x, y, z] <= max_val):
-                continue
-                
-            visited.add(point)
-            mask[x, y, z] = True
-            
-            # Add neighbors
-            neighbors = [
-                (x+1, y, z), (x-1, y, z),
-                (x, y+1, z), (x, y-1, z),
-                (x, y, z+1), (x, y, z-1)
-            ]
-            
-            for neighbor in neighbors:
-                if neighbor not in visited:
-                    stack.append(neighbor)
-                    
-        return mask.astype(np.uint8)
+
+        thresholded = (volume >= min_val) & (volume <= max_val)
+        labeled, _ = ndimage.label(thresholded)  # default structure = 6-connectivity in 3D
+
+        seed_label = labeled[seed]
+        if seed_label == 0:
+            return np.zeros(volume.shape, dtype=np.uint8)
+
+        return (labeled == seed_label).astype(np.uint8)
         
     def watershed(self, volume: np.ndarray, seeds: List[Tuple[int, int, int]],
                   mask: Optional[np.ndarray] = None) -> np.ndarray:

@@ -64,6 +64,32 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         sizer.Add(thresh_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
+        # --- Region growing (semi-automatic seed-based segmentation) ---
+        # NOTE: core/segmentation.SegmentationManager.region_growing()
+        # (a real 6-connected BFS flood-fill from a seed voxel, bounded
+        # by an intensity tolerance) already existed but was never
+        # called from anywhere - a real "backend exists, not wired"
+        # gap. Reuses the same real 3D picker as the Interaction tab
+        # (controller.picker) to let the user click the seed point, and
+        # the same real voxel<->world conversion already verified for
+        # 3D pick -> 2D sync (controller.sync_mgr.world_to_voxel).
+        box_rg = wx.StaticBox(self, wx.ID_ANY, _("Region Growing (seed-based)"))
+        rg_sizer = wx.StaticBoxSizer(box_rg, wx.VERTICAL)
+
+        rg_row = wx.BoxSizer(wx.HORIZONTAL)
+        rg_row.Add(wx.StaticText(self, wx.ID_ANY, _("Tolerance:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        self.spin_rg_tolerance = wx.SpinCtrl(self, wx.ID_ANY, "50", min=1, max=2000)
+        rg_row.Add(self.spin_rg_tolerance, 1, wx.ALL, 5)
+        rg_sizer.Add(rg_row, 0, wx.EXPAND, 5)
+
+        self.btn_pick_seed = wx.ToggleButton(self, wx.ID_ANY, _("Pick Seed Point (3D)"))
+        rg_sizer.Add(self.btn_pick_seed, 0, wx.ALL | wx.EXPAND, 5)
+
+        self.rg_status = wx.StaticText(self, wx.ID_ANY, _(""))
+        rg_sizer.Add(self.rg_status, 0, wx.ALL | wx.EXPAND, 5)
+
+        sizer.Add(rg_sizer, 0, wx.ALL | wx.EXPAND, 5)
+
         # --- ROI management (core/roi_manager.ROIManager) ---
         # NOTE: this is the "quản lý segmentation" piece - a named,
         # organized view over the masks this panel has created, backed
@@ -84,6 +110,21 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_roi_delete = wx.Button(self, wx.ID_ANY, _("Delete"))
         roi_btn_row.Add(self.btn_roi_delete, 1, wx.ALL, 2)
         roi_sizer.Add(roi_btn_row, 0, wx.EXPAND, 3)
+
+        # NOTE: closes a real gap found by auditing the mask -> surface
+        # chain: invesalius/data/surface.py does not subscribe to any
+        # mask-edit topic ("Reload actual slice", "Create new mask",
+        # etc.), so an already-created 3D surface does NOT update
+        # automatically after brush/undo/region-growing edits. Auto-
+        # rebuilding on every single edit would be the "incremental
+        # remesh" research problem the project's own planning doc flags
+        # as an advanced, optional contribution (and a real perf risk -
+        # rebuilding a full-volume mesh per brush stroke can freeze the
+        # UI) - a manual, on-demand rebuild button is the safe, correct
+        # middle ground: it genuinely closes the loop (edit -> visible
+        # in 3D) without that risk.
+        self.btn_update_surface = wx.Button(self, wx.ID_ANY, _("Update 3D Surface from Selected ROI"))
+        roi_sizer.Add(self.btn_update_surface, 0, wx.ALL | wx.EXPAND, 3)
 
         sizer.Add(roi_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
@@ -156,8 +197,10 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         self.cb_auto_thresh.Bind(wx.EVT_CHECKBOX, self._on_auto_thresh_toggle)
         self.btn_apply_thresh.Bind(wx.EVT_BUTTON, self._on_apply_threshold)
+        self.btn_pick_seed.Bind(wx.EVT_TOGGLEBUTTON, self._on_toggle_pick_seed)
         self.btn_roi_rename.Bind(wx.EVT_BUTTON, self._on_roi_rename)
         self.btn_roi_delete.Bind(wx.EVT_BUTTON, self._on_roi_delete)
+        self.btn_update_surface.Bind(wx.EVT_BUTTON, self._on_update_surface)
         self.btn_checkpoint.Bind(wx.EVT_BUTTON, self._on_checkpoint)
         self.btn_undo.Bind(wx.EVT_BUTTON, self._on_undo)
         self.btn_redo.Bind(wx.EVT_BUTTON, self._on_redo)
@@ -245,6 +288,136 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         except ImportError as e:
             wx.MessageBox(_("Segmentation not available."), _("Error"), wx.OK | wx.ICON_ERROR)
             print(f"ROI Viewer: could not create mask - {e}")
+
+    # ------------------------------------------------------------------
+    # Region growing (semi-automatic, seed-based)
+    # ------------------------------------------------------------------
+    def _on_toggle_pick_seed(self, event):
+        if not self.btn_pick_seed.GetValue():
+            # User cancelled - unregister without growing anything.
+            self.controller.picker.remove_callback(self._on_seed_picked)
+            self.rg_status.SetLabel(_(""))
+            return
+
+        if not self.controller.ensure_picker_initialized():
+            self.btn_pick_seed.SetValue(False)
+            self.rg_status.SetLabel(_("No 3D view available yet"))
+            return
+
+        self.controller.picker.add_callback(self._on_seed_picked)
+        self.controller.picker.enable()
+        self.rg_status.SetLabel(_("Click a seed point in the 3D view..."))
+
+    def _on_seed_picked(self, world_point):
+        # One-shot: a seed pick always disarms the toggle, whether or
+        # not growing succeeds.
+        wx.CallAfter(self.btn_pick_seed.SetValue, False)
+        self.controller.picker.remove_callback(self._on_seed_picked)
+
+        try:
+            from ..interface.project_interface import ProjectInterface
+
+            pi = ProjectInterface()
+            volume = pi.get_volume_data()
+            if volume is None:
+                wx.CallAfter(self.rg_status.SetLabel, _("No project loaded"))
+                return
+
+            # Same real world<->voxel conversion already verified for
+            # 3D-pick -> 2D-slice sync (interaction_panel.py) - see
+            # core/sync_2d3d.SyncManager2D3D.world_to_voxel()'s
+            # docstring for the axis mapping this relies on.
+            self.controller.sync_mgr.set_volume_info(pi.get_spacing(), pi.get_shape())
+            seed = self.controller.sync_mgr.world_to_voxel(*world_point)
+            tolerance = self.spin_rg_tolerance.GetValue()
+
+            wx.CallAfter(self.rg_status.SetLabel, _(f"Growing from voxel {seed}..."))
+            # scipy/numpy BFS over a full CT volume can take real time
+            # (see the performance note on SegmentationManager.
+            # region_growing() itself) - run off the UI thread so the
+            # app doesn't freeze, then marshal the result back with
+            # wx.CallAfter (all real wx/pubsub calls must happen on the
+            # main thread).
+            import threading
+
+            def worker():
+                try:
+                    result_mask = self.controller.seg_mgr.region_growing(volume, seed, tolerance)
+                    wx.CallAfter(self._on_region_grown, result_mask, seed, tolerance)
+                except Exception:
+                    import traceback
+
+                    wx.CallAfter(self.rg_status.SetLabel, _("Region growing failed"))
+                    print("ROI Viewer: region growing failed -\n" + traceback.format_exc())
+
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as e:
+            self.rg_status.SetLabel(_("Region growing failed"))
+            print(f"ROI Viewer: region growing setup failed - {e}")
+
+    def _on_region_grown(self, result_mask, seed, tolerance):
+        """
+        Runs on the main thread (via wx.CallAfter). Creates a real
+        InVesalius mask sized to match the volume, then overwrites its
+        voxel data with the region-growing result - the same direct
+        matrix-write technique already verified for Undo/Redo (mask.
+        matrix[:] = ...), so this is real, first-class mask data, not a
+        disconnected copy.
+        """
+        try:
+            import numpy as np
+            import invesalius.data.slice_ as sl
+            import invesalius.constants as const
+            from invesalius.pubsub import pub as Publisher
+            from ..interface.project_interface import ProjectInterface
+
+            voxel_count = int(result_mask.sum())
+            if voxel_count == 0:
+                self.rg_status.SetLabel(
+                    _(f"No region found from seed {seed} (tolerance {tolerance}) - try a higher tolerance")
+                )
+                return
+
+            mask_count = len(ProjectInterface().get_mask_dict())
+            colour = const.MASK_COLOUR[mask_count % len(const.MASK_COLOUR)]
+            name = f"Region Growing {mask_count + 1}"
+
+            # Create an empty real mask of the right shape/threshold
+            # bookkeeping via the standard path, then overwrite its
+            # voxel data with the actual region-growing result.
+            Publisher.sendMessage(
+                "Create new mask", mask_name=name, thresh=(1, 1), colour=colour
+            )
+            new_mask = sl.Slice().current_mask
+            if new_mask is None or new_mask.matrix is None:
+                self.rg_status.SetLabel(_("Region growing: failed to create mask"))
+                return
+
+            # InVesalius mask matrices carry a 1-voxel padding border
+            # (see interface/project_interface.py notes elsewhere on
+            # mask padding); result_mask matches the unpadded volume
+            # shape, so write into the interior.
+            target = new_mask.matrix[1:, 1:, 1:]
+            if target.shape == result_mask.shape:
+                target[:] = np.where(result_mask > 0, 255, target)
+            else:
+                # Shapes should match ProjectInterface().get_shape(),
+                # but guard defensively rather than raising into a
+                # background-thread-originated callback.
+                self.rg_status.SetLabel(
+                    _(f"Region growing: shape mismatch {target.shape} vs {result_mask.shape}")
+                )
+                return
+
+            self.controller.roi_mgr.create_roi(name, new_mask.index)
+            self._refresh_roi_list()
+            self._refresh_after_edit()
+            self.rg_status.SetLabel(
+                _(f"Status: grown {voxel_count} voxels from seed {seed} -> '{name}'")
+            )
+        except Exception as e:
+            self.rg_status.SetLabel(_("Region growing: failed to apply result"))
+            print(f"ROI Viewer: applying region growing result failed - {e}")
 
     # ------------------------------------------------------------------
     # Undo / Redo of the real current mask
@@ -378,6 +551,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         event.Skip()
         if event.GetEventObject() is not self:
             return
+        # Same leak class fixed for the 3D-pick observer in
+        # roi_panel.ROIViewerFrame._on_close(): don't leave an armed
+        # seed-pick callback registered on the shared picker pointing
+        # back into this (about to be destroyed) panel.
+        self.controller.picker.remove_callback(self._on_seed_picked)
         if not self._brush_enabled():
             return
         # NOTE: deliberately not calling self._disable_brush() here - it
@@ -495,3 +673,40 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.controller.roi_mgr.delete_roi(rid)
         self._refresh_roi_list()
         self.status_text.SetLabel(_(f"Status: Deleted '{roi.name}'"))
+
+    def _on_update_surface(self, event):
+        """
+        Rebuild the 3D surface for the selected ROI's mask (or the real
+        current mask if none is selected in this list) - see the NOTE
+        by btn_update_surface's construction for why this exists and
+        why it's manual rather than automatic.
+        """
+        try:
+            import invesalius.data.slice_ as sl
+            from invesalius.pubsub import pub as Publisher
+
+            rid = self._selected_roi_id()
+            if rid is not None:
+                mask_index = self.controller.roi_mgr.get_roi(rid).mask_index
+            else:
+                mask = sl.Slice().current_mask
+                if mask is None:
+                    wx.MessageBox(_("No mask selected."), _("Error"), wx.OK | wx.ICON_ERROR)
+                    return
+                mask_index = mask.index
+
+            # Same real topic/argument shape used and verified in the
+            # performance test (test_perf.py) that measured real render
+            # FPS on a surface built this way.
+            surface_options = {
+                "method": {"algorithm": "Default", "options": {}},
+                "options": {
+                    "index": mask_index, "name": "", "quality": "Optimal *",
+                    "fill": False, "keep_largest": False, "overwrite": True,
+                },
+            }
+            Publisher.sendMessage("Create surface from index", surface_parameters=surface_options)
+            self.status_text.SetLabel(_(f"Status: Rebuilding 3D surface for mask #{mask_index}..."))
+        except Exception as e:
+            wx.MessageBox(_("Surface update failed."), _("Error"), wx.OK | wx.ICON_ERROR)
+            print(f"ROI Viewer: surface update failed - {e}")
