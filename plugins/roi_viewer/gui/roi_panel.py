@@ -84,6 +84,21 @@ class ROIViewerFrame(wx.Frame):
         self._init_ui()
         self.Centre()
 
+        # Round-2 audit, section E: a real gap found via
+        # test_roi_rebuild_after_project_load.py - if the user imports
+        # DICOM (or opens a project) FIRST and only THEN opens this
+        # plugin from the Plugins menu (the single most common real
+        # workflow), on_roi_source_changed()/rebuild_from_project_masks()
+        # had never run for THIS window yet - they only fire reactively
+        # on FUTURE mask/project events (main.py's pubsub
+        # subscriptions), not retroactively for state that already
+        # existed when the window was created. The ROI List started
+        # empty even though Project().mask_dict already had the
+        # DICOM-import default mask in it. Populate the cache (and the
+        # ROI List widget, already built by _init_ui() above) from
+        # whatever real masks already exist right away.
+        self.on_roi_source_changed()
+
         # Detach the shared picker from the real VTK interactor when
         # this window closes (e.g. the user hits the [X] button) - see
         # picker_3d.PointPicker3D.cleanup()'s docstring for the real
@@ -165,6 +180,30 @@ class ROIViewerFrame(wx.Frame):
         """Handle project load event."""
         self.project_loaded = True
         print("ROI Viewer: Project loaded")
+        # ROIManager is a cache over real Project().mask_dict, not an
+        # independent source of truth (see core/roi_manager.py's module
+        # docstring) - rebuild it now so the ROI List reflects whatever
+        # masks the just-loaded project actually has (including a
+        # freshly-opened .inv3 with masks created in a previous
+        # session, which this plugin's own session never created).
+        self.on_roi_source_changed()
+
+        # NOTE: "Load project data" (which drives this call) fires
+        # synchronously from *inside* invesalius.control.Controller.
+        # OpenProject(), before that method's own `session.OpenProject
+        # (path)` call runs a couple of lines later - so
+        # invesalius.session.Session().GetState("project_path") is
+        # still the *previous* project's path (or None) right now, not
+        # the one that was just opened. Deferring via wx.CallAfter runs
+        # after OpenProject() has fully returned to the event loop
+        # (including that session.OpenProject(path) call), so the path
+        # is correct by the time this fires - see
+        # core/annotation.py.AnnotationManager's module docstring for
+        # why a sidecar file (keyed off this exact path) is how
+        # annotations are persisted.
+        import wx
+        wx.CallAfter(self._try_load_annotation_sidecar)
+
         # Refresh all panels
         self.Refresh()
 
@@ -178,7 +217,42 @@ class ROIViewerFrame(wx.Frame):
         self.roi_mgr.clear()
         self.mask_mgr.clear_all()
         self._picker_initialized = False
+        # NOTE: the managers above were already cleared before this
+        # round, but the widgets that display them were not - closing
+        # a project used to leave stale ROI/annotation rows visible in
+        # both list widgets even though the underlying data was gone.
+        if hasattr(self, "segmentation_panel"):
+            self.segmentation_panel._refresh_roi_list()
+        if hasattr(self, "annotation_panel"):
+            self.annotation_panel.refresh_from_manager()
         print("ROI Viewer: Project closed")
+
+    def on_roi_source_changed(self):
+        """
+        Called whenever a real mask was created/renamed/shown-hidden/
+        removed, through this plugin or InVesalius's native Masks tab
+        (see main.py's extra pubsub subscriptions). Resyncs the
+        ROIManager cache and refreshes the ROI List widget.
+        """
+        self.roi_mgr.rebuild_from_project_masks()
+        if hasattr(self, "segmentation_panel"):
+            self.segmentation_panel._refresh_roi_list()
+
+    def _try_load_annotation_sidecar(self):
+        """See on_project_load()'s NOTE on why this is deferred."""
+        try:
+            import invesalius.session as ses
+
+            project_path = ses.Session().GetState("project_path")
+            if not project_path:
+                return
+            dirpath, filename = project_path
+            if self.annotation_mgr.load_sidecar(dirpath, filename):
+                if hasattr(self, "annotation_panel"):
+                    self.annotation_panel.refresh_from_manager()
+                print(f"ROI Viewer: loaded annotations from sidecar for {filename}")
+        except Exception as e:
+            print(f"ROI Viewer: annotation sidecar load on project-load failed - {e}")
 
     def on_slice_change(self, plane, index):
         """Handle slice position change."""

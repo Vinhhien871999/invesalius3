@@ -3,6 +3,8 @@
 # Description: Annotation management for ROI Viewer
 # --------------------------------------------------------------------------
 
+import json
+import os
 import numpy as np
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass, field
@@ -27,8 +29,77 @@ class Annotation:
 class AnnotationManager:
     """
     Manages annotations in the ROI Viewer.
+
+    Persistence (Round-2 audit, section F): annotations are plugin-only
+    state - invesalius/project.py's SavePlistProject() reserves an
+    "annotations" key in the .inv3 plist but always writes it as `{}`
+    and load_from_folder() never reads it back at all (grepped both
+    directly - it is a stub, not a working extension point). Wiring a
+    real annotation format into that key would mean adding NEW load
+    logic to invesalius/project.py itself, which is a change to core
+    InVesalius's own .inv3 file format read by every user's copy of
+    the app, not just this plugin - out of scope for a plugin-local
+    feature. No other plugin-data extension point exists either
+    (grepped invesalius/project.py and invesalius/control.py for
+    "plugin"/"custom_data"/"extension": no matches). A JSON sidecar
+    file saved next to the real .inv3 (see sidecar_path_for() below) is
+    therefore the correct choice per the priority order this was
+    audited against: (1) reuse an existing serialized object - none
+    exists; (2) an official Project extension point - exists as a key
+    but is completely non-functional, so "using" it would mean writing
+    new core load code; (3) plugin persistence tied to the project -
+    no such mechanism exists in InVesalius; (4) sidecar file - this.
     """
-    
+
+    SIDECAR_SUFFIX = ".roi_annotations.json"
+
+    @classmethod
+    def sidecar_path_for(cls, dirpath: str, filename: str) -> str:
+        """
+        Path of the annotation sidecar for a given real project file
+        location - the exact (dirpath, filename) pair InVesalius's own
+        invesalius.session.Session stores as "project_path" after a
+        real save or open (see invesalius/session.py's SaveProject()/
+        OpenProject()).
+        """
+        return os.path.join(dirpath, filename + cls.SIDECAR_SUFFIX)
+
+    def save_sidecar(self, dirpath: str, filename: str) -> bool:
+        """
+        Write all annotations to the sidecar JSON next to the real
+        project file. Best-effort: a failure here must never be
+        treated as a failure of the (already-completed) real project
+        save, so this only ever prints and returns False.
+        """
+        path = self.sidecar_path_for(dirpath, filename)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self.export_to_dict(), f, indent=2)
+            return True
+        except Exception as e:
+            print(f"ROI Viewer: annotation sidecar save failed - {e}")
+            return False
+
+    def load_sidecar(self, dirpath: str, filename: str) -> bool:
+        """
+        Load annotations from the sidecar JSON next to a real project
+        file, if one exists (older projects, or projects never saved
+        through this plugin's Save/Save As, simply have none - that is
+        not an error). Returns True only if annotations were actually
+        loaded.
+        """
+        path = self.sidecar_path_for(dirpath, filename)
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.import_from_dict(data)
+            return True
+        except Exception as e:
+            print(f"ROI Viewer: annotation sidecar load failed - {e}")
+            return False
+
     def __init__(self):
         self.annotations: List[Annotation] = []
         self.next_id = 0

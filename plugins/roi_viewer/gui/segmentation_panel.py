@@ -78,7 +78,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         rg_row = wx.BoxSizer(wx.HORIZONTAL)
         rg_row.Add(wx.StaticText(self, wx.ID_ANY, _("Tolerance:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-        self.spin_rg_tolerance = wx.SpinCtrl(self, wx.ID_ANY, "50", min=1, max=2000)
+        # min=0 (not 1): tolerance 0 is a valid, meaningful choice -
+        # "grow only voxels with exactly the seed's value" - see
+        # core/segmentation.py.SegmentationManager.region_growing()'s
+        # validation (Round-2 audit, section C).
+        self.spin_rg_tolerance = wx.SpinCtrl(self, wx.ID_ANY, "50", min=0, max=2000)
         rg_row.Add(self.spin_rg_tolerance, 1, wx.ALL, 5)
         rg_sizer.Add(rg_row, 0, wx.EXPAND, 5)
 
@@ -270,21 +274,19 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # mask is a real, first-class InVesalius mask (shows up in
             # the mask list, 2D views, and 3D volume), not a disconnected
             # copy living only in this plugin.
+            # "Create new mask" is handled synchronously (see
+            # invesalius/data/slice_.py's __add_mask_thresh) and, per
+            # main.py's _on_mask_created subscriber, also triggers
+            # ROIManager.rebuild_from_project_masks() + a ROI List
+            # refresh before this sendMessage() call returns - see
+            # core/roi_manager.py's module docstring for why the ROI
+            # List no longer needs its own direct create_roi() call
+            # here (it would just be a second, redundant source of
+            # truth for data the real mask already owns).
             Publisher.sendMessage(
                 "Create new mask", mask_name=name, thresh=(lo, hi), colour=colour
             )
             self.status_text.SetLabel(_(f"Status: Created mask '{name}'"))
-
-            # Register with ROIManager so it shows up in the ROI List
-            # below. "Create new mask" is handled synchronously (see
-            # invesalius/data/slice_.py's __add_mask_thresh), so the
-            # real new mask is already Slice().current_mask by now.
-            import invesalius.data.slice_ as sl
-
-            new_mask = sl.Slice().current_mask
-            if new_mask is not None:
-                self.controller.roi_mgr.create_roi(name, new_mask.index)
-                self._refresh_roi_list()
         except ImportError as e:
             wx.MessageBox(_("Segmentation not available."), _("Error"), wx.OK | wx.ICON_ERROR)
             print(f"ROI Viewer: could not create mask - {e}")
@@ -310,11 +312,23 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
     def _on_seed_picked(self, world_point):
         # One-shot: a seed pick always disarms the toggle, whether or
-        # not growing succeeds.
+        # not growing succeeds. This also guarantees the button/status
+        # never gets stuck in a "picking..." state if anything below
+        # fails - see the try/except wrapping the whole body.
         wx.CallAfter(self.btn_pick_seed.SetValue, False)
         self.controller.picker.remove_callback(self._on_seed_picked)
 
         try:
+            import math
+
+            # Round-2 audit, section C: a VTK pick can in principle
+            # hand back non-finite coordinates (e.g. a picker miss on
+            # degenerate geometry) - reject before doing any conversion
+            # or spinning up a worker thread for a nonsensical seed.
+            if world_point is None or len(world_point) != 3 or not all(math.isfinite(c) for c in world_point):
+                self.rg_status.SetLabel(_("Invalid pick position - try again"))
+                return
+
             from ..interface.project_interface import ProjectInterface
 
             pi = ProjectInterface()
@@ -331,19 +345,40 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             seed = self.controller.sync_mgr.world_to_voxel(*world_point)
             tolerance = self.spin_rg_tolerance.GetValue()
 
+            seed_error = self.controller.seg_mgr.validate_seed(seed, volume.shape)
+            if seed_error is not None:
+                self.rg_status.SetLabel(_(f"Region growing: {seed_error}"))
+                return
+
             wx.CallAfter(self.rg_status.SetLabel, _(f"Growing from voxel {seed}..."))
             # scipy/numpy BFS over a full CT volume can take real time
             # (see the performance note on SegmentationManager.
             # region_growing() itself) - run off the UI thread so the
             # app doesn't freeze, then marshal the result back with
-            # wx.CallAfter (all real wx/pubsub calls must happen on the
-            # main thread).
+            # wx.CallAfter.
+            #
+            # Thread-safety audit (Round-2, section C): worker() below
+            # touches only `volume` (a real numpy array, read-only
+            # here) and SegmentationManager.region_growing() (pure
+            # numpy/scipy, no wx/VTK calls, no shared mutable state) -
+            # it never touches a wx widget, a VTK renderer, or shows a
+            # dialog directly. The only cross-thread handoff is the
+            # wx.CallAfter() call itself, which is the correct/required
+            # way to marshal work back onto the main thread - see
+            # _on_region_grown() below, which does the actual mask
+            # creation, roi_mgr/UI updates and any confirmation dialog,
+            # entirely on the main thread.
             import threading
 
             def worker():
                 try:
                     result_mask = self.controller.seg_mgr.region_growing(volume, seed, tolerance)
                     wx.CallAfter(self._on_region_grown, result_mask, seed, tolerance)
+                except ValueError as e:
+                    # Invalid input (e.g. a negative tolerance somehow
+                    # reaching here) - a clear, specific message rather
+                    # than the generic "failed" below.
+                    wx.CallAfter(self.rg_status.SetLabel, _(f"Region growing: {e}"))
                 except Exception:
                     import traceback
 
@@ -363,6 +398,15 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         matrix-write technique already verified for Undo/Redo (mask.
         matrix[:] = ...), so this is real, first-class mask data, not a
         disconnected copy.
+
+        Round-2 audit, section C: before committing anything, computes
+        how much of the volume the result actually covers
+        (SegmentationManager.region_stats()) and, if it exceeds
+        seg_mgr.max_region_fraction, asks for confirmation instead of
+        silently creating a huge, not-really-"region of interest" mask
+        - the exact failure mode that made the D9 surface-update test
+        in round 1 use an unrealistic 16.2M-voxel (~58% of volume) mask
+        in the first place.
         """
         try:
             import numpy as np
@@ -371,20 +415,50 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             from invesalius.pubsub import pub as Publisher
             from ..interface.project_interface import ProjectInterface
 
-            voxel_count = int(result_mask.sum())
+            pi = ProjectInterface()
+            stats = self.controller.seg_mgr.region_stats(result_mask, pi.get_spacing())
+            voxel_count = stats["voxel_count"]
+
             if voxel_count == 0:
                 self.rg_status.SetLabel(
                     _(f"No region found from seed {seed} (tolerance {tolerance}) - try a higher tolerance")
                 )
                 return
 
+            seed_value = pi.get_volume_data()[seed] if pi.get_volume_data() is not None else "?"
+            info = _(
+                f"seed value {seed_value}, tolerance {tolerance}, "
+                f"{voxel_count} voxels ({stats['fraction'] * 100:.1f}% of volume)"
+            )
+            if "volume_mm3" in stats:
+                info += _(f", {stats['volume_mm3']:.1f} mm3")
+
+            if stats["exceeds_limit"]:
+                limit_pct = self.controller.seg_mgr.max_region_fraction * 100
+                proceed = wx.MessageBox(
+                    _(
+                        f"This region covers {stats['fraction'] * 100:.1f}% of the volume "
+                        f"({voxel_count} voxels) - larger than the {limit_pct:.0f}% safety "
+                        f"threshold and likely not a meaningful region of interest.\n\n"
+                        f"{info}\n\nCreate it anyway?"
+                    ),
+                    _("Region growing: large region"),
+                    wx.YES_NO | wx.ICON_WARNING,
+                )
+                if proceed != wx.YES:
+                    self.rg_status.SetLabel(_(f"Region growing cancelled ({info})"))
+                    return
+
             mask_count = len(ProjectInterface().get_mask_dict())
             colour = const.MASK_COLOUR[mask_count % len(const.MASK_COLOUR)]
             name = f"Region Growing {mask_count + 1}"
 
             # Create an empty real mask of the right shape/threshold
-            # bookkeeping via the standard path, then overwrite its
-            # voxel data with the actual region-growing result.
+            # bookkeeping via the standard path (this also triggers
+            # ROIManager.rebuild_from_project_masks() via main.py's
+            # "Create new mask" subscriber - see core/roi_manager.py's
+            # module docstring), then overwrite its voxel data with the
+            # actual region-growing result.
             Publisher.sendMessage(
                 "Create new mask", mask_name=name, thresh=(1, 1), colour=colour
             )
@@ -400,6 +474,31 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             target = new_mask.matrix[1:, 1:, 1:]
             if target.shape == result_mask.shape:
                 target[:] = np.where(result_mask > 0, 255, target)
+                # Round-2 audit, section B: a mask created via the
+                # thresh=(1,1) bookkeeping placeholder above starts with
+                # every slice's "already thresholded" sentinel
+                # (Slice.do_threshold_to_all_slices()'s
+                # mask.matrix[n, 0, 0] check) at 0 - i.e. "never
+                # visited". invesalius/data/slice_.py's
+                # do_threshold_to_all_slices() runs automatically the
+                # FIRST time ANY surface is built for this mask
+                # (CreateSurfaceFromIndex calls it before "Create
+                # surface"), and for every slice whose sentinel is
+                # still 0 it OVERWRITES that slice's voxels by
+                # re-deriving them from thresh=(1,1) against the real
+                # image - discarding this hand-written region-growing
+                # result completely and silently, with no exception.
+                # Verified for real (test_surface_update_small_roi.py's
+                # own mask-write, which hit exactly this): the
+                # resulting surface reflected wherever the real CT
+                # image happened to equal exactly 1, not the actual
+                # grown/edited region. Marking every slice's sentinel
+                # as already-visited here - the exact same real
+                # mechanism InVesalius's own do_threshold_to_all_slices
+                # uses to protect a slice it already computed - tells
+                # it to leave this hand-written data alone.
+                new_mask.matrix[1:, 0, 0] = 1
+                new_mask.matrix.flush()
             else:
                 # Shapes should match ProjectInterface().get_shape(),
                 # but guard defensively rather than raising into a
@@ -409,12 +508,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 )
                 return
 
-            self.controller.roi_mgr.create_roi(name, new_mask.index)
-            self._refresh_roi_list()
             self._refresh_after_edit()
-            self.rg_status.SetLabel(
-                _(f"Status: grown {voxel_count} voxels from seed {seed} -> '{name}'")
-            )
+            self.rg_status.SetLabel(_(f"Status: grown '{name}' - {info}"))
         except Exception as e:
             self.rg_status.SetLabel(_("Region growing: failed to apply result"))
             print(f"ROI Viewer: applying region growing result failed - {e}")
@@ -703,6 +798,23 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 "options": {
                     "index": mask_index, "name": "", "quality": "Optimal *",
                     "fill": False, "keep_largest": False, "overwrite": True,
+                    # NOTE (Round-2 audit, section B): a batch_mode=True
+                    # variant (skips invesalius/data/surface.py's
+                    # SurfaceProgressWindow + wx.Yield() self-pump loop,
+                    # waiting via a plain `while not f.ready():
+                    # time.sleep(0.25)` instead) was tried here to remove
+                    # a GUI-loop dependency. Empirically it made things
+                    # WORSE, not better, in this test environment: 2/2
+                    # runs with batch_mode=True stalled after the first
+                    # multiprocessing piece with no further progress,
+                    # while the default (dialog + self-pumping wx.Yield())
+                    # path is what actually produced a complete,
+                    # verified run (test_surface_update_small_roi.py -
+                    # real polydata point/cell/bounds changes observed,
+                    # "Load surface actor into viewer" fired, no
+                    # duplicate surface, Render() succeeded). Reverted
+                    # to the default (no batch_mode) - it is the one with
+                    # real passing evidence behind it.
                 },
             }
             Publisher.sendMessage("Create surface from index", surface_parameters=surface_options)

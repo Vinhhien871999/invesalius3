@@ -3,21 +3,33 @@
 # Description: Segmentation algorithms for ROI extraction
 # --------------------------------------------------------------------------
 
+import math
 import numpy as np
-from typing import Tuple, Optional, List, Callable
+from typing import Tuple, Optional, List, Callable, Dict
 from scipy import ndimage
-from skimage import morphology, segmentation
 
 
 class SegmentationManager:
     """
     Manages segmentation operations for medical images.
     """
-    
+
+    # Region growing safety limit (Round-2 audit, section C): a seed
+    # click with a generous tolerance on a wide-HU-range CT volume can
+    # grow to cover most of the volume, which stops being a meaningful
+    # "region of interest". This is a configurable class attribute
+    # (not a magic number buried in the UI layer) so the policy is
+    # visible and testable independently of any wx code - see
+    # region_stats() below and segmentation_panel.py's
+    # _on_region_grown(), which warns/confirms before committing a
+    # result whose fraction exceeds this.
+    DEFAULT_MAX_REGION_FRACTION = 0.20
+
     def __init__(self):
         self.current_threshold = (-1024, 3071)  # HU units for CT
         self.last_mask = None
         self.progress_callbacks: List[Callable] = []
+        self.max_region_fraction = self.DEFAULT_MAX_REGION_FRACTION
         
     def set_threshold(self, min_val: int, max_val: int):
         """
@@ -87,6 +99,26 @@ class SegmentationManager:
             
         return (int(bin_edges[optimal_t]), int(volume.max()))
         
+    @staticmethod
+    def validate_seed(seed: Tuple[int, int, int], volume_shape: Tuple[int, int, int]) -> Optional[str]:
+        """
+        Validate a region-growing seed before spending any time growing
+        from it. Returns None if valid, or a human-readable reason
+        string if not (so the UI layer can show a clear message instead
+        of a silent empty result).
+        """
+        if volume_shape is None or len(volume_shape) != 3 or any(d <= 0 for d in volume_shape):
+            return "No volume loaded"
+        if seed is None or len(seed) != 3:
+            return "Invalid seed"
+        if not all(math.isfinite(s) for s in seed):
+            return "Seed coordinates are not finite"
+        if not (0 <= seed[0] < volume_shape[0] and
+                0 <= seed[1] < volume_shape[1] and
+                0 <= seed[2] < volume_shape[2]):
+            return f"Seed {seed} is outside the volume bounds {volume_shape}"
+        return None
+
     def region_growing(self, volume: np.ndarray, seed: Tuple[int, int, int],
                       tolerance: int = 10) -> np.ndarray:
         """
@@ -111,10 +143,18 @@ class SegmentationManager:
         and keep only the component containing the seed. Same
         algorithm and result, but runs in native/vectorized code -
         typically well under a second instead of tens of seconds.
+
+        Raises:
+            ValueError: if tolerance is negative (Round-2 audit,
+                section C - a negative tolerance has no valid meaning
+                for an inclusive [seed-tol, seed+tol] band, so this is
+                rejected explicitly rather than silently producing an
+                empty/nonsensical result).
         """
-        if not (0 <= seed[0] < volume.shape[0] and
-                0 <= seed[1] < volume.shape[1] and
-                0 <= seed[2] < volume.shape[2]):
+        if tolerance < 0:
+            raise ValueError(f"tolerance must be >= 0, got {tolerance}")
+
+        if self.validate_seed(seed, volume.shape) is not None:
             return np.zeros(volume.shape, dtype=np.uint8)
 
         seed_value = volume[seed]
@@ -129,116 +169,26 @@ class SegmentationManager:
             return np.zeros(volume.shape, dtype=np.uint8)
 
         return (labeled == seed_label).astype(np.uint8)
-        
-    def watershed(self, volume: np.ndarray, seeds: List[Tuple[int, int, int]],
-                  mask: Optional[np.ndarray] = None) -> np.ndarray:
+
+    def region_stats(self, result_mask: np.ndarray, spacing: Optional[Tuple[float, float, float]] = None) -> Dict:
         """
-        Watershed segmentation.
-        
-        Args:
-            volume: 3D numpy array of image data
-            seeds: List of seed points
-            mask: Optional mask to limit search area
-            
-        Returns:
-            Labeled segmentation result
+        Summarize a region-growing result for display/safety checks:
+        voxel count, fraction of the total volume, whether it exceeds
+        `self.max_region_fraction`, and physical volume in mm^3 if
+        spacing is known. Kept separate from region_growing() itself so
+        the pure algorithm and the UI-facing safety policy can be
+        tested independently.
         """
-        # Invert volume for watershed (we want high values as background)
-        inverted = volume.max() - volume
-        
-        # Create markers
-        marker_img = np.zeros(volume.shape, dtype=np.int32)
-        for i, seed in enumerate(seeds):
-            if all(0 <= s < dim for s, dim in zip(seed, volume.shape)):
-                marker_img[seed] = i + 1
-                
-        # Apply watershed
-        try:
-            from skimage.segmentation import watershed
-            labels = watershed(inverted, marker_img, mask=mask)
-        except Exception:
-            # Fallback if skimage watershed fails
-            labels = self._simple_watershed(volume, seeds, mask)
-            
-        return labels
-        
-    def _simple_watershed(self, volume: np.ndarray, seeds: List[Tuple[int, int, int]],
-                         mask: Optional[np.ndarray] = None) -> np.ndarray:
-        """
-        Simple watershed implementation using distance transform.
-        """
-        labels = np.zeros(volume.shape, dtype=np.int32)
-        
-        if not seeds:
-            return labels
-            
-        # Find connected components from seeds
-        seed_mask = np.zeros(volume.shape, dtype=bool)
-        for seed in seeds:
-            if all(0 <= s < dim for s, dim in zip(seed, volume.shape)):
-                seed_mask[seed] = True
-                
-        labeled, num_features = ndimage.label(seed_mask)
-        
-        # Distance transform
-        dist = ndimage.distance_transform_edt(~seed_mask)
-        
-        # Simple region growing based on distance
-        for i in range(1, num_features + 1):
-            region_mask = labeled == i
-            labels[region_mask] = i
-            
-        return labels
-        
-    def morphological_op(self, mask: np.ndarray, operation: str,
-                        iterations: int = 1) -> np.ndarray:
-        """
-        Apply morphological operation to mask.
-        
-        Args:
-            mask: Binary mask
-            operation: 'dilate', 'erode', 'open', 'close'
-            iterations: Number of iterations
-            
-        Returns:
-            Processed mask
-        """
-        struct = morphology.ball(1)  # 3D structuring element
-        
-        if operation == 'dilate':
-            return morphology.binary_dilation(mask.astype(bool), struct, iterations).astype(np.uint8)
-        elif operation == 'erode':
-            return morphology.binary_erosion(mask.astype(bool), struct, iterations).astype(np.uint8)
-        elif operation == 'open':
-            return morphology.binary_opening(mask.astype(bool), struct, iterations).astype(np.uint8)
-        elif operation == 'close':
-            return morphology.binary_closing(mask.astype(bool), struct, iterations).astype(np.uint8)
-        else:
-            return mask
-            
-    def remove_small_objects(self, mask: np.ndarray, min_size: int = 100) -> np.ndarray:
-        """
-        Remove small objects from binary mask.
-        
-        Args:
-            mask: Binary mask
-            min_size: Minimum object size in voxels
-            
-        Returns:
-            Mask with small objects removed
-        """
-        mask_bool = mask.astype(bool)
-        cleaned = morphology.remove_small_objects(mask_bool, min_size)
-        return cleaned.astype(np.uint8)
-        
-    def fill_holes(self, mask: np.ndarray) -> np.ndarray:
-        """
-        Fill holes in binary mask.
-        
-        Args:
-            mask: Binary mask
-            
-        Returns:
-            Mask with holes filled
-        """
-        return ndimage.binary_fill_holes(mask.astype(bool)).astype(np.uint8)
+        voxel_count = int(result_mask.sum())
+        total_voxels = int(result_mask.size)
+        fraction = (voxel_count / total_voxels) if total_voxels else 0.0
+        stats = {
+            "voxel_count": voxel_count,
+            "total_voxels": total_voxels,
+            "fraction": fraction,
+            "exceeds_limit": fraction > self.max_region_fraction,
+        }
+        if spacing is not None and len(spacing) == 3:
+            voxel_volume_mm3 = spacing[0] * spacing[1] * spacing[2]
+            stats["volume_mm3"] = voxel_count * voxel_volume_mm3
+        return stats

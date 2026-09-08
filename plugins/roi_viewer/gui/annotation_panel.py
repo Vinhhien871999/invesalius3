@@ -172,10 +172,27 @@ class AnnotationPanel(wx.Panel):
             color=(color.Red(), color.Green(), color.Blue()),
         )
 
-        display_text = f"{annotation_id + 1}. {text[:30]}{'...' if len(text) > 30 else ''}"
-        self.annotation_list.Append(display_text)
+        self.refresh_from_manager()
         self.txt_annotation.Clear()
         self._notify_annotation_added(annotation_id)
+
+    def refresh_from_manager(self):
+        """
+        Rebuild the list widget from controller.annotation_mgr - the
+        single source of truth for annotation text/order (see
+        core/annotation.AnnotationManager). Used both after a plugin
+        action (add/edit/delete) and after annotations are loaded from
+        a project's sidecar file (gui/roi_panel.py's
+        _try_load_annotation_sidecar()) or cleared on project close
+        (roi_panel.py's on_project_close()) - those bypass
+        _on_add_annotation()'s incremental Append(), so without this
+        the widget could show stale or empty rows that don't match the
+        real annotation list.
+        """
+        self.annotation_list.Clear()
+        for i, ann in enumerate(self.controller.annotation_mgr.annotations):
+            display_text = f"{i + 1}. {ann.text[:30]}{'...' if len(ann.text) > 30 else ''}"
+            self.annotation_list.Append(display_text)
 
     def _on_select_annotation(self, event):
         """Handle annotation selection."""

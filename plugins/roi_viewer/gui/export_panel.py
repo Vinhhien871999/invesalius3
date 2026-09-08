@@ -256,16 +256,45 @@ class ExportPanel(wx.Panel):
         try:
             from invesalius.pubsub import pub as Publisher
             Publisher.sendMessage("Show save dialog")
+            self._save_annotation_sidecar()
         except ImportError:
             pass
-            
+
     def _on_save_as_project(self, event):
         """Handle save as project button click."""
         try:
             from invesalius.pubsub import pub as Publisher
             Publisher.sendMessage("Show save dialog", save_as=True)
+            self._save_annotation_sidecar()
         except ImportError:
             pass
+
+    def _save_annotation_sidecar(self):
+        """
+        Persist annotations next to the real project file, right after
+        InVesalius's own save dialog. "Show save dialog" is handled by
+        invesalius.control.Controller.OnShowDialogSaveProject(), which
+        runs the real (modal) file-pick dialog and calls the real
+        SaveProject()/Session.SaveProject() synchronously *before*
+        Publisher.sendMessage() returns here - so by this point,
+        invesalius.session.Session().GetState("project_path") already
+        reflects whatever was just saved (or, if the user cancelled,
+        whatever it was before - see core/annotation.py's module
+        docstring for why that's harmless). No wx.CallAfter needed here
+        (contrast with the load side in roi_panel.py's on_project_load(),
+        where the equivalent state update happens *after* the message
+        that triggers our handler, not before).
+        """
+        try:
+            import invesalius.session as ses
+
+            project_path = ses.Session().GetState("project_path")
+            if not project_path:
+                return  # user cancelled a first-time Save As, or nothing to save yet
+            dirpath, filename = project_path
+            self.controller.annotation_mgr.save_sidecar(dirpath, filename)
+        except Exception as e:
+            print(f"ROI Viewer: could not save annotation sidecar - {e}")
             
     def _export_mask_to_file(self):
         """Open InVesalius's own export-mask dialog for the current mask."""

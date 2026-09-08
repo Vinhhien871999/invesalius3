@@ -8,7 +8,7 @@ import wx
 import os
 
 from .gui import roi_panel, interaction_panel, measurement_panel, annotation_panel, export_panel
-from .interface import project_interface, view_interface, task_panel
+from .interface import project_interface, view_interface
 
 # Global reference to the main window
 _main_frame = None
@@ -102,7 +102,23 @@ def _subscribe_events():
         # Mask events
         Publisher.subscribe(_on_mask_created, "Create new mask")
         Publisher.subscribe(_on_mask_selected, "Change mask selected")
-        
+
+        # NOTE (Round-2 audit, section E): these three additionally
+        # keep ROIManager's cache in sync with masks renamed/hidden/
+        # removed through InVesalius's OWN native Masks tab, not just
+        # through this plugin's own ROI List buttons - see
+        # core/roi_manager.py's module docstring. Signatures matched
+        # exactly to invesalius/data/slice_.py's real subscribers
+        # (__set_mask_name(index, name), __show_mask(index, value),
+        # OnRemoveMasks(mask_indexes)) - Slice() is always the first
+        # subscriber on these topics (registered at app startup, well
+        # before any plugin loads), so it fixes each topic's pypubsub
+        # message-data-spec; a mismatched signature here would raise
+        # ListenerMismatchError at subscribe time.
+        Publisher.subscribe(_on_mask_name_changed, "Change mask name")
+        Publisher.subscribe(_on_mask_visibility_changed, "Show mask")
+        Publisher.subscribe(_on_masks_removed, "Remove masks")
+
         print("ROI Viewer: Subscribed to pubsub events")
     except ImportError as e:
         print(f"ROI Viewer: Could not import Publisher - {e}")
@@ -152,6 +168,7 @@ def _on_mask_created(mask_name, thresh, colour):
     global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_mask_created(mask_name, thresh, colour)
+        _roi_viewer_window.on_roi_source_changed()
 
 
 def _on_mask_selected(index):
@@ -159,6 +176,27 @@ def _on_mask_selected(index):
     global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_mask_selected(index)
+
+
+def _on_mask_name_changed(index, name):
+    """A mask was renamed (through this plugin or InVesalius's native Masks tab)."""
+    global _roi_viewer_window
+    if _roi_viewer_window:
+        _roi_viewer_window.on_roi_source_changed()
+
+
+def _on_mask_visibility_changed(index, value):
+    """A mask's visibility was toggled (through this plugin or the native Masks tab)."""
+    global _roi_viewer_window
+    if _roi_viewer_window:
+        _roi_viewer_window.on_roi_source_changed()
+
+
+def _on_masks_removed(mask_indexes):
+    """One or more masks were removed (through this plugin or the native Masks tab)."""
+    global _roi_viewer_window
+    if _roi_viewer_window:
+        _roi_viewer_window.on_roi_source_changed()
 
 
 def get_plugin_info():
@@ -204,6 +242,9 @@ def unload():
         Publisher.unsubscribe(_on_mask_update, "Reload actual slice")
         Publisher.unsubscribe(_on_mask_created, "Create new mask")
         Publisher.unsubscribe(_on_mask_selected, "Change mask selected")
+        Publisher.unsubscribe(_on_mask_name_changed, "Change mask name")
+        Publisher.unsubscribe(_on_mask_visibility_changed, "Show mask")
+        Publisher.unsubscribe(_on_masks_removed, "Remove masks")
     except ImportError:
         pass
     
