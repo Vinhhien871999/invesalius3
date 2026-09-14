@@ -193,7 +193,7 @@ Xem mục "Changed" ở trên — worst case Undo/Redo thật đúng ở `max_hi
 ### Phase Gate
 `PHASE_GATE: PASS`
 
-## `<Phase 12 commit>` — Phase 12 (CT3D_P12_QUANTITATIVE_VALIDATION): chốt kỹ thuật + hạ tầng đánh giá định lượng
+## `52004e28` — Phase 12 (CT3D_P12_QUANTITATIVE_VALIDATION): chốt kỹ thuật + hạ tầng đánh giá định lượng
 
 ### Goal
 Chốt các vấn đề kỹ thuật nhỏ còn sót sau Phase 11 (`MaskEditorManager` dead code, NRRD packaging), xây hạ tầng Dice/Jaccard/Hausdorff thật có unit test toán học + phantom biết trước, lập dataset registry thật, xác nhận đa vendor/multi-series trong giới hạn dữ liệu local, thử lại Region Growing full-volume có kiểm soát RAM, tạo manual-QA checklist chính thức. Không thêm tính năng UI mới, không bịa dataset/vendor/ground-truth/thao tác GUI.

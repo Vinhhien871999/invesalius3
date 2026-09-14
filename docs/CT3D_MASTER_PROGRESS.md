@@ -6,7 +6,7 @@
 
 - Current phase: 12 (hoàn tất, PASS)
 - Branch: `thesis-ct-roi-tools`
-- HEAD: *(cập nhật sau commit Phase 12 — xem `CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md`)*
+- HEAD: `52004e28`
 - Last completed phase: 12 — Technical Closure & Quantitative Validation
 - Next phase: 13 — Performance, Comparison & Usability Preparation (chưa bắt đầu)
 
@@ -99,4 +99,4 @@
 | 09 | Runtime Interaction QA & Bidirectional 2D-3D Sync | **PASS** | `d366a635` | `CT3D_P09_INTERACTION_QA_REPORT.md` |
 | 10 | Data Integrity, Save/Open Forensics & Undo/Redo Memory | **PASS** | `0e51bcf9` | `CT3D_P10_DATA_INTEGRITY_REPORT.md` |
 | 11 | Persistent Test & Regression Architecture + Code Hardening | **PASS** | `36dc59ba` | `CT3D_P11_TEST_AUTOMATION_REPORT.md` |
-| 12 | Technical Closure & Quantitative Validation | **PASS** | *(xem response cuối)* | `CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md` |
+| 12 | Technical Closure & Quantitative Validation | **PASS** | `52004e28` | `CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md` |

@@ -8,7 +8,7 @@
 | Repository | Vinhhien871999/invesalius3 |
 | Branch | `thesis-ct-roi-tools` |
 | HEAD before | `95b40f7c` (last commit of Phase 11) |
-| HEAD after | *(filled in the final response, after commit)* |
+| HEAD after | `52004e28` |
 | Python | 3.11.7 (`D:\PyTools\invx-venv\Scripts\python.exe`) |
 | pytest | 8.3.5 |
 | NumPy | 1.26.4 |
