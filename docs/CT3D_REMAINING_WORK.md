@@ -66,13 +66,15 @@ Ngoài phạm vi đã triển khai — NIfTI (đã có, đã verify) đáp ứng
 
 ## Tổng kết ưu tiên
 
+> **Cập nhật sau Phase 08 (14/09/2026)**: D9/C7 đã đóng (WORKING, bằng chứng runtime đầy đủ — xem `CT3D_P08_ROI3D_CLOSURE_REPORT.md`). Bảng dưới đây phản ánh đúng baseline SAU Phase 08 — không còn liệt kê D9 như việc chưa xong.
+
 | # | Việc | Ưu tiên | Ước lượng thời gian |
 |---|---|---|---|
-| 1 | Xác nhận lại D9 sau bản vá sentinel (chạy script hoặc thao tác tay) — 4 lần thử vòng 3 đều treo do RAM thấp (3.5-4.8GB khả dụng) | **P1** | 10-15 phút nếu đủ RAM |
-| 1b | Xác nhận lại Region Growing tren volume CT that (~28M voxel) — 2 lần thử vòng 3 cũng treo cùng nguyên nhân | P2 | 10-15 phút nếu đủ RAM |
-| 2a | Điều tra checksum voxel mask lệch sau Save/Open (mọi thuộc tính khác đều khớp, đã loại trừ giả thuyết flush()) | P2 | 1-2 giờ |
-| 2b | Manual GUI test bằng chuột thật (brush/đo 2D/rotate-pan-zoom/Save-Open dialog) | P2 | ~1-2 giờ thao tác tay, checklist đã có sẵn |
-| 3 | Test đa vendor CT đầy đủ (GE/Philips/Canon) | P3 | Cần dataset ngoài, ngoài khả năng môi trường hiện tại |
-| 4-5 | Dice/Jaccard/Hausdorff, khảo sát Usability | P3 | Ngoài phạm vi kỹ thuật (cần dataset có nhãn / người dùng thật) |
+| 1c | Manual QA thao tác tay cho D9/C7 (GUI thật, dialog mặc định không `batch_mode`) — bằng chứng bổ sung, D9/C7 đã WORKING dựa trên bằng chứng runtime Phase 08 | **P1** | 15 phút thao tác tay, checklist ở `CT3D_P08_ROI3D_CLOSURE_REPORT.md` mục P08.5 |
+| 1b | Xác nhận lại Region Growing trên volume CT thật (~28M voxel) — 2 lần thử vòng 3 treo do RAM thấp | P2 | 10-15 phút nếu đủ RAM |
+| 2a | Điều tra checksum voxel mask lệch sau Save/Open (mọi thuộc tính khác đều khớp, đã loại trừ giả thuyết flush()) | P2 | 1-2 giờ (Phase 10) |
+| 2b | Manual GUI test bằng chuột thật (brush/đo 2D/rotate-pan-zoom) | P2 | ~1-2 giờ thao tác tay, checklist đã có sẵn (Phase 09) |
+| 3 | Test đa vendor CT đầy đủ (GE/Philips/Canon) | P3 | Cần dataset ngoài, ngoài khả năng môi trường hiện tại (Phase 12) |
+| 4-5 | Dice/Jaccard/Hausdorff, khảo sát Usability | P3 | Ngoài phạm vi kỹ thuật (Phase 12-13) |
 | 6 | Volume rendering raycasting thuần | P3 | Hạn chế của InVesalius gốc, không tự viết raycaster mới |
 | 7 | Export DICOM-SEG | P3 | Ngoài phạm vi đã triển khai (NIfTI đã đáp ứng) |
