@@ -39,7 +39,7 @@ except ImportError:
         return s
 
 # Import core modules
-from ..core import roi_manager, picker_3d, sync_2d3d, segmentation, mask_editor, measurement, annotation, exporters
+from ..core import roi_manager, picker_3d, sync_2d3d, segmentation, mask_editor, measurement, annotation, exporters, marker_3d
 
 # Import the real, wired tool panels.
 from .interaction_panel import InteractionPanel
@@ -74,9 +74,42 @@ class ROIViewerFrame(wx.Frame):
         self.measure_mgr = measurement.MeasurementManager()
         self.annotation_mgr = annotation.AnnotationManager()
         self.exporter = exporters.ExporterManager()
+        # Phase 09 (Sync 2D -> 3D): visual counterpart to the real 2D
+        # crosshair - see on_cross_focal_point_changed() below.
+        self.marker_3d = marker_3d.CrosshairMarker3D()
+        # Phase 09 (F3 fix): tracked independently of the Sync 2D->3D
+        # checkbox/visual marker above - this is "the last real,
+        # trustworthy world position InVesalius told us about", used
+        # by annotation_panel.py._on_add_annotation() as a fallback
+        # when no 3D pick has happened yet, so it never has to invent a
+        # fake (0, 0, 0) position. See get_current_reference_position().
+        self._last_cross_focal_point = None
 
         # State variables
-        self.project_loaded = False
+        #
+        # Phase 09 bug found via Sync 2D->3D testing (same class of bug
+        # as the Round-2 ROI-List one documented just below, but missed
+        # for this flag): project_loaded defaulted to False here and
+        # was ONLY ever set True reactively by on_project_load() (a
+        # FUTURE "Load project data" event) - never initialized from
+        # whatever real project state already exists at construction
+        # time. In the single most common real workflow (import DICOM,
+        # THEN open this plugin from the menu), that event already
+        # fired before this window/its pubsub subscriptions even
+        # existed, so project_loaded silently stayed False for the
+        # window's entire lifetime - breaking on_slice_change(),
+        # on_mask_update(), and Sync 2D->3D's
+        # on_cross_focal_point_changed() (all three gate on this flag)
+        # even though a project was genuinely open. Initialize it from
+        # real current state via the same real check
+        # interface/project_interface.py.ProjectInterface.
+        # is_project_loaded() already uses (Project().name != "").
+        try:
+            from ..interface.project_interface import ProjectInterface
+
+            self.project_loaded = ProjectInterface().is_project_loaded()
+        except Exception:
+            self.project_loaded = False
         self.current_mask_index = None
         self._picker_initialized = False
 
@@ -121,6 +154,15 @@ class ROIViewerFrame(wx.Frame):
             self.picker.cleanup()
         except Exception as e:
             print(f"ROI Viewer: picker cleanup on close failed - {e}")
+        try:
+            # Same leak class as the picker observer above (Phase
+            # 09 SYNC-T6): the real 3D renderer is a singleton that
+            # outlives this window - an un-detached marker actor
+            # would linger in the scene (and get duplicated on the
+            # next reopen) if not removed here.
+            self.marker_3d.detach()
+        except Exception as e:
+            print(f"ROI Viewer: 3D marker cleanup on close failed - {e}")
         self.Destroy()
 
     def _init_ui(self):
@@ -217,6 +259,13 @@ class ROIViewerFrame(wx.Frame):
         self.roi_mgr.clear()
         self.mask_mgr.clear_all()
         self._picker_initialized = False
+        # A marker positioned in the OLD project's coordinate space is
+        # meaningless (and could even point outside the new volume's
+        # bounds) once a different project is loaded - detach() here;
+        # on_cross_focal_point_changed() will re-attach() lazily the
+        # next real 2D interaction in the new project.
+        self.marker_3d.detach()
+        self._last_cross_focal_point = None
         # NOTE: the managers above were already cleared before this
         # round, but the widgets that display them were not - closing
         # a project used to leave stale ROI/annotation rows visible in
@@ -226,6 +275,26 @@ class ROIViewerFrame(wx.Frame):
         if hasattr(self, "annotation_panel"):
             self.annotation_panel.refresh_from_manager()
         print("ROI Viewer: Project closed")
+
+    def get_current_reference_position(self):
+        """
+        Phase 09 (F3 fix): the single real, trustworthy "current
+        position" annotation_panel.py._on_add_annotation() should use -
+        never a fake (0, 0, 0) placeholder. Priority order matches the
+        plan exactly:
+          A) the last real 3D pick (picker_3d.PointPicker3D.
+             get_last_point()) - most specific, user explicitly clicked
+             a point;
+          B) the last real 2D crosshair position ("Set cross focal
+             point" - see on_cross_focal_point_changed() above) -
+             tracked regardless of the Sync 2D->3D checkbox;
+          C) None - caller must refuse to create the annotation and
+             tell the user to pick a position first.
+        """
+        picked = self.picker.get_last_point()
+        if picked is not None:
+            return picked
+        return self._last_cross_focal_point
 
     def on_roi_source_changed(self):
         """
@@ -259,6 +328,64 @@ class ROIViewerFrame(wx.Frame):
         if self.project_loaded:
             # Update sync manager
             self.sync_mgr.set_slice_position(plane, index)
+
+    def on_cross_focal_point_changed(self, world_position):
+        """
+        Phase 09 - Sync 2D -> 3D: the user changed position on a real
+        2D view (main.py forwards InVesalius's real "Set cross focal
+        point" topic here - see that subscription's NOTE for why this
+        exact topic). Moves a small 3D marker (core/marker_3d.
+        CrosshairMarker3D) to the same real world position, so the 3D
+        view shows a visual counterpart to the 2D crosshair - without
+        auto-rotating the camera or building a new MPR system (out of
+        scope per the plan).
+
+        Guarded by self.sync_mgr.sync_2d_3d - the EXACT SAME flag the
+        "Sync 2D -> 3D" checkbox in interaction_panel.py already toggles
+        via sync_mgr.enable_sync_2d_3d()/disable_sync_2d_3d() (that
+        checkbox existed since before Phase 09 but nothing ever read
+        the flag it set - see CT3D_FEATURE_AUDIT.md's Sync 2D->3D row).
+        When disabled, this method does nothing at all: an
+        already-placed marker stays exactly where it was (frozen, not
+        hidden), and a never-yet-placed one stays never-placed - both
+        satisfy "checkbox OFF -> 2D change -> 3D target does not
+        change" without needing extra state.
+
+        No event-loop risk: this method only ever READS pubsub (it
+        never calls Publisher.sendMessage() with a topic that could
+        feed back into itself - "Render volume viewer" only repaints,
+        it carries no position and is not among this method's own
+        triggers) - a one-directional consumer cannot form a cycle by
+        construction, so no suppress-flag/debounce machinery is needed.
+        """
+        if not self.project_loaded:
+            return
+        # Track this regardless of the Sync 2D->3D checkbox - tracking
+        # "where is the crosshair right now" for annotation purposes
+        # (F3) is a different concern than the checkbox's own job
+        # (whether to show/move the visual 3D marker).
+        try:
+            self._last_cross_focal_point = tuple(float(c) for c in world_position)
+        except (TypeError, ValueError):
+            pass
+        if not self.sync_mgr.sync_2d_3d:
+            return
+        try:
+            from ..interface.view_interface import ViewInterface
+
+            viewer = ViewInterface().get_volume_viewer()
+            if viewer is None or not hasattr(viewer, "ren"):
+                return
+            if not self.marker_3d.attach(viewer.ren):
+                return
+            x, y, z = world_position
+            self.marker_3d.update_position(x, y, z)
+
+            from invesalius.pubsub import pub as Publisher
+
+            Publisher.sendMessage("Render volume viewer")
+        except Exception as e:
+            print(f"ROI Viewer: Sync 2D->3D marker update failed - {e}")
 
     def on_mask_update(self):
         """Handle mask update event."""

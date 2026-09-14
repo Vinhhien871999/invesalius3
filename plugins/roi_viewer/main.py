@@ -119,6 +119,20 @@ def _subscribe_events():
         Publisher.subscribe(_on_mask_visibility_changed, "Show mask")
         Publisher.subscribe(_on_masks_removed, "Remove masks")
 
+        # Phase 09 (CT3D_P09): "Sync 2D -> 3D". "Set cross focal point"
+        # is InVesalius's own real topic for "the user just changed
+        # position on a 2D view" - fired with a real world (x, y, z) mm
+        # position from invesalius/data/styles.py's default 2D
+        # interactor style on every click/drag on a 2D slice (and by a
+        # few other real features - reoriented navigation, tractography
+        # - that also move the shared crosshair). Reusing this exact
+        # topic (not a new one) is what lets Sync 2D->3D work for any
+        # real way the crosshair moves, not just plugin-driven ones.
+        # invesalius/data/record_coords.py's UpdateCurrentCoords(self,
+        # position) is a real first-subscriber elsewhere in the app, so
+        # `position` (not e.g. `pos`) is the fixed pypubsub MDS kwarg.
+        Publisher.subscribe(_on_cross_focal_point, "Set cross focal point")
+
         print("ROI Viewer: Subscribed to pubsub events")
     except ImportError as e:
         print(f"ROI Viewer: Could not import Publisher - {e}")
@@ -199,6 +213,19 @@ def _on_masks_removed(mask_indexes):
         _roi_viewer_window.on_roi_source_changed()
 
 
+def _on_cross_focal_point(position):
+    """
+    The user changed position on a real 2D view (or any other real
+    InVesalius feature that moves the shared crosshair) - see the NOTE
+    by this topic's subscription above. `position` is a list/array of
+    at least 3 real world-space (mm) coordinates; only x/y/z matter
+    here (some senders pad it to 6 elements).
+    """
+    global _roi_viewer_window
+    if _roi_viewer_window:
+        _roi_viewer_window.on_cross_focal_point_changed(position[:3])
+
+
 def get_plugin_info():
     """
     Return information about the plugin.
@@ -245,6 +272,7 @@ def unload():
         Publisher.unsubscribe(_on_mask_name_changed, "Change mask name")
         Publisher.unsubscribe(_on_mask_visibility_changed, "Show mask")
         Publisher.unsubscribe(_on_masks_removed, "Remove masks")
+        Publisher.unsubscribe(_on_cross_focal_point, "Set cross focal point")
     except ImportError:
         pass
     
