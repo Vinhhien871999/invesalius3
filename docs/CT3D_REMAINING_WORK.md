@@ -1,6 +1,6 @@
 # Việc còn lại thực sự chưa hoàn thành
 
-> Chỉ liệt kê những gì **thật sự chưa xong**, có bằng chứng cụ thể. Không ghi chung chung "cần cải thiện thêm". Cập nhật vòng 2 (08/09/2026): các mục P1 của vòng 1 (Update 3D Surface, Region Growing an toàn) **đã đóng** — xem `CT3D_CHANGELOG.md`/`CT3D_TEST_REPORT.md` cho bằng chứng. Annotation/ROI persistence (P2 cũ) **đã đóng** bằng cơ chế sidecar JSON. Watershed/Morphology (P2/P3 cũ) **đã xoá** khỏi phạm vi (quyết định kiến trúc, không phải hoãn lại — xem mục "Quyết định đã chốt" bên dưới). Đo 2D đọc ngược vào panel plugin (P2 cũ) **không còn là việc cần làm** — xem cùng mục.
+> Chỉ liệt kê những gì **thật sự chưa xong**, có bằng chứng cụ thể. Không ghi chung chung "cần cải thiện thêm". Cập nhật vòng 2 (08/09/2026): các mục P1 của vòng 1 (Update 3D Surface, Region Growing an toàn) **đã đóng** — xem `CT3D_CHANGELOG.md`/`CT3D_TEST_REPORT.md` cho bằng chứng. Annotation/ROI persistence (P2 cũ) **đã đóng** bằng cơ chế sidecar JSON. Watershed/Morphology (P2/P3 cũ) **đã xoá** khỏi phạm vi (quyết định kiến trúc, không phải hoãn lại — xem mục "Quyết định đã chốt" bên dưới). Đo 2D đọc ngược vào panel plugin (P2 cũ) **không còn là việc cần làm** — xem cùng mục. **Cập nhật Phase 09 (14/09/2026)**: Sync 2D→3D và F3 (vị trí annotation) **đã đóng** (WORKING, verify runtime đầy đủ — xem `CT3D_P09_INTERACTION_QA_REPORT.md`). Các mục manual-QA rải rác (1c, 2b cũ) đã gộp lại thành 1 checklist duy nhất ở Phase 09.
 
 ---
 
@@ -17,10 +17,11 @@
 - **Mức ưu tiên**: P2 (đã có bằng chứng thật từ vòng 1: mask 16.264.693 voxel tạo thành công qua seed pick thật; phần cảnh báo vùng lớn — tính năng mới nhất — ĐÃ verify PASS đầy đủ ở vòng 3 bằng cách gọi thẳng `_on_region_grown()` không qua surface, xem `ROI_VIEWER_USER_GUIDE_VERIFICATION.md`)
 - **Cách hoàn thiện**: tương tự mục 1 — cần máy/thời điểm có RAM rộng hơn để chạy lại `test_regiongrowing_surfaceupdate.py`-style full test.
 
-### 1c. [Mới, P1, từ Phase 08] Manual QA thao tác tay cho D9/C7 (GUI thật, dialog mặc định)
-- **Module**: `segmentation_panel.py._on_update_surface` — bản vá đã verify bằng script với `batch_mode=True` (né lỗi crash của `SurfaceProgressWindow` khi chạy dưới harness không có `app.MainLoop()` thật). Đường dẫn mặc định (có dialog, không `batch_mode`) — đường dẫn người dùng thật sẽ đi qua — **chưa được xác nhận lại bằng thao tác tay** sau bản vá.
-- **Mức ưu tiên**: P1 (bước cuối cùng để coi D9/C7 đã kiểm chứng từ mọi góc độ)
-- **Cách hoàn thiện**: làm theo checklist P08.5 trong `CT3D_P08_ROI3D_CLOSURE_REPORT.md` (threshold mask nhỏ → build surface → vẽ brush thật → Update 3D Surface → quan sát hình học đổi bằng mắt). Ước lượng: 15 phút thao tác tay.
+### 1c. [P1, hợp nhất ở Phase 09] Manual QA thao tác chuột thật — 7 mục
+- **Module**: `segmentation_panel.py._on_update_surface` (P08.5/D9/C7), brush/eraser (D4/D5), 2D/3D camera (B4/C3), đo lường 2D (E2/E3).
+- **Nguyên nhân**: automated test không điều khiển được chuột thật — mọi bug/wiring TỰ ĐỘNG HOÁ được đã đóng ở Phase 08/09 (D9/C7/Sync 2D→3D/F3 đều WORKING với bằng chứng runtime). 7 mục còn lại CHỈ thiếu bằng chứng thao tác tay, không phải nghi ngờ có bug.
+- **Mức ưu tiên**: P1 (bước cuối để coi các chức năng tương tác chuột đã kiểm chứng từ mọi góc độ)
+- **Cách hoàn thiện**: làm theo checklist đầy đủ (9 mục con, có công thức đối chiếu sai số cho E2/E3) trong `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9. Ước lượng: 30-45 phút thao tác tay cho cả 7 mục.
 
 ## P2 — hoàn thiện nhưng không chặn workflow chính
 
@@ -30,12 +31,6 @@
 - **Cập nhật vòng 3**: xác nhận lại đúng bug này với mask/kịch bản KHÁC (`test_guide_saveopen.py`) — cùng hiện tượng, cùng kết luận. Đã thử và LOẠI TRỪ giả thuyết "chưa gọi `flush()` trước khi Save": gọi `matrix.flush()` thêm ngay trước `SavePlistProject()` không làm checksum lúc đó đổi (dữ liệu vốn đã flush từ bước tạo mask/threshold) — nghĩa là dữ liệu TRONG BỘ NHỚ lúc save đã đúng/ổn định, vấn đề nằm ở bước ghi-ra-đĩa hoặc đọc-lại, không phải bộ nhớ chưa đồng bộ.
 - **Mức ưu tiên**: P2 (không chặn workflow chính — mọi thuộc tính hiển thị/quản lý mask đều đúng; ảnh hưởng, nếu có, chỉ ở mức differences rất nhỏ trong dữ liệu voxel)
 - **Cách hoàn thiện**: so sánh trực tiếp từng voxel khác nhau ở đâu (không chỉ checksum tổng — code so sánh voxel-by-voxel đã viết sẵn trong `test_guide_saveopen.py` ở scratchpad, chưa kịp chạy lại để lấy kết quả chi tiết) để khoanh vùng, đối chiếu với `Mask.SavePlist()`/`OpenPList()` trong `invesalius/data/mask.py`. Ước lượng: 1-2 giờ điều tra.
-
-### 2b. Xác nhận thủ công qua GUI thật (chuột thật) cho các thao tác vẽ/đo
-- **Module**: brush (`segmentation_panel.py`), 2D distance/area (`measurement_panel.py`), rotate/pan/zoom 3D (VTK camera gốc), Save/Open project qua dialog thật.
-- **Nguyên nhân**: automated test chỉ verify được việc BẬT đúng interactor style thật (`Slice().state` đổi đúng) — không giả lập được thao tác rê/kéo/thả chuột thật của người dùng trên canvas 2D/3D. Đây là giới hạn thật của phương pháp test tự động (đã ghi rõ từ vòng 1, nhắc lại ở vòng 2 theo đúng yêu cầu mục L — không đánh dấu PASS cho phần chưa thao tác tay thật).
-- **Mức ưu tiên**: P2 (chức năng có bằng chứng gián tiếp mạnh — remote-control đúng interactor style thật của InVesalius gốc, bản thân các style đó là code InVesalius gốc đã hoạt động ổn định nhiều năm — nhưng chưa có bằng chứng trực tiếp bằng thao tác tay trong 2 vòng audit)
-- **Cách hoàn thiện**: mở app thật (`python app.py -i <dicom_dir>`), làm theo checklist thao tác tay trong `CT3D_TEST_REPORT.md` mục 6.
 
 ## P3 — không chặn tiến độ, làm khi còn thời gian
 
@@ -66,14 +61,13 @@ Ngoài phạm vi đã triển khai — NIfTI (đã có, đã verify) đáp ứng
 
 ## Tổng kết ưu tiên
 
-> **Cập nhật sau Phase 08 (14/09/2026)**: D9/C7 đã đóng (WORKING, bằng chứng runtime đầy đủ — xem `CT3D_P08_ROI3D_CLOSURE_REPORT.md`). Bảng dưới đây phản ánh đúng baseline SAU Phase 08 — không còn liệt kê D9 như việc chưa xong.
+> **Cập nhật sau Phase 09 (14/09/2026)**: D9/C7 (Phase 08), Sync 2D→3D và F3 (Phase 09) đã đóng (WORKING, bằng chứng runtime đầy đủ). Bảng dưới đây phản ánh đúng baseline SAU Phase 09.
 
 | # | Việc | Ưu tiên | Ước lượng thời gian |
 |---|---|---|---|
-| 1c | Manual QA thao tác tay cho D9/C7 (GUI thật, dialog mặc định không `batch_mode`) — bằng chứng bổ sung, D9/C7 đã WORKING dựa trên bằng chứng runtime Phase 08 | **P1** | 15 phút thao tác tay, checklist ở `CT3D_P08_ROI3D_CLOSURE_REPORT.md` mục P08.5 |
+| 1c | Manual QA thao tác chuột thật — 7 mục gộp (D9/C7 qua dialog mặc định, brush D4, eraser D5, zoom/pan 2D B4, rotate/pan/zoom 3D C3, đo khoảng cách 2D E2, đo diện tích 2D E3) | **P1** | 30-45 phút thao tác tay, checklist đầy đủ ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9 |
 | 1b | Xác nhận lại Region Growing trên volume CT thật (~28M voxel) — 2 lần thử vòng 3 treo do RAM thấp | P2 | 10-15 phút nếu đủ RAM |
 | 2a | Điều tra checksum voxel mask lệch sau Save/Open (mọi thuộc tính khác đều khớp, đã loại trừ giả thuyết flush()) | P2 | 1-2 giờ (Phase 10) |
-| 2b | Manual GUI test bằng chuột thật (brush/đo 2D/rotate-pan-zoom) | P2 | ~1-2 giờ thao tác tay, checklist đã có sẵn (Phase 09) |
 | 3 | Test đa vendor CT đầy đủ (GE/Philips/Canon) | P3 | Cần dataset ngoài, ngoài khả năng môi trường hiện tại (Phase 12) |
 | 4-5 | Dice/Jaccard/Hausdorff, khảo sát Usability | P3 | Ngoài phạm vi kỹ thuật (Phase 12-13) |
 | 6 | Volume rendering raycasting thuần | P3 | Hạn chế của InVesalius gốc, không tự viết raycaster mới |

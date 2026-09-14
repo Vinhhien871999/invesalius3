@@ -4,11 +4,11 @@
 
 ## Current baseline
 
-- Current phase: 08 (hoàn tất, PASS)
+- Current phase: 09 (hoàn tất, PASS)
 - Branch: `thesis-ct-roi-tools`
-- HEAD: `40c2c38b`
-- Last completed phase: 08 — ROI3D Closure
-- Next phase: 09 — Runtime Interaction QA
+- HEAD: `d366a635`
+- Last completed phase: 09 — Runtime Interaction QA & Bidirectional 2D-3D Sync
+- Next phase: 10 — Data Integrity & Memory
 
 ## Progress Matrix
 
@@ -21,10 +21,10 @@
 | B1 | 3 view Axial/Coronal/Sagittal | WORKING | Ảnh chụp UI thật | Vòng 1 |
 | B2 | Scroll slice đồng bộ | WORKING | Pick 3D → slice AXIAL đổi đúng | Vòng 1 |
 | B3 | Window/Level | WORKING | Export PNG windowing đúng | Vòng 1 |
-| B4 | Zoom/Pan 2D | NEEDS_RUNTIME_TEST | Chưa test thao tác chuột thật | Vòng 1 |
+| B4 | Zoom/Pan 2D | NEEDS_MANUAL_QA | Cần thao tác chuột thật, checklist ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9 | Phase 09 |
 | C1 | Marching Cubes | WORKING | Đo thật extraction/cleaning time | Vòng 1 |
 | C2 | Render 3D + FPS | WORKING | 122-158 FPS, 3 bộ dữ liệu | Vòng 1 |
-| C3 | Rotate/Pan/Zoom 3D | NEEDS_RUNTIME_TEST | Camera VTK gốc, chưa test tay | Vòng 1 |
+| C3 | Rotate/Pan/Zoom 3D | NEEDS_MANUAL_QA | Camera VTK gốc, cần thao tác chuột thật, checklist ở Phase 09 report | Phase 09 |
 | C4 | Pick điểm 3D | WORKING | Toạ độ world thật từ `vtkCellPicker` | Vòng 1 |
 | C5 | Liên kết 3D→2D | WORKING | Slice AXIAL tự nhảy đúng từ pick thật | Vòng 1 |
 | C6 | Raycasting thuần | NOT_CONNECTED | 0 call-site `Volume.OnShowVolume()` trong toàn InVesalius gốc | Vòng 2 |
@@ -32,8 +32,8 @@
 | D1 | Threshold segmentation | WORKING | mask_dict tăng đúng | Vòng 1 |
 | D2 | Auto-threshold Otsu | WORKING | Test 3 bộ dữ liệu | Vòng 1 |
 | D3 | Chọn mask hiện tại | WORKING | `Slice().current_mask.index` khớp | Vòng 1 |
-| D4 | Brush vẽ tay | NEEDS_RUNTIME_TEST | Chỉ verify state chuyển, chưa thao tác chuột thật | Vòng 2 |
-| D5 | Eraser | NEEDS_RUNTIME_TEST | Tương tự D4 | Vòng 2 |
+| D4 | Brush vẽ tay | NEEDS_MANUAL_QA | Chỉ verify state chuyển, cần thao tác chuột thật, checklist ở Phase 09 report | Phase 09 |
+| D5 | Eraser | NEEDS_MANUAL_QA | Tương tự D4 | Phase 09 |
 | D6 | Kích thước brush | WORKING | Đổi operation/shape/size không lỗi | Vòng 1 |
 | D7 | Undo/Redo | WORKING | Checksum khớp trước/sau undo | Vòng 1 |
 | D8 | Quản lý ROI List | WORKING | Cache/view đồng bộ 2 chiều thật | Vòng 2 |
@@ -42,13 +42,13 @@
 | D11 | Watershed (custom) | ĐÃ XOÁ (quyết định kiến trúc) | Trùng Watershed thật InVesalius gốc | Vòng 2 |
 | D12 | Morphology | ĐÃ XOÁ (quyết định kiến trúc) | 0 call-site, ngoài phạm vi | Vòng 2 |
 | E1 | Đo khoảng cách 3D | WORKING | 59.56mm, verify thật | Vòng 1 |
-| E2 | Đo khoảng cách 2D | NEEDS_RUNTIME_TEST | Bật đúng style, chưa test chuột thật | Vòng 2 |
-| E3 | Đo diện tích 2D | NEEDS_RUNTIME_TEST | Tương tự E2 | Vòng 2 |
+| E2 | Đo khoảng cách 2D | NEEDS_MANUAL_QA | Bật đúng style, cần test chuột thật, checklist ở Phase 09 report | Phase 09 |
+| E3 | Đo diện tích 2D | NEEDS_MANUAL_QA | Tương tự E2 | Phase 09 |
 | E4 | Đo thể tích mask | WORKING | Đã sửa bug đếm nhầm padding (vòng 3) | Vòng 3 |
 | E5 | Spacing thật áp dụng | WORKING | Dùng `Slice().spacing` trực tiếp | Vòng 1 |
 | F1 | Thêm annotation | WORKING | add → count=1 | Vòng 1 |
 | F2 | Goto/Edit/Delete/Prev-Next | WORKING | Verify đầy đủ vòng đời | Vòng 1 |
-| F3 | Vị trí annotation chính xác | PARTIAL | Mặc định (0,0,0) nếu chưa pick | Vòng 1 |
+| F3 | Vị trí annotation chính xác | **WORKING** (nâng từ PARTIAL) | Phase 09: không còn fallback (0,0,0), từ chối + cảnh báo nếu không có vị trí hợp lệ, verify runtime 3/3 test | Phase 09 |
 | F4 | Lưu annotation cùng project | WORKING | Sidecar JSON, full-cycle verify | Vòng 2 |
 | G1 | Save/Open project | WORKING | Full-cycle 19/20 PASS | Vòng 2 |
 | G2 | Mask/Surface serialize | WORKING | Verify qua G1 | Vòng 2 |
@@ -58,23 +58,21 @@
 | H5 | Export Surface VTK | WORKING | File thật 74.5MB | Vòng 1 |
 | H6 | Export ảnh slice | WORKING | PNG windowing đúng | Vòng 1 |
 | H7 | Export DICOM-SEG | MISSING | Ngoài phạm vi đã triển khai | Vòng 1 |
-| Sync 2D→3D | Checkbox đồng bộ ngược | NOT_IMPLEMENTED | Chỉ lưu cờ, không có code đọc lại (grep xác nhận) | Vòng 3 |
+| Sync 2D→3D | Checkbox đồng bộ ngược | **WORKING** (nâng từ NOT_IMPLEMENTED) | Phase 09: tái sử dụng topic thật `"Set cross focal point"`, marker 3D thật cập nhật đúng, verify runtime 8/8 test (SYNC-T1..T6) | Phase 09 |
 
 ## Critical blockers
 
-- Không có blocker nghiêm trọng nào đang mở sau Phase 08.
+- Không có blocker nghiêm trọng nào đang mở sau Phase 09.
 
 ## High-priority remaining work
 
-1. **P08.5 Manual QA** (xem `CT3D_P08_ROI3D_CLOSURE_REPORT.md` mục 15) — xác nhận thao tác tay qua GUI thật cho D9/C7 với dialog mặc định (không `batch_mode`).
-2. Checksum voxel mask lệch nhẹ sau Save/Open (đã loại trừ giả thuyết flush(), chưa rõ nguyên nhân cuối) — `CT3D_REMAINING_WORK.md` mục 2a.
-3. Sync 2D → 3D: quyết định Implement hay Remove hẳn khỏi UI (Phase 09, P09.6).
+1. **Manual QA thao tác chuột thật** cho 7 mục: P08.5 (D9/C7), B4, C3, D4, D5, E2, E3 — checklist đầy đủ ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9.
+2. Checksum voxel mask lệch nhẹ sau Save/Open (đã loại trừ giả thuyết flush(), chưa rõ nguyên nhân cuối) — `CT3D_REMAINING_WORK.md` mục 2a (Phase 10).
 
 ## Medium-priority work
 
-- D4/D5/E2/E3/B4/C3: cần Manual QA bằng chuột thật (Phase 09).
-- F3: annotation vị trí mặc định khi chưa pick — cải thiện UX (Phase 09, P09.7).
 - Undo/Redo dùng snapshot toàn mảng thay vì diff/patch (đề cương gợi ý tối ưu) — Phase 10.
+- Đánh giá `"ca_smoothing"` như lựa chọn thay thế mượt hơn `"Binary"` cho D9/C7 (không bắt buộc).
 
 ## Research/evaluation remaining work
 
@@ -82,8 +80,7 @@
 
 ## Manual QA remaining
 
-- P08.5 (D9/C7, xem trên).
-- P09 checklist đầy đủ cho D4/D5/E2/E3/B4/C3 (sẽ viết chi tiết ở `CT3D_P09_INTERACTION_QA_REPORT.md`).
+- 7 mục: P08.5 (D9/C7 qua dialog mặc định), B4, C3, D4, D5, E2, E3 — checklist đầy đủ ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9.
 
 ## Out-of-scope items
 
@@ -96,3 +93,4 @@
 | Phase | Goal | Gate | Commit | Report |
 |---|---|---|---|---|
 | 08 | Đóng dứt điểm ROI → Surface 3D (D9/C7) | **PASS** | `40c2c38b` | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` |
+| 09 | Runtime Interaction QA & Bidirectional 2D-3D Sync | **PASS** | `d366a635` | `CT3D_P09_INTERACTION_QA_REPORT.md` |

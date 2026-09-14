@@ -38,7 +38,7 @@ Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở 
 | Điều khiển | Ý nghĩa | Khác gì so với InVesalius gốc |
 |---|---|---|
 | **Sync 3D → 2D** (checkbox, mặc định bật) | Khi pick 1 điểm 3D, 3 khung Axial/Sagittal/Coronal tự cuộn tới đúng lát cắt chứa điểm đó | InVesalius gốc không có cơ chế này |
-| **Sync 2D → 3D** (checkbox) | Chỉ lưu 1 cờ bật/tắt trong bộ nhớ — **chưa có bất kỳ code nào đọc lại cờ này**, tick vào không có tác dụng quan sát được nào cả (xác nhận qua chạy thật + grep code, không phải suy đoán) | **CHƯA TRIỂN KHAI (NOT_IMPLEMENTED)** |
+| **Sync 2D → 3D** (checkbox, mặc định bật) | Khi bạn click/kéo chuột trên khung 2D bất kỳ (Axial/Coronal/Sagittal — dùng đúng crosshair thật của InVesalius gốc), một quả cầu nhỏ màu vàng xuất hiện/di chuyển trong khung 3D (Volume) tới đúng vị trí tương ứng. Tắt checkbox thì quả cầu đứng yên, không cập nhật nữa | **Đã triển khai (Phase 09, 14/09/2026)** — trước đó chỉ lưu cờ, không có tác dụng |
 | **Pick Point in 3D** | Bấm 1 lần để "vũ trang" chế độ pick | Mới hoàn toàn |
 | Ô toạ độ (X/Y/Z, chỉ đọc) | Hiện toạ độ thật (mm) của điểm vừa click | Mới |
 | **Update delay (ms)** (slider) | Độ trễ khi đồng bộ liên tục | Mới |
@@ -117,7 +117,7 @@ Mọi mask tạo ra (từ Threshold, Region Growing, **hoặc từ tab Masks g�
 ## 5. Tab **Annotations** — ghi chú
 
 1. Gõ nội dung vào ô **Text**, chọn màu (bảng màu hoặc 5 nút màu nhanh).
-2. Bấm **Add at Current Position** → ghi chú được gắn vào **vị trí 3D vừa pick gần nhất** (ở tab Interaction hoặc lúc pick seed Region Growing) — nếu chưa pick điểm nào, vị trí mặc định là gốc toạ độ `(0,0,0)`, nên **pick 1 điểm trước** để ghi chú có toạ độ đúng.
+2. Bấm **Add at Current Position** → ghi chú được gắn vào vị trí thật gần nhất bạn đã tương tác: ưu tiên điểm pick 3D (tab Interaction hoặc lúc pick seed Region Growing), nếu chưa pick 3D lần nào thì dùng vị trí crosshair 2D gần nhất (click/kéo chuột trên khung 2D). **Nếu chưa có vị trí hợp lệ nào cả** (chưa từng pick 3D lẫn chưa từng tương tác 2D), plugin **từ chối tạo ghi chú** và hiện thông báo yêu cầu chọn vị trí trước — không còn tạo nhầm ghi chú tại gốc toạ độ `(0,0,0)` như trước (đã sửa ở Phase 09, 14/09/2026).
 3. Danh sách bên dưới hiện tất cả ghi chú. Chọn 1 dòng rồi dùng:
    - **Go to**: nhảy đúng slice 2D chứa ghi chú đó.
    - **Edit**: sửa nội dung text.

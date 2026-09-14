@@ -96,6 +96,33 @@
 
 **Loại**: bugfix logic thật trên code plugin (đề tài), không đụng file nào trong `invesalius/` (core gốc).
 
+## `d366a635` — Phase 09 (CT3D_P09_INTERACTION_QA): triển khai Sync 2D→3D thật, sửa F3, phát hiện + sửa bug `project_loaded`
+
+### Goal
+Đóng các mục có UI/code nhưng chưa chứng minh runtime (B4/C3/D4/D5/E2/E3/F3), triển khai thật Sync 2D→3D thay vì gỡ bỏ, regression cho C4/C5/C7/D9/D7/I2.
+
+### Added
+- `core/marker_3d.py` (`CrosshairMarker3D`) — actor VTK hình cầu nhỏ đại diện vị trí crosshair 2D trong khung 3D. Thuần VTK, không phụ thuộc wx/invesalius, cùng quy ước với `core/picker_3d.py`.
+- Sync 2D→3D triển khai đầy đủ: `main.py` subscribe topic thật `"Set cross focal point"` (InVesalius gốc gửi khi người dùng click/kéo trên khung 2D thật — xác nhận qua grep `invesalius/data/styles.py`, không phải cơ chế tự bịa), forward tới `roi_panel.py.ROIViewerFrame.on_cross_focal_point_changed()`, cập nhật marker theo đúng cờ `sync_mgr.sync_2d_3d` mà checkbox đã có từ trước (trước đây không ai đọc cờ này).
+
+### Changed
+- `annotation_panel.py._on_add_annotation()`: không còn fallback `(0,0,0)` khi chưa có vị trí — dùng `roi_panel.py.get_current_reference_position()` (ưu tiên pick 3D, sau đó crosshair 2D thật, cuối cùng từ chối + cảnh báo). Tính `voxel_position` thật qua `sync_mgr.world_to_voxel()` thay vì hardcode `(0,0,0)`.
+
+### Fixed
+- **Bug thật MỚI phát hiện qua test Phase 09** (không phải tính năng Phase 09, một lỗ hổng có từ trước bị phơi bày): `ROIViewerFrame.project_loaded` không đồng bộ ngược từ state thật khi plugin mở SAU khi project đã load — chỉ set `True` phản ứng sự kiện tương lai, giống lớp bug đã sửa cho ROI List ở vòng 2 nhưng bị bỏ sót cho cờ này. Ảnh hưởng thật: `on_slice_change()`, `on_mask_update()`, và Sync 2D→3D mới đều bị vô hiệu hoá âm thầm trong đúng kịch bản phổ biến nhất (import DICOM trước, mở plugin sau — workflow đã test hàng chục lần trong suốt dự án). Sửa bằng cách khởi tạo `project_loaded` từ `ProjectInterface().is_project_loaded()` thật ngay trong `__init__`.
+
+### Tests
+Verify runtime thật (không giả lập chuột — `"Set cross focal point"` là đúng topic InVesalius gốc gửi khi thao tác 2D thật): 28/28 check PASS — Sync 2D→3D (SYNC-T1 đến T6, 8 check: checkbox OFF không đổi vị trí, checkbox ON marker khớp tuyệt đối với world coordinate thật, không tăng actor count qua nhiều lần cập nhật, không gây event recursion — đếm được đúng 1 lần gọi/1 message, pick 3D vẫn hoạt động, đóng/mở lại không rò rỉ actor), F3 (F3-T1 đến T3, 5 check: từ chối đúng khi không có vị trí + cảnh báo hiện ra, toạ độ khớp tuyệt đối với pick, Go to không lỗi), regression C4/C5/D7/C7-D9(light)/I2 (15 check, không thoái lui). 0 crash report mới.
+
+### Documentation
+`docs/CT3D_P09_INTERACTION_QA_REPORT.md` (mới, đầy đủ template), cập nhật `CT3D_MASTER_PROGRESS.md`/`CT3D_FEATURE_AUDIT.md`/`CT3D_REMAINING_WORK.md`.
+
+### Known Issues
+B4/C3/D4/D5/E2/E3 và P08.5 (D9/C7 qua dialog mặc định) — 7 mục cần thao tác chuột thật, môi trường tự động hoá không thực hiện được. Checklist đầy đủ (kèm công thức đối chiếu sai số cho E2/E3) ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9 — không đánh dấu WORKING cho các mục này.
+
+### Phase Gate
+`PHASE_GATE: PASS`
+
 ---
 
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc
