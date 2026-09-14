@@ -12,6 +12,23 @@ except ImportError:
         return s
 
 
+def _is_nrrd_available() -> bool:
+    """
+    Phase 12 (CT3D_P12_QUANTITATIVE_VALIDATION - NRRD packaging/dependency
+    audit): `pynrrd` is an optional dependency (see pyproject.toml's
+    `[project.optional-dependencies]` "nrrd" extra) - core/exporters.py's
+    export_mask_nrrd() already fails soft (returns False, never raises)
+    when it's missing, but the UI used to always advertise "NRRD (.nrrd)"
+    as a plain, seemingly-always-available choice, only revealing the
+    real problem in a generic error message AFTER the user picked a
+    filename. Checked once here so the dropdown/tooltip can tell the
+    user up front instead.
+    """
+    import importlib.util
+
+    return importlib.util.find_spec("nrrd") is not None
+
+
 class ExportPanel(wx.Panel):
     """
     Panel for export tools.
@@ -49,11 +66,13 @@ class ExportPanel(wx.Panel):
         format_row = wx.BoxSizer(wx.HORIZONTAL)
         format_row.Add(wx.StaticText(self, wx.ID_ANY, _("Format:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         
+        self._nrrd_available = _is_nrrd_available()
+        nrrd_label = "NRRD (.nrrd)" if self._nrrd_available else _("NRRD (.nrrd) - library not installed")
         self.choice_mask_format = wx.Choice(
             self, wx.ID_ANY,
             choices=[
                 "NIfTI (.nii.gz)",
-                "NRRD (.nrrd)",
+                nrrd_label,
                 "NumPy (.npy)"
                 # NOTE: "MetaImage (.mhd)" was removed here - it had no
                 # real writer anywhere (core/exporters.py has
@@ -66,6 +85,13 @@ class ExportPanel(wx.Panel):
             ]
         )
         self.choice_mask_format.SetSelection(0)
+        if not self._nrrd_available:
+            self.choice_mask_format.SetToolTip(
+                _("The NRRD option requires the optional 'pynrrd' package "
+                  "(pip install pynrrd, or install this project's 'nrrd' extra). "
+                  "It is not installed in this environment - selecting NRRD and "
+                  "exporting will fail with a clear message rather than crash.")
+            )
         format_row.Add(self.choice_mask_format, 1, wx.ALL, 3)
         
         mask_sizer.Add(format_row, 0, wx.EXPAND, 5)
@@ -233,6 +259,17 @@ class ExportPanel(wx.Panel):
         selection = self.choice_mask_format.GetSelection()
         if selection == 0:
             self._export_mask_to_file()
+            return
+
+        if selection == 1 and not self._nrrd_available:
+            # Fail fast (Phase 12 NRRD audit) - tell the user before they
+            # pick a filename, not after, via a generic post-hoc message.
+            wx.MessageBox(
+                _("NRRD export requires the optional 'pynrrd' package, which "
+                  "is not installed in this environment.\n\nInstall it with: "
+                  "pip install pynrrd\n(or install this project's 'nrrd' extra)."),
+                _("NRRD library not installed"), wx.OK | wx.ICON_WARNING,
+            )
             return
 
         try:

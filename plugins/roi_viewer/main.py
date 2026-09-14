@@ -157,35 +157,30 @@ def _on_project_load(create_default_mask=True, end_busy_cursor=True):
     the whole plugin the instant `load()` ran, before any of the other
     subscriptions below were even registered.
     """
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_project_load()
 
 
 def _on_project_close():
     """Handle project close event."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_project_close()
 
 
 def _on_slice_change(plane, index):
     """Handle slice position change."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_slice_change(plane, index)
 
 
 def _on_mask_update():
     """Handle mask update event."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_mask_update()
 
 
 def _on_mask_created(mask_name, thresh, colour):
     """Handle mask created event."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_mask_created(mask_name, thresh, colour)
         _roi_viewer_window.on_roi_source_changed()
@@ -193,28 +188,24 @@ def _on_mask_created(mask_name, thresh, colour):
 
 def _on_mask_selected(index):
     """Handle mask selected event."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_mask_selected(index)
 
 
 def _on_mask_name_changed(index, name):
     """A mask was renamed (through this plugin or InVesalius's native Masks tab)."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_roi_source_changed()
 
 
 def _on_mask_visibility_changed(index, value):
     """A mask's visibility was toggled (through this plugin or the native Masks tab)."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_roi_source_changed()
 
 
 def _on_masks_removed(mask_indexes):
     """One or more masks were removed (through this plugin or the native Masks tab)."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_roi_source_changed()
 
@@ -227,7 +218,6 @@ def _on_cross_focal_point(position):
     at least 3 real world-space (mm) coordinates; only x/y/z matter
     here (some senders pad it to 6 elements).
     """
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_cross_focal_point_changed(position[:3])
 

@@ -84,6 +84,8 @@ No `gui`- or `dataset`-marked tests exist yet in this suite (nothing in it neede
 
 ## 8. Unit Tests Added
 
+> **Phase 12 baseline reconciliation**: a fresh count found **76** unit tests at the time Phase 12 began (not 75) - the dead-code regression guard test (`test_mask_editor_surviving_surface_after_dead_code_removal`) was added to `test_undo_redo.py` after this section's "75" figure was originally written, and this note was never added at the time. The underlying claim ("N unit tests, all real, zero DICOM/GUI/VTK-renderer/dataset dependency") was correct in kind, just stale by one test. See `docs/CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md` Section 3 for the full reconciliation and the count as of Phase 12.
+
 75 unit tests, zero DICOM/GUI/VTK-renderer/dataset dependency, run in ~0.14s:
 - `test_segmentation.py`: RG-U1..U8 (region growing: single component, disjoint same-intensity regions, tolerance 0, negative tolerance raises, out-of-bounds seed, NaN/Inf seed, boundary seed, 6-connectivity diagonal-vs-face-adjacent) + Otsu/threshold/region-stats tests.
 - `test_measurement.py`: M-U1 (3-4-5 triangle), M-U2 (uneven-spacing distance, independent reference calc), M-U3 (uneven-spacing volume), **M-U4 (direct regression test for the real E4 padding/sentinel bug fixed in Round 3)** + area/delete/clear tests.

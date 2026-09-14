@@ -193,6 +193,49 @@ Xem mục "Changed" ở trên — worst case Undo/Redo thật đúng ở `max_hi
 ### Phase Gate
 `PHASE_GATE: PASS`
 
+## `<Phase 12 commit>` — Phase 12 (CT3D_P12_QUANTITATIVE_VALIDATION): chốt kỹ thuật + hạ tầng đánh giá định lượng
+
+### Goal
+Chốt các vấn đề kỹ thuật nhỏ còn sót sau Phase 11 (`MaskEditorManager` dead code, NRRD packaging), xây hạ tầng Dice/Jaccard/Hausdorff thật có unit test toán học + phantom biết trước, lập dataset registry thật, xác nhận đa vendor/multi-series trong giới hạn dữ liệu local, thử lại Region Growing full-volume có kiểm soát RAM, tạo manual-QA checklist chính thức. Không thêm tính năng UI mới, không bịa dataset/vendor/ground-truth/thao tác GUI.
+
+### Added
+- `plugins/roi_viewer/core/evaluation.py` (mới): `dice_coefficient()`, `jaccard_index()`, `hausdorff_distance()`, `hausdorff_distance_95()` — thuần numpy/scipy, quy ước trục/spacing tường minh (`spacing_zyx`, không mặc định `(x,y,z)`), dùng `scipy.ndimage.distance_transform_edt(sampling=...)` cho Hausdorff đúng đơn vị vật lý kể cả spacing anisotropic.
+- `tests/ct3d/test_evaluation_metrics.py` (30 test), `tests/ct3d/test_phantom_validation.py` (12 test — Phantom A cuboid chính xác, Phantom B dịch chuyển biết trước, sphere xấp xỉ có ghi rõ sai số discretization), `tests/ct3d/test_dicom_grouping.py` (4 test — logic grouping DICOM đa-series, dùng object giả, không thay bằng chứng runtime thật).
+- `docs/CT3D_DATASET_REGISTRY.md` (mới) — quét thật 3 dataset local bằng đúng DICOM stack InVesalius (`dicom_reader.GetDicomGroups()` → gdcm), không ghi PHI.
+- `docs/CT3D_MANUAL_QA_CHECKLIST.md` (mới) — 7 mục, Preconditions/Exact Steps/Expected Result/công thức sai số cho E2/E3, tất cả `NOT_RUN`.
+- `docs/CT3D_P12_QUANTITATIVE_RESULTS.csv` (mới) — bảng kết quả định lượng đầy đủ Test_ID/Expected/Actual/Error.
+- `[project.optional-dependencies]` extra `nrrd = ["pynrrd>=1.0.0"]` trong `pyproject.toml`.
+
+### Changed
+- `plugins/roi_viewer/gui/export_panel.py`: dropdown "Format:" tự phát hiện `pynrrd` có cài hay không (`_is_nrrd_available()`) — nếu thiếu, hiện rõ "NRRD (.nrrd) - library not installed" + tooltip, và bấm Export báo lỗi rõ ràng NGAY (trước khi chọn file) thay vì chỉ báo sau khi export thất bại.
+
+### Fixed / Cleanup (dead code, đã chứng minh 0 call-site trước khi xoá)
+`plugins/roi_viewer/core/mask_editor.py.MaskEditorManager`: `get_current_editor()`/`set_current_mask()`/`delete_editor()` xác nhận `CONFIRMED_DEAD_CODE` (grep toàn repo — direct call/getattr/callback/pubsub/GUI binding/subclass/test/doc — 0 kết quả thật) — đã xoá (17 dòng xoá/11 dòng thêm, net -6). `self.current_index` (ghi bởi `create_editor()`, method còn sống) giữ nguyên dù giờ không còn ai đọc — không sửa hành vi của method đang sống chỉ vì dọn dead code. `plugins/roi_viewer/main.py`: 10 chỗ `global _roi_viewer_window` dư thừa (chỉ đọc, không gán trong scope đó — xác nhận qua `pyflakes`) đã xoá — `pyflakes` giờ sạch tuyệt đối cho toàn bộ `plugins/roi_viewer/`.
+
+### Dataset Validation
+Quét thật 3 dataset local (`0051`/`0801`/`mri3`) bằng `invesalius.reader.dicom_reader.GetDicomGroups()` (đúng DICOM stack InVesalius, không phải suy đoán từ tên file): `0051`=CT/SIEMENS, `0801`=CT/Philips (phát hiện MỚI — trước đây chưa từng đọc tag dataset này), `mri3`=MR/Philips Medical Systems (phát hiện MỚI). Import thật end-to-end (không chỉ đọc tag) PASS cả 3 — mỗi dataset 1 tiến trình riêng (phát hiện thật: reset singleton `Project.instance=None` giữa 2 lần import trong CÙNG tiến trình không tương đương `CloseProject()` thật, gây `KeyError` thật ở lần import thứ 2 — giới hạn phương pháp test, không phải bug InVesalius). A2 nâng NEEDS_RUNTIME_TEST → **PARTIAL** (2 vendor thật, chưa đủ WORKING — còn thiếu GE/Canon). A4: cả 3 dataset chỉ 1 series/study — `BLOCKED_EXTERNAL_DATA`, giữ NEEDS_RUNTIME_TEST.
+
+### Quantitative Metrics
+Dice/Jaccard: edge case empty/empty=1.0, empty/non-empty=0.0 (document rõ, không rơi ngẫu nhiên từ công thức); quan hệ Dice=2J/(1+J) verify đúng ở 3 mức overlap. Hausdorff: dùng `spacing_zyx` tường minh, verify đúng với spacing anisotropic (dịch 1 voxel theo trục spacing 3mm → Hausdorff=3mm chính xác, KHÔNG PHẢI 1 nếu tính sai theo voxel-index thuần); empty/empty=0.0, một mask rỗng → raise `ValueError` rõ ràng (không trả `inf`/`nan` ngầm). HD95 verify là metric KHÁC HD max (luôn ≤ HD max, khác nhau rõ khi có outlier). Phantom A (cuboid chính xác, không dùng sphere cho test volume exact) verify volume khớp tuyệt đối công thức tay. Phantom B (cuboid dịch chuyển biết trước) verify Dice/Jaccard/Hausdorff khớp tuyệt đối công thức tay ở 3 mức dịch chuyển.
+
+### Tests
+`tests/ct3d`: **158 passed → 159 sau khi thêm test_dicom_grouping.py và các test NRRD/MaskEditorManager mới**, xem báo cáo mục 19 cho số liệu chính xác cuối cùng sau 3 lần chạy liên tiếp. `tests/` gốc (upstream): 94 passed, không đổi.
+
+### Performance
+Region Growing full-volume CT thật (0051, 28.311.552 voxel): runtime 0.30s, RSS +28.5MB — đóng dứt điểm nghi vấn "treo do giới hạn thuật toán" từ vòng 3 (xác nhận là do RAM máy lúc đó thấp, machine-state-dependent).
+
+### Documentation
+`docs/CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md` (mới, 30 mục). Cập nhật `CT3D_MASTER_PROGRESS.md` (baseline Phase 12, A2/A4/D10/Sync rows, xoá mục "bộ pytest độc lập" stale), `CT3D_FEATURE_AUDIT.md` (header 14/09/2026, thêm `NEEDS_MANUAL_QA`/`BLOCKED_EXTERNAL_DATA` vào status vocabulary, A2/A4/D10 rows), `CT3D_REMAINING_WORK.md` (đóng mục 1b/9, cập nhật bảng tổng kết), `HUONG_DAN_SU_DUNG_ROI_VIEWER.md` (NRRD UI behavior, header Phase 12).
+
+### Known Issues
+7 mục manual-QA (P08.5, B4, C3, D4, D5, E2, E3) **giữ nguyên `NEEDS_MANUAL_QA`/`NOT_RUN`**, không tự nâng cấp — checklist chính thức ở `CT3D_MANUAL_QA_CHECKLIST.md`. GE/Canon và ground-truth THẬT cho Dice/Jaccard/Hausdorff vẫn `BLOCKED_EXTERNAL_DATA`.
+
+### Release Readiness
+`AUTOMATED_TECHNICAL_READY`: xem báo cáo mục 25. `MANUAL_QA_COMPLETE`: NO. `EXTERNAL_VALIDATION_COMPLETE`: NO. `RELEASE_CANDIDATE_READY`: xem báo cáo mục 25.
+
+### Phase Gate
+`PHASE_GATE: PASS`
+
 ---
 
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc

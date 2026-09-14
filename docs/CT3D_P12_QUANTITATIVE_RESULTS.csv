@@ -1,0 +1,35 @@
+Test_ID,Data_Type,Metric,Expected,Actual,Absolute_Error,Relative_Error_Percent,Unit,Result,Notes
+DICE-T1,SYNTHETIC_GROUND_TRUTH,Dice,1.0,1.0,0.0,0.0,ratio,PASS,Identical non-empty masks
+DICE-T2,SYNTHETIC_GROUND_TRUTH,Dice,0.0,0.0,0.0,0.0,ratio,PASS,No overlap
+DICE-T3,SYNTHETIC_GROUND_TRUTH,Dice,0.5,0.5,0.0,0.0,ratio,PASS,"|A|=10 |B|=10 intersection=5 voxels along one axis"
+DICE-T4,SYNTHETIC_GROUND_TRUTH,Dice,1.0,1.0,0.0,0.0,ratio,PASS,Empty/empty
+DICE-T5,SYNTHETIC_GROUND_TRUTH,Dice,0.0,0.0,0.0,0.0,ratio,PASS,Empty/non-empty
+JACCARD-T1,SYNTHETIC_GROUND_TRUTH,Jaccard,1.0,1.0,0.0,0.0,ratio,PASS,Identical non-empty masks
+JACCARD-T2,SYNTHETIC_GROUND_TRUTH,Jaccard,0.0,0.0,0.0,0.0,ratio,PASS,No overlap
+JACCARD-T3,SYNTHETIC_GROUND_TRUTH,Jaccard,0.3333333333,0.3333333333,0.0,0.0,ratio,PASS,"|A|=10 |B|=10 intersection=5 union=15 voxels"
+JACCARD-T4,SYNTHETIC_GROUND_TRUTH,Jaccard,1.0,1.0,0.0,0.0,ratio,PASS,Empty/empty
+JACCARD-T5,SYNTHETIC_GROUND_TRUTH,Jaccard,0.0,0.0,0.0,0.0,ratio,PASS,Empty/non-empty
+DICE_JACCARD_RELATION,SYNTHETIC_GROUND_TRUTH,Dice=2J/(1+J),varies,varies,<1e-9,<1e-9,ratio,PASS,"Checked at overlap fractions 0.2/0.5/0.8"
+HD-T1,SYNTHETIC_GROUND_TRUTH,Hausdorff,0.0,0.0,0.0,0.0,mm,PASS,Identical masks
+HD-T2,SYNTHETIC_GROUND_TRUTH,Hausdorff,1.0,1.0,0.0,0.0,mm,PASS,"1-voxel shift isotropic spacing (1,1,1)mm"
+HD-T3,SYNTHETIC_GROUND_TRUTH,Hausdorff,3.0,3.0,0.0,0.0,mm,PASS,"1-voxel shift along axial axis, spacing_zyx=(3,1,1)mm - proves anisotropic spacing honored"
+HD-T3b,SYNTHETIC_GROUND_TRUTH,Hausdorff,1.0,1.0,0.0,0.0,mm,PASS,"1-voxel shift along coronal axis (spacing 1mm), same spacing_zyx=(3,1,1)mm tuple - axis-specific correctness"
+HD-T4,SYNTHETIC_GROUND_TRUTH,Hausdorff,0.0,0.0,0.0,0.0,mm,PASS,Empty/empty
+HD-T5,SYNTHETIC_GROUND_TRUTH,Hausdorff,ValueError,ValueError,N/A,N/A,mm,PASS,"One mask empty - raises by design (documented, not inf/nan)"
+HD95-SANITY,SYNTHETIC_GROUND_TRUTH,HD95<=HDmax,True,True,N/A,N/A,mm,PASS,Random masks - sanity relationship
+PHANTOM_A_VOLUME,SYNTHETIC_GROUND_TRUTH,Volume,9000.0,9000.0,0.0,0.0,mm3,PASS,"Exact rectangular cuboid 20x15x10 voxels spacing (2.0,1.5,1.0)mm"
+PHANTOM_A_PARTIAL_VOLUME,SYNTHETIC_GROUND_TRUTH,Volume,864.0,864.0,0.0,0.0,mm3,PASS,"Sub-cuboid 10x6x6 voxels spacing (0.8,1.2,2.5)mm"
+PHANTOM_B_DICE_shift2,SYNTHETIC_GROUND_TRUTH,Dice,0.9,0.9,0.0,0.0,ratio,PASS,Cuboid shifted 2/20 voxels axially
+PHANTOM_B_DICE_shift5,SYNTHETIC_GROUND_TRUTH,Dice,0.75,0.75,0.0,0.0,ratio,PASS,Cuboid shifted 5/20 voxels axially
+PHANTOM_B_DICE_shift8,SYNTHETIC_GROUND_TRUTH,Dice,0.6,0.6,0.0,0.0,ratio,PASS,Cuboid shifted 8/20 voxels axially
+PHANTOM_B_HAUSDORFF_shift2,SYNTHETIC_GROUND_TRUTH,Hausdorff,3.4,3.4,0.0,0.0,mm,PASS,"shift=2 voxels x spacing_zyx[0]=1.7mm"
+PHANTOM_B_HAUSDORFF_shift5,SYNTHETIC_GROUND_TRUTH,Hausdorff,8.5,8.5,0.0,0.0,mm,PASS,"shift=5 voxels x spacing_zyx[0]=1.7mm"
+PHANTOM_B_HAUSDORFF_shift8,SYNTHETIC_GROUND_TRUTH,Hausdorff,13.6,13.6,0.0,0.0,mm,PASS,"shift=8 voxels x spacing_zyx[0]=1.7mm"
+SPHERE_VOLUME_APPROX,SYNTHETIC_GROUND_TRUTH,Volume,14137.17,varies,<700,<5.0,mm3,PASS,"Voxelized sphere r=15 - approximate by design (discretization error), bounded <5% not exact"
+DIST-M-U1,SYNTHETIC_GROUND_TRUTH,Distance,5.0,5.0,0.0,0.0,mm,PASS,"3-4-5 triangle (0,0,0)-(3,4,0) isotropic spacing"
+DIST-M-U2,SYNTHETIC_GROUND_TRUTH,Distance,6.3245553203,6.3245553203,0.0,0.0,mm,PASS,"(3,4,0) with spacing (2.0,0.5,1.0) - dx=6 dy=2 -> sqrt(40)"
+AREA-M-U-unitsquare,SYNTHETIC_GROUND_TRUTH,Area,1.0,1.0,0.0,0.0,mm2,PASS,Unit square spacing 1.0mm
+AREA-M-U-scaled,SYNTHETIC_GROUND_TRUTH,Area,6.0,6.0,0.0,0.0,mm2,PASS,Unit square spacing (2.0,3.0)mm
+VOLUME-M-U3,SYNTHETIC_GROUND_TRUTH,Volume,500.0,500.0,0.0,0.0,mm3,PASS,"10x10x10 foreground block spacing (0.5,0.5,2.0)mm - see tests/ct3d/test_measurement.py M-U3"
+VOLUME-PADDING-M-U4,SYNTHETIC_GROUND_TRUTH,Volume,0.0,0.0,0.0,0.0,mm3,PASS,"Payload-only (matrix[1:,1:,1:], correct/current code) = 0.0; full-padded-matrix (matrix incl. sentinel column, WRONG/pre-fix behavior) = 10.0 - the two-value comparison IS the regression check for the Round-3 E4 bug, see tests/ct3d/test_measurement.py M-U4"
+REGIONGROWING_FULLVOLUME_0051,REAL_DATASET,VoxelCount,N/A,6843727,N/A,N/A,voxels,PASS,"Real 0051 CT (28,311,552 voxels), seed=volume center, tolerance=100HU, runtime=0.30s, RSS_delta=28.5MB - see Section 17"

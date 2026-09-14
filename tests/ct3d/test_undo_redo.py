@@ -22,7 +22,7 @@ import random
 import numpy as np
 import pytest
 
-from plugins.roi_viewer.core.mask_editor import MaskEditor, UndoRedoManager
+from plugins.roi_viewer.core.mask_editor import MaskEditor, MaskEditorManager, UndoRedoManager
 
 
 pytestmark = pytest.mark.unit
@@ -49,6 +49,31 @@ def test_mask_editor_surviving_surface_after_dead_code_removal():
         "set_brush_size", "set_brush_shape", "_get_brush_mask",
     ):
         assert not hasattr(editor, dead_name), f"dead method {dead_name!r} should have been removed"
+
+
+def test_mask_editor_manager_surviving_surface_after_phase12_dead_code_removal():
+    """
+    Regression guard for the Phase 12 dead-code removal (MaskEditorManager
+    audit): get_current_editor()/set_current_mask()/delete_editor() are
+    confirmed 0-call-site (whole-repository grep, same rigor as Phase 11's
+    MaskEditor audit) and removed. MaskEditorManager must still expose
+    exactly what the real GUI (segmentation_panel.py) uses -
+    create_editor/get_editor/clear_all.
+    """
+    mgr = MaskEditorManager()
+    assert hasattr(mgr, "editors")
+    assert hasattr(mgr, "current_index")
+    assert hasattr(mgr, "create_editor")
+    assert hasattr(mgr, "get_editor")
+    assert hasattr(mgr, "clear_all")
+    for dead_name in ("get_current_editor", "set_current_mask", "delete_editor"):
+        assert not hasattr(mgr, dead_name), f"dead method {dead_name!r} should have been removed"
+
+    # create_editor()/get_editor()/clear_all() still work exactly as before
+    editor = mgr.create_editor(0, (4, 4, 4))
+    assert mgr.get_editor(0) is editor
+    mgr.clear_all()
+    assert mgr.get_editor(0) is None
 
 
 def _tagged_array(shape, value):

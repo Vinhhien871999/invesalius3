@@ -1,6 +1,6 @@
 # Hướng dẫn sử dụng Plugin ROI Viewer
 
-> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau Phase 11 (CT3D_P11_TEST_AUTOMATION, 14/09/2026). Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
+> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau Phase 12 (CT3D_P12_QUANTITATIVE_VALIDATION, 14/09/2026). Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
 
 ---
 
@@ -135,7 +135,7 @@ Mọi mask tạo ra (từ Threshold, Region Growing, **hoặc từ tab Masks g�
 |---|---|---|
 | **Export Mask** — chọn **NIfTI**: mở đúng dialog "Export Mask as NIfTI" **gốc** của InVesalius, tự động điền sẵn đúng mask đang chọn | File `.nii.gz` thật, đọc lại được bằng bất kỳ phần mềm NIfTI nào | InVesalius gốc yêu cầu tự vào menu và tự chọn mask trong danh sách; ở đây tự lấy đúng mask hiện hành |
 | **Export Mask** — chọn **NumPy**: dùng dialog lưu file riêng của plugin | File `.npy` thật, đọc lại bằng `numpy.load()` | Mới — InVesalius gốc không xuất được NumPy |
-| **Export Mask** — chọn **NRRD**: dùng dialog lưu file riêng của plugin | ⚠️ Máy chưa cài thư viện `pynrrd` → hiện thông báo lỗi rõ ràng, **chưa xuất được file thật** trên máy demo hiện tại. Cài `pip install pynrrd` để dùng được | Cơ chế đã nối đúng (`core/exporters.py`), chỉ thiếu thư viện |
+| **Export Mask** — chọn **NRRD**: dùng dialog lưu file riêng của plugin | Thư viện `pynrrd` là dependency **optional** (`pip install pynrrd`, hoặc cài extra chính thức `pip install invesalius[nrrd]`). **Từ Phase 12**: nếu chưa cài, dropdown "Format:" tự hiện rõ "NRRD (.nrrd) - library not installed" + tooltip giải thích, và bấm Export sẽ báo ngay (trước khi chọn tên file) thay vì để người dùng chọn xong mới báo lỗi | Cơ chế đã nối đúng (`core/exporters.py`); UI giờ không còn ngụ ý NRRD chắc chắn chạy khi thiếu thư viện |
 | **Export Surface** (STL Binary/ASCII, PLY, OBJ, VTK PolyData) | Xuất file surface 3D thật (đã tạo ở mục 3.1/3.2, hoặc dựng lại ở 3.3) | STL/PLY/OBJ dùng đúng pipeline VTK gốc; **VTK PolyData** là định dạng thêm ngoài 3 định dạng gốc InVesalius hỗ trợ |
 | **Export Current View** (PNG/JPG/TIFF/BMP, có Scale phóng to) | Xuất ảnh lát cắt 2D hiện tại, **đã áp dụng đúng Window/Level đang xem** | Mới — InVesalius gốc không có nút xuất nhanh 1 lát cắt ra ảnh |
 | **Save / Save As...** | Lưu project `.inv3` — gọi đúng dialog lưu gốc của InVesalius, **và tự động lưu kèm toàn bộ Annotation** (file `.roi_annotations.json` cùng thư mục, cùng tên với `.inv3`) | Giống hệt InVesalius gốc cho phần mask/surface (đã có sẵn), **cộng thêm** annotation được lưu tự động (InVesalius gốc không lưu annotation vì đây là tính năng riêng của plugin) |

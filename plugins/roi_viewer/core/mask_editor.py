@@ -127,23 +127,19 @@ class MaskEditorManager:
     def get_editor(self, mask_index: int) -> Optional[MaskEditor]:
         """Get editor for a specific mask."""
         return self.editors.get(mask_index)
-        
-    def get_current_editor(self) -> Optional[MaskEditor]:
-        """Get the current mask editor."""
-        return self.editors.get(self.current_index)
-        
-    def set_current_mask(self, mask_index: int):
-        """Set the current active mask."""
-        if mask_index in self.editors:
-            self.current_index = mask_index
-            
-    def delete_editor(self, mask_index: int):
-        """Delete a mask editor."""
-        if mask_index in self.editors:
-            del self.editors[mask_index]
-            if self.current_index == mask_index:
-                self.current_index = next(iter(self.editors.keys()), 0)
-                
+
+    # NOTE (Phase 12, CT3D_P12_QUANTITATIVE_VALIDATION - MaskEditorManager
+    # audit): get_current_editor()/set_current_mask()/delete_editor() were
+    # removed here after confirming CONFIRMED_DEAD_CODE the same way
+    # Phase 11 did for MaskEditor's own dead methods - a whole-repository
+    # grep (direct calls, getattr/dynamic dispatch, callbacks, pubsub, GUI
+    # event bindings, subclassing, test/doc references) found zero real
+    # call-sites for any of the three. `self.current_index` (set by
+    # create_editor(), which IS real/used) is left as-is rather than also
+    # removed - create_editor() is a live method and this phase's change
+    # is scoped to removing confirmed-dead methods, not altering the
+    # behavior of a live one; current_index simply goes unread now.
+
     def clear_all(self):
         """Clear all editors."""
         self.editors.clear()

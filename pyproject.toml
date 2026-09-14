@@ -72,6 +72,17 @@ inv = 'invesalius.app:main'
 installer = [
     "pyinstaller>=6.12.0",
 ]
+# CT3D thesis project (Phase 12, CT3D_P12_QUANTITATIVE_VALIDATION): the
+# ROI Viewer plugin's "Export Mask -> NRRD" option (plugins/roi_viewer/
+# core/exporters.py.export_mask_nrrd()) is optional - the plugin already
+# fails soft (no crash) when this isn't installed, and the export UI
+# (plugins/roi_viewer/gui/export_panel.py) detects it and tells the user
+# clearly rather than implying NRRD is guaranteed to work. Install with
+# `pip install invesalius[nrrd]` (or `uv sync --extra nrrd`) for real
+# NRRD export.
+nrrd = [
+    "pynrrd>=1.0.0",
+]
 
 [tool.uv.sources]
 torch = [

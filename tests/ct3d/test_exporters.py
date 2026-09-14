@@ -136,3 +136,51 @@ def test_get_supported_formats_lists_expected_extensions(mgr):
     assert ".npy" in formats["mask"]
     assert ".stl" in formats["surface"]
     assert ".png" in formats["image"]
+
+
+# ---------------------------------------------------------------------
+# NRRD dependency/UI clarity (Phase 12, CT3D_P12_QUANTITATIVE_VALIDATION
+# Section VI): the "Export Mask -> NRRD" option must never imply NRRD is
+# guaranteed to work when `pynrrd` isn't installed - the dropdown label/
+# tooltip must say so, and clicking Export must fail fast with a clear
+# message rather than only after the user has already picked a filename.
+# ---------------------------------------------------------------------
+
+def test_is_nrrd_available_matches_real_import_state():
+    from plugins.roi_viewer.gui.export_panel import _is_nrrd_available
+
+    try:
+        import nrrd  # noqa: F401
+
+        really_available = True
+    except ImportError:
+        really_available = False
+    assert _is_nrrd_available() is really_available
+
+
+def test_export_panel_nrrd_dropdown_reflects_availability(wx_app):
+    """
+    Real ExportPanel construction (no controller behavior needed for
+    _init_ui - only the dropdown/tooltip logic runs at construction
+    time), against a real wx.Frame parent under the session's real
+    wx.App. Does not assume pynrrd's presence/absence - asserts whichever
+    state is real in this environment is reflected correctly.
+    """
+    import wx
+
+    from plugins.roi_viewer.gui.export_panel import ExportPanel, _is_nrrd_available
+
+    frame = wx.Frame(None)
+    try:
+        panel = ExportPanel(frame, controller=object())
+        label = panel.choice_mask_format.GetString(1)  # index 1 = NRRD, per the dropdown's fixed order
+        assert "NRRD" in label
+        if _is_nrrd_available():
+            assert "not installed" not in label
+            assert panel._nrrd_available is True
+        else:
+            assert "not installed" in label
+            assert panel._nrrd_available is False
+            assert panel.choice_mask_format.GetToolTipText()  # non-empty tooltip explaining why
+    finally:
+        frame.Destroy()
