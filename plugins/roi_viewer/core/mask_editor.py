@@ -14,7 +14,18 @@ class UndoRedoManager:
     Manages undo/redo operations for mask editing.
     """
     
-    def __init__(self, max_history: int = 20):
+    def __init__(self, max_history: int = 10):
+        # Phase 10 (CT3D_P10_DATA_INTEGRITY): each checkpoint is a full
+        # copy.deepcopy() of the real mask.matrix (see save_state() below) -
+        # for a single real CT series (measured: sample 0051, 108x512x512,
+        # padded to 109x513x513) that is ~27.4 MB per checkpoint. With both
+        # undo_stack and redo_stack at maxlen=20 (the old default), a real
+        # editing session could hold up to (20+20)*27.4MB =~ 1.07 GB just
+        # for undo/redo history. Benchmark: docs/CT3D_P10_DATA_INTEGRITY_REPORT.md
+        # section "Undo/Redo Memory Benchmark". Lowering the default to 10
+        # halves that worst case (~547 MB) with zero change to undo/redo
+        # correctness or semantics - checkpoints beyond the limit are still
+        # evicted the same way (deque(maxlen=...) FIFO eviction, unchanged).
         self.undo_stack: Deque[np.ndarray] = deque(maxlen=max_history)
         self.redo_stack: Deque[np.ndarray] = deque(maxlen=max_history)
         self.max_history = max_history
