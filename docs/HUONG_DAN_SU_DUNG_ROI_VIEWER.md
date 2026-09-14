@@ -1,6 +1,6 @@
 # Hướng dẫn sử dụng Plugin ROI Viewer
 
-> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau vòng audit thứ 2 (08/09/2026). Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
+> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau Phase 10 (CT3D_P10_DATA_INTEGRITY, 14/09/2026). Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
 
 ---
 
@@ -149,9 +149,9 @@ Mọi mask tạo ra (từ Threshold, Region Growing, **hoặc từ tab Masks g�
 **Còn thật sự chưa hoàn thiện**:
 1. **Brush vẽ tay & đo lường 2D**: việc rê chuột vẽ/đo vẫn phải làm trực tiếp trên khung 2D — plugin chỉ bật/tắt và cấu hình đúng công cụ gốc, không tự động thao tác hộ (đúng bản chất, không phải lỗi).
 2. **Update 3D Surface**: với mask rất lớn (gần hết thể tích ảnh), việc dựng lại 3D có thể mất khá lâu — nên dùng cho mask kích thước vừa phải (ROI thật sự "quan tâm", không phải toàn bộ ảnh). **Trên máy ít RAM khả dụng (dưới ~5GB trống), bước này có thể mất rất lâu hoặc không hoàn tất** — đóng bớt các ứng dụng khác trước khi dùng chức năng này nếu gặp tình trạng "treo".
-3. Annotation lấy vị trí 3D từ điểm pick **gần nhất** — cần pick trước ở tab Interaction để có toạ độ chính xác, nếu không sẽ là `(0, 0, 0)`.
+3. **Annotation lấy vị trí** (đã sửa ở Phase 09 — không còn fallback `(0, 0, 0)`): ưu tiên điểm pick 3D gần nhất; nếu chưa pick, dùng vị trí crosshair 2D thật (click/kéo trên khung Axial/Coronal/Sagittal); nếu **chưa có vị trí hợp lệ nào cả** thì plugin **từ chối tạo annotation** và hiện cảnh báo yêu cầu chọn vị trí trước — không còn âm thầm ghi `(0, 0, 0)`.
 4. **Region Growing** trên mask lớn/thể tích CT thật cũng cần đủ RAM tương tự mục 2 (tính toán trên hàng chục triệu voxel).
-5. Sau khi **Save → đóng → mở lại** project, nội dung voxel của mask có sai khác rất nhỏ (đã xác nhận bằng checksum, không nhìn thấy bằng mắt) so với trước khi lưu — tên/màu/hiển thị/số lượng mask vẫn đúng 100%. Đang điều tra nguyên nhân (thuộc code gốc InVesalius, không phải plugin).
+5. **Undo/Redo lịch sử bị giới hạn 10 bước** (mỗi tab mask riêng, cả undo lẫn redo) — thiết kế cố ý, không phải thiếu sót: mỗi bước lưu toàn bộ ma trận mask thật trong RAM (không phải diff); với thể tích CT thật cỡ 512×512×108 mỗi bước tốn khoảng 27MB, nên 10 bước ở cả 2 chiều tối đa khoảng 547MB — xem `CT3D_P10_DATA_INTEGRITY_REPORT.md` để biết số đo thật.
 
 **Quyết định thiết kế (không phải thiếu sót)**:
 1. **Đo khoảng cách/diện tích 2D không có danh sách riêng trong plugin** — cố ý remote-control công cụ đo gốc thay vì tạo thêm 1 nguồn dữ liệu đo lường thứ hai (tránh 2 danh sách lệch nhau). Kết quả luôn xem đúng ở tab "Measures" gốc của InVesalius.

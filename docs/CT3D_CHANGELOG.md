@@ -123,6 +123,40 @@ B4/C3/D4/D5/E2/E3 và P08.5 (D9/C7 qua dialog mặc định) — 7 mục cần t
 ### Phase Gate
 `PHASE_GATE: PASS`
 
+## `0e51bcf9` — Phase 10 (CT3D_P10_DATA_INTEGRITY): điều tra dứt điểm checksum Save/Open, đo + tối ưu bộ nhớ Undo/Redo
+
+### Goal
+Điều tra dứt điểm phát hiện "checksum voxel mask lệch sau Save/Open" còn tồn đọng từ Vòng 2/3 (`CT3D_REMAINING_WORK.md` mục 2a), và đo + (nếu có căn cứ) tối ưu bộ nhớ Undo/Redo. Không làm lại Phase 08 (D9/C7), không làm lại Phase 09 (Sync 2D→3D/F3), không thêm tính năng UI mới.
+
+### Added
+- `docs/CT3D_P10_DATA_INTEGRITY_REPORT.md` (mới, đầy đủ 25 mục theo template).
+
+### Changed
+- `plugins/roi_viewer/core/mask_editor.py`: `UndoRedoManager.__init__`'s `max_history` mặc định 20 → 10 (kèm comment giải thích số đo thật).
+
+### Fixed
+Không có bug thật nào trong Save/Open (kết luận **CASE A**, xem "Investigated" bên dưới). Không có bug chức năng nào khác được phát hiện phase này.
+
+### Investigated (điều tra dứt điểm, không phải bug thật)
+Đọc lại toàn bộ chuỗi gọi thật Save→Compress→Extract→Open (`invesalius/project.py`, `invesalius/data/mask.py`, `invesalius/control.py`) — xác nhận **không có bước biến đổi byte nào** ở bất kỳ đâu trong pipeline (`SavePlist`/`Compress`/`tarfile`/`Extract`/`OpenPList`/`_open_mask` đều là byte-pass-through thuần; `LoadProject()`'s `"Load slice to viewer"`/`"Add mask"` chỉ là wiring GUI/hiển thị, không đụng `mask.matrix`). Test runtime thật 5 kịch bản (RT-A: mask tay chính xác; RT-B: mask threshold thật; RT-C: mask đã sửa tay `was_edited=True`; RT-D: cùng 3 mask với gzip; RT-E: xoá mask giữa danh sách tạo lỗ hổng index) = **30/30 PASS**, checksum SHA-256 khớp tuyệt đối 100% (cả ma trận đầy đủ lẫn phần dữ liệu logic `matrix[1:,1:,1:]`) trong mọi trường hợp. RT-E chứng minh cụ thể cơ chế nhiều khả năng gây ra phát hiện cũ: `OpenPlistProject()` gán lại `index` liên tục theo thứ tự chèn (`m.index = len(self.mask_dict)`), nên nếu mask bị xoá trước khi lưu, `index` cũ không còn khớp sau khi mở lại — một phép so sánh theo `index` cũ (thay vì theo tên/identity) có thể so nhầm 2 mask khác nhau hoặc không tìm thấy mask, trông giống hệt "checksum lệch" mà không phải bug dữ liệu thật. Kết luận: **CASE A — không có bug thật, không cần sửa code Save/Open**.
+
+Bộ nhớ Undo/Redo: benchmark thật (`copy.deepcopy(mask.matrix)` — memmap thật materialize thành mảng RAM thật mỗi checkpoint) — đo được đúng 27.36MB/checkpoint ở quy mô CT thật (109×513×513, khớp tuyệt đối lý thuyết 1 byte/voxel). Worst case cũ (`max_history=20` cả undo lẫn redo) ≈1.07GB — không phải lý thuyết suông: máy test quan sát được RAM trống thấp tới ~540-880MB ngay trong chính phiên test này. Đã xem xét và LOẠI bỏ phương án nén bit (`np.packbits`) vì `mask.matrix` không đảm bảo nhị phân tuyệt đối (cột đệm mang giá trị sentinel `1` phân biệt với `255`, dùng bởi cơ chế threshold lazy — nén bit có nguy cơ làm hỏng đúng phân biệt này mỗi lần undo/redo, đánh đổi hiệu năng lấy 1 lỗi dữ liệu thật mới — đi ngược mục đích chính của Phase 10). Chọn phương án tối thiểu, an toàn tuyệt đối: hạ `max_history` mặc định 20→10 (worst case còn ≈547MB), không đổi biểu diễn/ngữ nghĩa snapshot.
+
+### Tests
+`p10_saveopen_forensics.py`: 30/30 PASS (RT-A/B/C/D/E). `p10b_undoredo_benchmark.py`: benchmark thật (không phải PASS/FAIL, số đo). `p10c_undoredo_functional_tests.py`: 20/20 PASS (UR-T1 đến UR-T9 — deep-copy độc lập, undo/redo push/pop đúng, redo_stack bị xoá khi có action mới, eviction FIFO đúng ở `maxlen=10` mới, `clear()`, RSS thật ở quy mô CT thật). Regression (Section XIX, xem báo cáo mục 15): D1/D8/G1/G2/G3 re-verify trực tiếp qua RT-A/B/C/E; D9/C7/C8/F3 xác nhận KHÔNG bị đụng code (`git diff --stat` phase này chỉ có 1 file, `mask_editor.py`) nên không có nguy cơ thoái lui; D10/E4/F4 không re-run (không liên quan thay đổi 1 dòng của phase này, bằng chứng các vòng trước vẫn giữ nguyên). 0 crash report mới.
+
+### Performance
+Undo/Redo worst-case memory: ~1.07GB → ~547MB ở quy mô CT thật (giảm ~50%), không đổi tốc độ/độ chính xác undo-redo.
+
+### Documentation
+`docs/CT3D_P10_DATA_INTEGRITY_REPORT.md` (mới). Cập nhật `CT3D_MASTER_PROGRESS.md` (baseline Phase 10, D7/G1 rows), `CT3D_FEATURE_AUDIT.md` (G1/D7 rows), `CT3D_REMAINING_WORK.md` (xoá mục 2a, cập nhật bảng tổng kết), `HUONG_DAN_SU_DUNG_ROI_VIEWER.md` (sửa mục "Giới hạn đã biết" — bỏ tham chiếu `(0,0,0)` cũ đã lỗi thời từ Phase 09, bỏ mục checksum đã đóng, thêm ghi chú giới hạn Undo/Redo 10 bước).
+
+### Known Issues
+7 mục manual-QA từ Phase 09 (P08.5, B4, C3, D4, D5, E2, E3) **giữ nguyên `NEEDS_MANUAL_QA`**, không đụng tới, không tự nâng cấp. `MaskEditor.draw_point_2d/draw_point_3d/interpolate_slices` là dead code (phát hiện phase này, ngoài phạm vi — brush thật dùng `SLICE_STATE_EDITOR` gốc).
+
+### Phase Gate
+`PHASE_GATE: PASS`
+
 ---
 
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc

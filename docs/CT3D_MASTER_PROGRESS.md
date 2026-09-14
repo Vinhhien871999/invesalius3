@@ -4,11 +4,11 @@
 
 ## Current baseline
 
-- Current phase: 09 (hoàn tất, PASS)
+- Current phase: 10 (hoàn tất, PASS)
 - Branch: `thesis-ct-roi-tools`
-- HEAD: `d366a635`
-- Last completed phase: 09 — Runtime Interaction QA & Bidirectional 2D-3D Sync
-- Next phase: 10 — Data Integrity & Memory
+- HEAD: `0e51bcf9`
+- Last completed phase: 10 — Data Integrity, Save/Open Forensics & Undo/Redo Memory
+- Next phase: 11 — (chưa bắt đầu; xem "High-priority remaining work")
 
 ## Progress Matrix
 
@@ -35,7 +35,7 @@
 | D4 | Brush vẽ tay | NEEDS_MANUAL_QA | Chỉ verify state chuyển, cần thao tác chuột thật, checklist ở Phase 09 report | Phase 09 |
 | D5 | Eraser | NEEDS_MANUAL_QA | Tương tự D4 | Phase 09 |
 | D6 | Kích thước brush | WORKING | Đổi operation/shape/size không lỗi | Vòng 1 |
-| D7 | Undo/Redo | WORKING | Checksum khớp trước/sau undo | Vòng 1 |
+| D7 | Undo/Redo | **WORKING**, đã đo + tối ưu bộ nhớ | Checksum khớp trước/sau undo (Vòng 1). Phase 10: benchmark thật (27.36MB/checkpoint ở quy mô CT thật) → giảm `max_history` mặc định 20→10 (worst case 1.07GB → 547MB), verify 20/20 test (UR-T1..T9) | **Phase 10** |
 | D8 | Quản lý ROI List | WORKING | Cache/view đồng bộ 2 chiều thật | Vòng 2 |
 | D9 | Mask sửa → Surface cập nhật | **WORKING** (nâng từ PARTIAL) | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` — root cause `algorithm="Default"` tìm ra + sửa, verify runtime 36/36 | **Phase 08** |
 | D10 | Region Growing an toàn | WORKING | 16/16 test thuật toán + mask thật 16.2M voxel | Vòng 2 |
@@ -50,7 +50,7 @@
 | F2 | Goto/Edit/Delete/Prev-Next | WORKING | Verify đầy đủ vòng đời | Vòng 1 |
 | F3 | Vị trí annotation chính xác | **WORKING** (nâng từ PARTIAL) | Phase 09: không còn fallback (0,0,0), từ chối + cảnh báo nếu không có vị trí hợp lệ, verify runtime 3/3 test | Phase 09 |
 | F4 | Lưu annotation cùng project | WORKING | Sidecar JSON, full-cycle verify | Vòng 2 |
-| G1 | Save/Open project | WORKING | Full-cycle 19/20 PASS | Vòng 2 |
+| G1 | Save/Open project | **WORKING**, đã đóng dứt điểm phát hiện checksum | Full-cycle 19/20 PASS (Vòng 2). Phase 10: 30/30 test thật (5 kịch bản RT-A/B/C/D/E) — byte-identical mọi trường hợp; phát hiện checksum trước đó kết luận CASE A (không phải bug thật, nhiều khả năng là lỗi phương pháp test cũ so sánh mask theo index thay vì theo tên/identity — chứng minh cụ thể ở RT-E) | **Phase 10** |
 | G2 | Mask/Surface serialize | WORKING | Verify qua G1 | Vòng 2 |
 | G3 | ROI List sau Open | WORKING | Tự rebuild từ `mask_dict` thật | Vòng 2 |
 | H1 | Export Mask | WORKING | Đã sửa bug dropdown format (vòng 3) | Vòng 3 |
@@ -62,17 +62,16 @@
 
 ## Critical blockers
 
-- Không có blocker nghiêm trọng nào đang mở sau Phase 09.
+- Không có blocker nghiêm trọng nào đang mở sau Phase 10.
 
 ## High-priority remaining work
 
 1. **Manual QA thao tác chuột thật** cho 7 mục: P08.5 (D9/C7), B4, C3, D4, D5, E2, E3 — checklist đầy đủ ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9.
-2. Checksum voxel mask lệch nhẹ sau Save/Open (đã loại trừ giả thuyết flush(), chưa rõ nguyên nhân cuối) — `CT3D_REMAINING_WORK.md` mục 2a (Phase 10).
 
 ## Medium-priority work
 
-- Undo/Redo dùng snapshot toàn mảng thay vì diff/patch (đề cương gợi ý tối ưu) — Phase 10.
 - Đánh giá `"ca_smoothing"` như lựa chọn thay thế mượt hơn `"Binary"` cho D9/C7 (không bắt buộc).
+- `MaskEditor.draw_point_2d/draw_point_3d/interpolate_slices` là dead code (brush thật dùng `SLICE_STATE_EDITOR` gốc) — phát hiện ở Phase 10, chưa dọn (ngoài phạm vi phase đó).
 
 ## Research/evaluation remaining work
 
@@ -94,3 +93,4 @@
 |---|---|---|---|---|
 | 08 | Đóng dứt điểm ROI → Surface 3D (D9/C7) | **PASS** | `40c2c38b` | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` |
 | 09 | Runtime Interaction QA & Bidirectional 2D-3D Sync | **PASS** | `d366a635` | `CT3D_P09_INTERACTION_QA_REPORT.md` |
+| 10 | Data Integrity, Save/Open Forensics & Undo/Redo Memory | **PASS** | `0e51bcf9` | `CT3D_P10_DATA_INTEGRITY_REPORT.md` |
