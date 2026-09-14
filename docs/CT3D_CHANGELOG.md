@@ -157,7 +157,7 @@ Undo/Redo worst-case memory: ~1.07GB → ~547MB ở quy mô CT thật (giảm ~5
 ### Phase Gate
 `PHASE_GATE: PASS`
 
-## `<Phase 11 commit>` — Phase 11 (CT3D_P11_TEST_AUTOMATION): bộ pytest bền vững + sửa số liệu Undo/Redo + dọn dead code
+## `36dc59ba` — Phase 11 (CT3D_P11_TEST_AUTOMATION): bộ pytest bền vững + sửa số liệu Undo/Redo + dọn dead code
 
 ### Goal
 Chuyển bằng chứng quan trọng của Phase 08-10 (từng nằm trong script scratchpad tạm thời, đã mất) thành bộ `pytest` thật, nằm trong repository, chạy lại được bằng 1 lệnh. Kiểm chứng lại invariant bộ nhớ Undo/Redo của Phase 10 bằng code/test thật (không chỉ suy luận tay). Dọn dead code `MaskEditor` nếu và chỉ nếu 0 call-site thật. Không thêm tính năng UI mới. Không tự nâng 7 mục Manual QA.

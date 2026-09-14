@@ -6,7 +6,7 @@
 
 - Current phase: 11 (hoàn tất, PASS)
 - Branch: `thesis-ct-roi-tools`
-- HEAD: *(cập nhật sau commit Phase 11 — xem `CT3D_P11_TEST_AUTOMATION_REPORT.md`)*
+- HEAD: `36dc59ba`
 - Last completed phase: 11 — Persistent Test & Regression Architecture + Code Hardening
 - Next phase: 12 — Dataset & Quantitative Validation (chưa bắt đầu; xem "High-priority remaining work")
 
@@ -95,4 +95,4 @@
 | 08 | Đóng dứt điểm ROI → Surface 3D (D9/C7) | **PASS** | `40c2c38b` | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` |
 | 09 | Runtime Interaction QA & Bidirectional 2D-3D Sync | **PASS** | `d366a635` | `CT3D_P09_INTERACTION_QA_REPORT.md` |
 | 10 | Data Integrity, Save/Open Forensics & Undo/Redo Memory | **PASS** | `0e51bcf9` | `CT3D_P10_DATA_INTEGRITY_REPORT.md` |
-| 11 | Persistent Test & Regression Architecture + Code Hardening | **PASS** | *(xem response cuối)* | `CT3D_P11_TEST_AUTOMATION_REPORT.md` |
+| 11 | Persistent Test & Regression Architecture + Code Hardening | **PASS** | `36dc59ba` | `CT3D_P11_TEST_AUTOMATION_REPORT.md` |
