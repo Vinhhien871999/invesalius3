@@ -1,6 +1,6 @@
 # Hướng dẫn sử dụng Plugin ROI Viewer
 
-> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau Phase 10 (CT3D_P10_DATA_INTEGRITY, 14/09/2026). Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
+> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau Phase 11 (CT3D_P11_TEST_AUTOMATION, 14/09/2026). Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
 
 ---
 
@@ -151,7 +151,7 @@ Mọi mask tạo ra (từ Threshold, Region Growing, **hoặc từ tab Masks g�
 2. **Update 3D Surface**: với mask rất lớn (gần hết thể tích ảnh), việc dựng lại 3D có thể mất khá lâu — nên dùng cho mask kích thước vừa phải (ROI thật sự "quan tâm", không phải toàn bộ ảnh). **Trên máy ít RAM khả dụng (dưới ~5GB trống), bước này có thể mất rất lâu hoặc không hoàn tất** — đóng bớt các ứng dụng khác trước khi dùng chức năng này nếu gặp tình trạng "treo".
 3. **Annotation lấy vị trí** (đã sửa ở Phase 09 — không còn fallback `(0, 0, 0)`): ưu tiên điểm pick 3D gần nhất; nếu chưa pick, dùng vị trí crosshair 2D thật (click/kéo trên khung Axial/Coronal/Sagittal); nếu **chưa có vị trí hợp lệ nào cả** thì plugin **từ chối tạo annotation** và hiện cảnh báo yêu cầu chọn vị trí trước — không còn âm thầm ghi `(0, 0, 0)`.
 4. **Region Growing** trên mask lớn/thể tích CT thật cũng cần đủ RAM tương tự mục 2 (tính toán trên hàng chục triệu voxel).
-5. **Undo/Redo lịch sử bị giới hạn 10 bước** (mỗi tab mask riêng, cả undo lẫn redo) — thiết kế cố ý, không phải thiếu sót: mỗi bước lưu toàn bộ ma trận mask thật trong RAM (không phải diff); với thể tích CT thật cỡ 512×512×108 mỗi bước tốn khoảng 27MB, nên 10 bước ở cả 2 chiều tối đa khoảng 547MB — xem `CT3D_P10_DATA_INTEGRITY_REPORT.md` để biết số đo thật.
+5. **Undo/Redo lịch sử bị giới hạn 10 bước** (mỗi tab mask riêng) — thiết kế cố ý, không phải thiếu sót: mỗi bước lưu toàn bộ ma trận mask thật trong RAM (không phải diff); với thể tích CT thật cỡ 512×512×108 mỗi bước tốn khoảng 27MB. Tổng dung lượng giữ lại tối đa qua thao tác bình thường (đã chứng minh bằng test, xem `CT3D_P11_TEST_AUTOMATION_REPORT.md` mục 11) là **10 bước ≈ 273.6MB** — không phải "10 bước undo + 10 bước redo cùng lúc" (điều đó không bao giờ xảy ra được: mỗi lần lưu thao tác mới sẽ luôn xoá sạch lịch sử redo).
 
 **Quyết định thiết kế (không phải thiếu sót)**:
 1. **Đo khoảng cách/diện tích 2D không có danh sách riêng trong plugin** — cố ý remote-control công cụ đo gốc thay vì tạo thêm 1 nguồn dữ liệu đo lường thứ hai (tránh 2 danh sách lệch nhau). Kết quả luôn xem đúng ở tab "Measures" gốc của InVesalius.

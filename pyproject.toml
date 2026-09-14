@@ -91,6 +91,19 @@ url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
 
+[tool.pytest.ini_options]
+# CT3D thesis project (Phase 11, CT3D_P11_TEST_AUTOMATION): markers for
+# plugins/roi_viewer's own persistent test suite under tests/ct3d/. Does
+# not affect the pre-existing upstream tests/ suite (no markers required
+# there - unmarked tests are unaffected by -m filters).
+markers = [
+    "unit: pure deterministic tests - no DICOM/GUI/VTK-renderer/dataset required",
+    "integration: tests that use real InVesalius singletons (Project/Slice), VTK objects, or pubsub wiring, but no mouse/keyboard interaction",
+    "gui: requires real GUI mouse/keyboard interaction - not automatable, never faked",
+    "slow: relatively expensive integration tests (real DICOM import, full-size builds)",
+    "dataset: requires an external DICOM dataset on disk",
+]
+
 [build-system]
 requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"

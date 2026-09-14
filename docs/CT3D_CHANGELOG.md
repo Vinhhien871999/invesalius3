@@ -157,6 +157,42 @@ Undo/Redo worst-case memory: ~1.07GB → ~547MB ở quy mô CT thật (giảm ~5
 ### Phase Gate
 `PHASE_GATE: PASS`
 
+## `<Phase 11 commit>` — Phase 11 (CT3D_P11_TEST_AUTOMATION): bộ pytest bền vững + sửa số liệu Undo/Redo + dọn dead code
+
+### Goal
+Chuyển bằng chứng quan trọng của Phase 08-10 (từng nằm trong script scratchpad tạm thời, đã mất) thành bộ `pytest` thật, nằm trong repository, chạy lại được bằng 1 lệnh. Kiểm chứng lại invariant bộ nhớ Undo/Redo của Phase 10 bằng code/test thật (không chỉ suy luận tay). Dọn dead code `MaskEditor` nếu và chỉ nếu 0 call-site thật. Không thêm tính năng UI mới. Không tự nâng 7 mục Manual QA.
+
+### Added
+`tests/ct3d/` (mới, 11 file, 109 test): `conftest.py` (cô lập `XDG_CONFIG_HOME`, reset singleton `Project()`/`Slice()` sau mỗi test, session-scoped `wx.App`), `test_segmentation.py` (RG-U1..U8, D10/D2), `test_measurement.py` (M-U1..U4, E1/E3/E4 — M-U4 là regression trực tiếp cho bug padding đã sửa ở Vòng 3), `test_coordinates.py` (voxel↔world, công thức tham chiếu viết độc lập), `test_undo_redo.py` (UR11-T1..T9 + investigation invariant bộ nhớ — xem mục "Undo/Redo memory" bên dưới), `test_annotation.py` (F1/F2/F4, sidecar round-trip qua `tmp_path`), `test_roi_manager.py` (D8, invariant "không ROI mồ côi"), `test_sync_2d3d.py` (C8 + F3, marker VTK thật qua `vtkRenderer()` không cần wx), `test_serialization.py` (G1/G2, thay thế `p10_saveopen_forensics.py` đã mất — RT-A/B/C/E của Phase 10 thành pytest thật), `test_exporters.py` (H1/H2-H5, NRRD tự `skip` khi thiếu `pynrrd`), `test_surface_policy.py` (D9/C7, dùng hàm `choose_surface_algorithm()` mới tách ra).
+
+`pyproject.toml`: thêm `[tool.pytest.ini_options]` với 5 marker (`unit`/`integration`/`gui`/`slow`/`dataset`) — mục cấu hình pytest đầu tiên của repo, không ảnh hưởng bộ test `tests/` gốc (upstream, không dùng marker).
+
+`plugins/roi_viewer/gui/segmentation_panel.py`: hàm thuần `choose_surface_algorithm(mask)` tách từ biểu thức inline trong `_on_update_surface()` — hành vi giữ nguyên 100%, chỉ để test được không cần dựng `wx.Frame`.
+
+### Changed (sửa số liệu, không phải sửa code)
+**Undo/Redo memory - sửa số liệu Phase 10 (KHÔNG đổi quyết định `max_history=10`)**: Phase 10 tính worst case `1.07GB → 547MB` dựa trên giả định `len(undo_stack)==max_history` VÀ `len(redo_stack)==max_history` có thể xảy ra đồng thời. Test invariant thật (`test_undo_redo_memory_invariant_*`, 6 chuỗi xác định theo đúng đặc tả + 300 chuỗi ngẫu nhiên seed cố định `20260914`, chỉ gọi public API `save/undo/redo/clear`) chứng minh điều này **SAI**: `save_state()` luôn xoá sạch `redo_stack` ngay khi thêm nội dung mới vào `undo_stack`, nên `len(undo_stack)+len(redo_stack)` không bao giờ vượt `max_history` (không phải `2×max_history`) qua bất kỳ chuỗi thao tác hợp lệ nào. Worst case thật đúng ở `max_history=10`: `10×27.36MB ≈ 273.6MB` — Phase 10 ước lượng cao gấp đúng 2 lần. Đã sửa lại: `CT3D_P10_DATA_INTEGRITY_REPORT.md` (thêm note "Phase 11 correction" ở đầu file, GIỮ NGUYÊN văn bản gốc bên dưới — không sửa lịch sử kiểu che giấu), `CT3D_MASTER_PROGRESS.md`, `CT3D_FEATURE_AUDIT.md`, `HUONG_DAN_SU_DUNG_ROI_VIEWER.md`.
+
+### Fixed (static-quality, bằng chứng cụ thể, rủi ro thấp)
+Cài `pyflakes` (nhẹ, không rủi ro) audit `plugins/roi_viewer/`: xoá import thật sự không dùng (`main.py`: `os` + 6 import module dư thừa vì `roi_panel.py` đã tự import trực tiếp 4 panel GUI và 2 module interface được import cục bộ ở nơi cần; `exporters.py`: `os`/`typing.List`/`tempfile`; `mask_editor.py`: `typing.List`; `measurement.py`: `time`; `sync_2d3d.py`: `typing.Optional`; `annotation_panel.py`: `datetime`; `export_panel.py`: `os`; `roi_panel.py`: `wx.lib.scrolledpanel as scrolled`; `picker_3d.py`: `vtkPointPicker`/`vtkInteractorStyleRubberBandPick`/`vtkCoordinate`). Xoá biến cục bộ chết `total_mean` trong `segmentation.py.auto_threshold_otsu()` (công thức between-class-variance thật sự dùng không cần biến này — không phải bug tính toán, chỉ là tính toán thừa còn sót). Phát hiện nhưng CỐ Ý chưa sửa: `global _roi_viewer_window` dư thừa (chỉ đọc) ở 10 chỗ trong `main.py` — style nit vô hại, không sửa để tránh diff lớn chỉ vì style.
+
+### Cleanup (dead code, đã chứng minh 0 call-site trước khi xoá)
+`plugins/roi_viewer/core/mask_editor.py` — grep toàn bộ repository (call trực tiếp, `getattr`/dynamic dispatch, event binding, callback, import, subclass override, tham chiếu tài liệu) xác nhận **0 call-site thật** cho: `draw_point_2d`, `erase_point_2d`, `draw_point_3d`, `interpolate_slices` (3 method Phase 10 đã phát hiện), và thêm `_get_brush_mask`, `set_brush_size`, `set_brush_shape`, `get_mask`, `set_mask`, `get_mask_slice`, và **`undo()`/`redo()`/`clear_mask()`** (wrapper method riêng của `MaskEditor` — GUI thật gọi thẳng `editor.undo_manager.undo(mask.matrix)`/`.redo(...)`, bỏ qua các wrapper này hoàn toàn). **Đã xoá: 175 dòng xoá / 29 dòng thêm (net -146 dòng)**. `UndoRedoManager` GIỮ NGUYÊN theo đúng chỉ đạo. Chạy lại toàn bộ `tests/ct3d` sau khi xoá: không có regression (109 passed, 1 skipped, giống hệt trước khi xoá). Thêm test bảo vệ (`test_mask_editor_surviving_surface_after_dead_code_removal`) để các method đã xoá không bao giờ vô tình quay lại. Chưa đụng tới `MaskEditorManager.set_current_mask/get_current_editor/delete_editor` (`NOT_PROVEN_DEAD`, chưa điều tra kỹ như trên, ghi nhận trong `CT3D_REMAINING_WORK.md`).
+
+### Tests
+`tests/ct3d`: **109 passed, 1 skipped** (lý do skip: `pynrrd` không cài, optional dependency), 3 lần chạy liên tiếp đều PASS giống hệt nhau (0.52-0.62s mỗi lần), không phụ thuộc thứ tự test, không rò rỉ state singleton giữa các test, không ghi vào config người dùng thật, không để lại temp file. `tests/` gốc (upstream, không đụng): **94 passed** (188.7s) — xác nhận không bị ảnh hưởng bởi thay đổi của phase này. Phân theo marker: `-m unit` 75 passed (0.14s); `-m integration` 33 passed + 1 skipped (0.45s).
+
+### Performance/Memory Clarification
+Xem mục "Changed" ở trên — worst case Undo/Redo thật đúng ở `max_history=10`: **~273.6MB** (không phải ~547MB như Phase 10 đã tính).
+
+### Documentation
+`docs/CT3D_P11_TEST_AUTOMATION_REPORT.md` (mới, 25 mục đầy đủ). Cập nhật `CT3D_MASTER_PROGRESS.md` (baseline Phase 11, sửa số liệu D7, thêm bằng chứng persistent test cho D9/D10/E4/F4/G1/H1/H5/Sync 2D→3D), `CT3D_FEATURE_AUDIT.md` (sửa số liệu D7), `CT3D_REMAINING_WORK.md` (xoá mục dead code đã đóng, thêm mục `NOT_PROVEN_DEAD` mới), `CT3D_P10_DATA_INTEGRITY_REPORT.md` (thêm note "Phase 11 correction" ở đầu file, không sửa văn bản gốc), `HUONG_DAN_SU_DUNG_ROI_VIEWER.md` (sửa số liệu 547MB→273.6MB, header lên Phase 11).
+
+### Known Issues
+7 mục manual-QA từ Phase 09 (P08.5, B4, C3, D4, D5, E2, E3) **giữ nguyên `NEEDS_MANUAL_QA`**, không đụng tới, không tự nâng cấp. `MaskEditorManager` có 3 method `NOT_PROVEN_DEAD` chưa điều tra kỹ. `global _roi_viewer_window` dư thừa ở 10 chỗ trong `main.py`, cố ý chưa sửa (style nit vô hại).
+
+### Phase Gate
+`PHASE_GATE: PASS`
+
 ---
 
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc

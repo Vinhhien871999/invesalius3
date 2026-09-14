@@ -29,7 +29,6 @@
 # --------------------------------------------------------------------------
 
 import wx
-import wx.lib.scrolledpanel as scrolled
 
 # Import constants
 try:

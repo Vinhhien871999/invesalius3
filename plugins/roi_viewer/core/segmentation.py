@@ -74,9 +74,10 @@ class SegmentationManager:
         # Normalize histogram
         hist = hist.astype(float) / hist.sum()
         
-        # Find threshold using Otsu's method
-        total_mean = np.sum(np.arange(len(hist)) * hist)
-        
+        # Find threshold using Otsu's method (between-class variance
+        # w0*w1*(m0-m1)^2 - a standard equivalent of the more common
+        # w0*(m0-total_mean)^2 + w1*(m1-total_mean)^2 form, so no
+        # total_mean term is needed here).
         var_between_classes = []
         for t in range(len(hist)):
             w0 = np.sum(hist[:t])

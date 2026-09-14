@@ -5,7 +5,6 @@
 
 import wx
 import wx.lib.colourselect as csel
-import datetime
 
 try:
     from invesalius.i18n import tr as _

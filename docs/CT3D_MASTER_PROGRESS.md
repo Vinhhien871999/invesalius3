@@ -4,11 +4,11 @@
 
 ## Current baseline
 
-- Current phase: 10 (hoàn tất, PASS)
+- Current phase: 11 (hoàn tất, PASS)
 - Branch: `thesis-ct-roi-tools`
-- HEAD: `0e51bcf9`
-- Last completed phase: 10 — Data Integrity, Save/Open Forensics & Undo/Redo Memory
-- Next phase: 11 — (chưa bắt đầu; xem "High-priority remaining work")
+- HEAD: *(cập nhật sau commit Phase 11 — xem `CT3D_P11_TEST_AUTOMATION_REPORT.md`)*
+- Last completed phase: 11 — Persistent Test & Regression Architecture + Code Hardening
+- Next phase: 12 — Dataset & Quantitative Validation (chưa bắt đầu; xem "High-priority remaining work")
 
 ## Progress Matrix
 
@@ -35,34 +35,34 @@
 | D4 | Brush vẽ tay | NEEDS_MANUAL_QA | Chỉ verify state chuyển, cần thao tác chuột thật, checklist ở Phase 09 report | Phase 09 |
 | D5 | Eraser | NEEDS_MANUAL_QA | Tương tự D4 | Phase 09 |
 | D6 | Kích thước brush | WORKING | Đổi operation/shape/size không lỗi | Vòng 1 |
-| D7 | Undo/Redo | **WORKING**, đã đo + tối ưu bộ nhớ | Checksum khớp trước/sau undo (Vòng 1). Phase 10: benchmark thật (27.36MB/checkpoint ở quy mô CT thật) → giảm `max_history` mặc định 20→10 (worst case 1.07GB → 547MB), verify 20/20 test (UR-T1..T9) | **Phase 10** |
+| D7 | Undo/Redo | **WORKING**, đã đo + tối ưu bộ nhớ | Checksum khớp trước/sau undo (Vòng 1). Phase 10: benchmark thật (27.36MB/checkpoint ở quy mô CT thật) → giảm `max_history` mặc định 20→10, verify 20/20 test (UR-T1..T9). **Sửa lại ở Phase 11**: Phase 10 tính worst case là `1.07GB → 547MB` (giả định 2 stack cùng đầy `max_history` một lúc) — invariant thật (chứng minh bằng test `test_undo_redo_memory_invariant_*`, 300+ chuỗi ngẫu nhiên + 6 chuỗi xác định) cho thấy tổng `len(undo_stack)+len(redo_stack)` KHÔNG BAO GIỜ vượt quá `max_history` (không phải `2×max_history`) — vì `save_state()` luôn xoá sạch `redo_stack` mỗi khi có nội dung mới. Worst case thật đúng: `10 × 27.36MB ≈ 273.6MB` (không phải 547MB — Phase 10 ước lượng cao gấp 2 lần). Quyết định `max_history=10` GIỮ NGUYÊN (vẫn hợp lý, chỉ số liệu justify được sửa đúng) | **Phase 10, sửa số liệu ở Phase 11** |
 | D8 | Quản lý ROI List | WORKING | Cache/view đồng bộ 2 chiều thật | Vòng 2 |
-| D9 | Mask sửa → Surface cập nhật | **WORKING** (nâng từ PARTIAL) | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` — root cause `algorithm="Default"` tìm ra + sửa, verify runtime 36/36 | **Phase 08** |
-| D10 | Region Growing an toàn | WORKING | 16/16 test thuật toán + mask thật 16.2M voxel | Vòng 2 |
+| D9 | Mask sửa → Surface cập nhật | **WORKING** (nâng từ PARTIAL) | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` — root cause `algorithm="Default"` tìm ra + sửa, verify runtime 36/36. + Phase 11: logic policy tách thành `choose_surface_algorithm()` (hàm thuần, hành vi giữ nguyên) + `tests/ct3d/test_surface_policy.py` (SP-T1/T2, persistent, unit) | **Phase 08** |
+| D10 | Region Growing an toàn | WORKING | 16/16 test thuật toán + mask thật 16.2M voxel. + Phase 11: `tests/ct3d/test_segmentation.py` (RG-U1..U8, persistent, unit) | Vòng 2 |
 | D11 | Watershed (custom) | ĐÃ XOÁ (quyết định kiến trúc) | Trùng Watershed thật InVesalius gốc | Vòng 2 |
 | D12 | Morphology | ĐÃ XOÁ (quyết định kiến trúc) | 0 call-site, ngoài phạm vi | Vòng 2 |
 | E1 | Đo khoảng cách 3D | WORKING | 59.56mm, verify thật | Vòng 1 |
 | E2 | Đo khoảng cách 2D | NEEDS_MANUAL_QA | Bật đúng style, cần test chuột thật, checklist ở Phase 09 report | Phase 09 |
 | E3 | Đo diện tích 2D | NEEDS_MANUAL_QA | Tương tự E2 | Phase 09 |
-| E4 | Đo thể tích mask | WORKING | Đã sửa bug đếm nhầm padding (vòng 3) | Vòng 3 |
+| E4 | Đo thể tích mask | WORKING | Đã sửa bug đếm nhầm padding (vòng 3). + Phase 11: `tests/ct3d/test_measurement.py` (M-U4, regression trực tiếp cho bug padding, persistent, unit) | Vòng 3 |
 | E5 | Spacing thật áp dụng | WORKING | Dùng `Slice().spacing` trực tiếp | Vòng 1 |
 | F1 | Thêm annotation | WORKING | add → count=1 | Vòng 1 |
 | F2 | Goto/Edit/Delete/Prev-Next | WORKING | Verify đầy đủ vòng đời | Vòng 1 |
 | F3 | Vị trí annotation chính xác | **WORKING** (nâng từ PARTIAL) | Phase 09: không còn fallback (0,0,0), từ chối + cảnh báo nếu không có vị trí hợp lệ, verify runtime 3/3 test | Phase 09 |
-| F4 | Lưu annotation cùng project | WORKING | Sidecar JSON, full-cycle verify | Vòng 2 |
-| G1 | Save/Open project | **WORKING**, đã đóng dứt điểm phát hiện checksum | Full-cycle 19/20 PASS (Vòng 2). Phase 10: 30/30 test thật (5 kịch bản RT-A/B/C/D/E) — byte-identical mọi trường hợp; phát hiện checksum trước đó kết luận CASE A (không phải bug thật, nhiều khả năng là lỗi phương pháp test cũ so sánh mask theo index thay vì theo tên/identity — chứng minh cụ thể ở RT-E) | **Phase 10** |
+| F4 | Lưu annotation cùng project | WORKING | Sidecar JSON, full-cycle verify. + Phase 11: `tests/ct3d/test_annotation.py` (sidecar round-trip qua `tmp_path`, persistent, unit) | Vòng 2 |
+| G1 | Save/Open project | **WORKING**, đã đóng dứt điểm phát hiện checksum | Full-cycle 19/20 PASS (Vòng 2). Phase 10: 30/30 test thật (5 kịch bản RT-A/B/C/D/E) — byte-identical mọi trường hợp; phát hiện checksum trước đó kết luận CASE A (không phải bug thật, nhiều khả năng là lỗi phương pháp test cũ so sánh mask theo index thay vì theo tên/identity — chứng minh cụ thể ở RT-E). + Phase 11: `tests/ct3d/test_serialization.py` (SER-T1..T3 + gzip/metadata, persistent, integration/slow — RT-A/B/C/E của Phase 10 chuyển thành pytest thật) | **Phase 10** |
 | G2 | Mask/Surface serialize | WORKING | Verify qua G1 | Vòng 2 |
 | G3 | ROI List sau Open | WORKING | Tự rebuild từ `mask_dict` thật | Vòng 2 |
-| H1 | Export Mask | WORKING | Đã sửa bug dropdown format (vòng 3) | Vòng 3 |
+| H1 | Export Mask | WORKING | Đã sửa bug dropdown format (vòng 3). + Phase 11: `tests/ct3d/test_exporters.py` (EX-T1 NumPy round-trip, persistent, integration) | Vòng 3 |
 | H2-H4 | Export Surface STL/PLY/OBJ | WORKING | File thật, đọc lại được | Vòng 1 |
-| H5 | Export Surface VTK | WORKING | File thật 74.5MB | Vòng 1 |
+| H5 | Export Surface VTK | WORKING | File thật 74.5MB. + Phase 11: `tests/ct3d/test_exporters.py` (EX-T4, small synthetic mesh round-trip, persistent, integration) | Vòng 1 |
 | H6 | Export ảnh slice | WORKING | PNG windowing đúng | Vòng 1 |
 | H7 | Export DICOM-SEG | MISSING | Ngoài phạm vi đã triển khai | Vòng 1 |
-| Sync 2D→3D | Checkbox đồng bộ ngược | **WORKING** (nâng từ NOT_IMPLEMENTED) | Phase 09: tái sử dụng topic thật `"Set cross focal point"`, marker 3D thật cập nhật đúng, verify runtime 8/8 test (SYNC-T1..T6) | Phase 09 |
+| Sync 2D→3D | Checkbox đồng bộ ngược | **WORKING** (nâng từ NOT_IMPLEMENTED) | Phase 09: tái sử dụng topic thật `"Set cross focal point"`, marker 3D thật cập nhật đúng, verify runtime 8/8 test (SYNC-T1..T6). + Phase 11: `tests/ct3d/test_sync_2d3d.py` (marker VTK thật không renderer trùng lặp, detach, enable/disable, F3 priority, persistent, integration) | Phase 09 |
 
 ## Critical blockers
 
-- Không có blocker nghiêm trọng nào đang mở sau Phase 10.
+- Không có blocker nghiêm trọng nào đang mở sau Phase 11.
 
 ## High-priority remaining work
 
@@ -71,7 +71,8 @@
 ## Medium-priority work
 
 - Đánh giá `"ca_smoothing"` như lựa chọn thay thế mượt hơn `"Binary"` cho D9/C7 (không bắt buộc).
-- `MaskEditor.draw_point_2d/draw_point_3d/interpolate_slices` là dead code (brush thật dùng `SLICE_STATE_EDITOR` gốc) — phát hiện ở Phase 10, chưa dọn (ngoài phạm vi phase đó).
+- `MaskEditorManager.set_current_mask/get_current_editor/delete_editor` chưa xác nhận có call-site thật hay không (`NOT_PROVEN_DEAD`, phát hiện ở Phase 11 nhưng chưa điều tra kỹ như đã làm với `MaskEditor` — xem `CT3D_P11_TEST_AUTOMATION_REPORT.md` mục 22).
+- `global _roi_viewer_window` dư thừa (đọc-only) ở 10 chỗ trong `main.py` — style nit vô hại, cố ý chưa sửa (Phase 11).
 
 ## Research/evaluation remaining work
 
@@ -94,3 +95,4 @@
 | 08 | Đóng dứt điểm ROI → Surface 3D (D9/C7) | **PASS** | `40c2c38b` | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` |
 | 09 | Runtime Interaction QA & Bidirectional 2D-3D Sync | **PASS** | `d366a635` | `CT3D_P09_INTERACTION_QA_REPORT.md` |
 | 10 | Data Integrity, Save/Open Forensics & Undo/Redo Memory | **PASS** | `0e51bcf9` | `CT3D_P10_DATA_INTEGRITY_REPORT.md` |
+| 11 | Persistent Test & Regression Architecture + Code Hardening | **PASS** | *(xem response cuối)* | `CT3D_P11_TEST_AUTOMATION_REPORT.md` |

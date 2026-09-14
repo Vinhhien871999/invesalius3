@@ -36,8 +36,7 @@ class PointPicker3D:
             # vtkCommonCore (the previous import silently broke all 3D
             # picking: ImportError was swallowed below and self.picker was
             # left as None).
-            from vtkmodules.vtkRenderingCore import vtkCellPicker, vtkPointPicker
-            from vtkmodules.vtkInteractionStyle import vtkInteractorStyleRubberBandPick
+            from vtkmodules.vtkRenderingCore import vtkCellPicker
 
             # If this instance was already initialized (e.g. re-armed
             # after cleanup()), drop the old observer first so repeated
@@ -98,8 +97,6 @@ class PointPicker3D:
             return
             
         try:
-            from vtkmodules.vtkRenderingCore import vtkCoordinate
-            
             # Get click position
             click_pos = self.interactor.GetEventPosition()
             

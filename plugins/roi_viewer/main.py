@@ -5,10 +5,16 @@
 # --------------------------------------------------------------------------
 
 import wx
-import os
 
-from .gui import roi_panel, interaction_panel, measurement_panel, annotation_panel, export_panel
-from .interface import project_interface, view_interface
+# Phase 11 (CT3D_P11_TEST_AUTOMATION) static-quality audit: only
+# roi_panel is actually referenced by name in this module - it
+# constructs the real ROIViewerFrame, which itself imports
+# interaction_panel/measurement_panel/annotation_panel/export_panel and
+# project_interface/view_interface directly (see roi_panel.py's own
+# header note). The extra names main.py used to import here were dead
+# (0 real uses, confirmed via pyflakes + grep) - trimmed to what this
+# module actually needs.
+from .gui import roi_panel
 
 # Global reference to the main window
 _main_frame = None

@@ -3,10 +3,8 @@
 # Description: Export functions for masks, surfaces, and projects
 # --------------------------------------------------------------------------
 
-import os
 import numpy as np
-from typing import Optional, Tuple, List
-import tempfile
+from typing import Optional, Tuple
 
 
 def _build_vtk_polydata(vertices: np.ndarray, faces: np.ndarray):

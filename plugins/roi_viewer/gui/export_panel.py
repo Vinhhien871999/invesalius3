@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 import wx
-import os
 
 try:
     from invesalius.i18n import tr as _

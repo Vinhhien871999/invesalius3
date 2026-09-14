@@ -1,5 +1,31 @@
 # CT3D Phase 10 — Data Integrity, Save/Open Forensics & Undo/Redo Memory
 
+> **⚠ Phase 11 correction/clarification (14/09/2026, added without editing the
+> original text below)**: Section 12/13's worst-case Undo/Redo memory
+> numbers (`~1.07 GB` old default, `~547 MB` new default) were based on
+> the assumption that `undo_stack` and `redo_stack` could independently
+> reach `max_history` **simultaneously** (a combined total of
+> `2 × max_history` snapshots). Phase 11 built a real, code-verified
+> invariant test (`tests/ct3d/test_undo_redo.py` -
+> `test_undo_redo_memory_invariant_*`, 6 deterministic sequences + 300
+> randomized public-API-only sequences, fixed seed) and proved this
+> assumption is **wrong**: `save_state()` always clears `redo_stack` in
+> the same call it adds to `undo_stack`, so the real, reachable maximum
+> of `len(undo_stack) + len(redo_stack)` is `max_history`, not
+> `2 × max_history`. **The correct worst-case number at the current
+> default (`max_history=10`) is `10 × 27.36 MB ≈ 273.6 MB`, not
+> `~547 MB`** - Phase 10 overestimated by exactly 2×. The **code decision
+> itself (lowering `max_history` from 20 to 10) is unchanged** - it
+> remains a valid, conservative, now-correctly-justified choice; only the
+> number attached to it in this report, `CT3D_MASTER_PROGRESS.md`,
+> `CT3D_FEATURE_AUDIT.md`, and `HUONG_DAN_SU_DUNG_ROI_VIEWER.md` was
+> wrong and has been corrected in those other 3 files (this report's
+> original Sections 12/13/16 text below is left as-written, as the
+> historical record of Phase 10's own reasoning at the time - see
+> `docs/CT3D_P11_TEST_AUTOMATION_REPORT.md` Sections 11-12 for the full
+> investigation). Save/Open (Sections 4-10, CASE A) is **unaffected** by
+> this correction and remains fully valid.
+
 ## 1. Metadata
 
 | Field | Value |

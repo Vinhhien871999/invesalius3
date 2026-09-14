@@ -16,6 +16,28 @@ except ImportError:
         return s
 
 
+def choose_surface_algorithm(mask) -> str:
+    """
+    Phase 08 (CT3D_P08_ROI3D_CLOSURE) surface-rebuild policy, extracted
+    to a small pure function in Phase 11 (CT3D_P11_TEST_AUTOMATION) so it
+    is unit-testable without wx/pubsub - behavior is unchanged, this is
+    the exact expression _on_update_surface() used inline before.
+
+    See _on_update_surface()'s docstring below for the full root-cause
+    story: with algorithm="Default", InVesalius's marching cubes never
+    reads the mask's own voxel array at all (it re-contours the original
+    image at mask.threshold_range) - only "Binary" (or "ca_smoothing")
+    triggers the from_binary=True path that actually reads mask.matrix.
+    So any mask that has been directly edited (mask.was_edited == True -
+    set by real brush edits in invesalius/data/styles.py, and by this
+    plugin's own Region Growing path, see _on_region_grown() below) must
+    use "Binary"; an unedited threshold-only mask keeps "Default"
+    (behavior-preserving - no regression for the ordinary threshold
+    workflow).
+    """
+    return "Binary" if getattr(mask, "was_edited", False) else "Default"
+
+
 class SegmentationPanel(scrolled.ScrolledPanel):
     """
     Panel for segmentation tools (threshold-based mask creation, plus
@@ -829,7 +851,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     return
                 mask_index = mask.index
 
-            algorithm = "Binary" if getattr(mask, "was_edited", False) else "Default"
+            algorithm = choose_surface_algorithm(mask)
 
             # Same real topic/argument shape used and verified in the
             # performance test (test_perf.py) that measured real render
