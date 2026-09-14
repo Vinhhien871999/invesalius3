@@ -499,6 +499,15 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 # it to leave this hand-written data alone.
                 new_mask.matrix[1:, 0, 0] = 1
                 new_mask.matrix.flush()
+                # Phase 08 fix: this mask's voxel data is 100% hand-
+                # written (region growing result), not derived from
+                # mask.threshold_range - _on_update_surface() needs
+                # was_edited=True to know it must use a mask-driven
+                # algorithm ("Binary") instead of "Default" (which
+                # would silently ignore this data entirely and
+                # re-contour the raw image instead - see that
+                # method's own NOTE for the full root-cause).
+                new_mask.was_edited = True
             else:
                 # Shapes should match ProjectInterface().get_shape(),
                 # but guard defensively rather than raising into a
@@ -775,14 +784,44 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         current mask if none is selected in this list) - see the NOTE
         by btn_update_surface's construction for why this exists and
         why it's manual rather than automatic.
+
+        Phase 08 (CT3D_P08_ROI3D_CLOSURE) root cause, found by reading
+        invesalius/data/surface_process.py.create_surface_piece()
+        directly: with algorithm="Default" and from_binary=False (the
+        combination this button always sent before this fix),
+        marching cubes contours the ORIGINAL IMAGE at mask.
+        threshold_range - it NEVER reads the mask's own voxel array at
+        all. Editing a mask (brush, region growing, undo/redo - ANY
+        direct write to mask.matrix) therefore has ZERO effect on a
+        "Default"-algorithm rebuild: the geometry is 100% determined
+        by the unedited image + threshold range, regardless of mask
+        content. Confirmed for real: a tiny synthetic ROI grown 3x in
+        3 cycles produced byte-identical polydata (same point/cell
+        count, same bounds) every single time.
+
+        InVesalius's own real "Configure 3D surface" dialog
+        (invesalius/gui/dialogs.py's SurfaceMethodPanel) already knows
+        this - it hides "Default" from the choice list and shows a
+        tooltip ("It is not possible to use the Default method because
+        the mask was edited") whenever mask.was_edited is True,
+        forcing "Context aware smoothing" (algorithm="ca_smoothing")
+        instead. Both "ca_smoothing" and "Binary" set from_binary=True
+        in AddNewActor, which DOES contour the real mask array
+        (create_surface_piece's from_binary branch: `image =
+        converters.to_vtk(a_mask, ...)`) - "Binary" is the simpler of
+        the two (no extra smoothing-parameter dict needed) and is used
+        here since correctness (mesh actually matches the edited mask)
+        matters more than the extra smoothing "ca_smoothing" adds.
         """
         try:
             import invesalius.data.slice_ as sl
+            import invesalius.project as prj
             from invesalius.pubsub import pub as Publisher
 
             rid = self._selected_roi_id()
             if rid is not None:
                 mask_index = self.controller.roi_mgr.get_roi(rid).mask_index
+                mask = prj.Project().mask_dict.get(mask_index)
             else:
                 mask = sl.Slice().current_mask
                 if mask is None:
@@ -790,35 +829,22 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     return
                 mask_index = mask.index
 
+            algorithm = "Binary" if getattr(mask, "was_edited", False) else "Default"
+
             # Same real topic/argument shape used and verified in the
             # performance test (test_perf.py) that measured real render
             # FPS on a surface built this way.
             surface_options = {
-                "method": {"algorithm": "Default", "options": {}},
+                "method": {"algorithm": algorithm, "options": {}},
                 "options": {
                     "index": mask_index, "name": "", "quality": "Optimal *",
                     "fill": False, "keep_largest": False, "overwrite": True,
-                    # NOTE (Round-2 audit, section B): a batch_mode=True
-                    # variant (skips invesalius/data/surface.py's
-                    # SurfaceProgressWindow + wx.Yield() self-pump loop,
-                    # waiting via a plain `while not f.ready():
-                    # time.sleep(0.25)` instead) was tried here to remove
-                    # a GUI-loop dependency. Empirically it made things
-                    # WORSE, not better, in this test environment: 2/2
-                    # runs with batch_mode=True stalled after the first
-                    # multiprocessing piece with no further progress,
-                    # while the default (dialog + self-pumping wx.Yield())
-                    # path is what actually produced a complete,
-                    # verified run (test_surface_update_small_roi.py -
-                    # real polydata point/cell/bounds changes observed,
-                    # "Load surface actor into viewer" fired, no
-                    # duplicate surface, Render() succeeded). Reverted
-                    # to the default (no batch_mode) - it is the one with
-                    # real passing evidence behind it.
                 },
             }
             Publisher.sendMessage("Create surface from index", surface_parameters=surface_options)
-            self.status_text.SetLabel(_(f"Status: Rebuilding 3D surface for mask #{mask_index}..."))
+            self.status_text.SetLabel(
+                _(f"Status: Rebuilding 3D surface for mask #{mask_index} (method: {algorithm})...")
+            )
         except Exception as e:
             wx.MessageBox(_("Surface update failed."), _("Error"), wx.OK | wx.ICON_ERROR)
             print(f"ROI Viewer: surface update failed - {e}")
