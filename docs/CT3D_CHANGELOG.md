@@ -80,6 +80,22 @@
 
 **Vì sao lần này đụng vào core**: nguyên tắc "không sửa `invesalius/`" trong suốt dự án là để bảo vệ kiến trúc plugin (remote-control qua pubsub, không viết lại tính năng gốc) — không phải cấm tuyệt đối sửa bug thật khi người dùng gặp phải trong lúc dùng app. Đây là 1 bug core có thật, độc lập với plugin (tái hiện được mà không cần cài plugin), sửa tối thiểu (thêm 3 chỗ kiểm tra `None` theo đúng pattern đã có sẵn trong cùng file), không đổi kiến trúc/hành vi gì khác.
 
+## `40c2c38b` — Phase 08 (CT3D_P08_ROI3D_CLOSURE): tìm ra + sửa nguyên nhân gốc thật sự của D9/C7
+
+**Bối cảnh**: 3 vòng audit trước đều xác nhận D9 (mask sửa → surface 3D cập nhật) ở trạng thái PARTIAL — pubsub gửi đúng, không exception, nhưng chưa từng quan sát được polydata thật đổi sau khi sửa mask. Giả thuyết trước đó (vòng 3) nghi do máy thiếu RAM khi build surface với volume CT thật ~28 triệu voxel.
+
+**Nguyên nhân thật tìm ra ở Phase 08**: hoàn toàn không phải RAM/timing. Đọc trực tiếp `invesalius/data/surface_process.py.create_surface_piece()` xác nhận: `_on_update_surface()` của plugin luôn hardcode `"algorithm": "Default"`. Với `algorithm="Default"` và `from_binary=False`, marching cubes contour lại ẢNH GỐC theo `mask.threshold_range` — **không hề đọc `mask.matrix`**. Mọi chỉnh sửa mask trực tiếp (brush, region growing, undo/redo) do đó không có tác dụng gì lên surface dựng bằng "Default", bất kể mask thật sự chứa gì.
+
+**Xác nhận chéo bằng chính InVesalius gốc**: `invesalius/gui/dialogs.py.SurfaceMethodPanel` — dialog gốc thật của InVesalius **tự ẩn hẳn lựa chọn "Default"** và hiện tooltip *"It is not possible to use the Default method because the mask was edited"* khi `mask.was_edited == True`, tự chuyển sang `"ca_smoothing"`. Cơ chế đọc mask thật (`from_binary=True`) đã có sẵn trong chính InVesalius gốc từ trước — plugin chỉ chưa bao giờ dùng đúng nó.
+
+**Đã sửa**: `_on_update_surface()` chọn `algorithm="Binary"` (đọc mask thật) khi `mask.was_edited == True`, giữ `"Default"` khi mask chưa từng sửa tay (không regression cho luồng threshold thông thường). `_on_region_grown()` bổ sung `new_mask.was_edited = True` (trước đó thiếu, khiến bản vá không kích hoạt cho ROI tạo bằng Region Growing).
+
+**Verify runtime thật (P08.2 — dataset tổng hợp nhỏ tránh treo do RAM)**: boot app thật bằng 1 lần import DICOM thật, hoán đổi `Slice().matrix`/`Project().mask_dict` bằng ảnh+mask tổng hợp (30×128×128) ngay trong tiến trình để giảm tải multiprocessing (2 piece thay vì ~7) mà vẫn chạy 100% code thật. Kết quả: **36/36 check PASS** — 3 chu kỳ sửa mask (mô phỏng brush) → Update 3D Surface liên tiếp, polydata thật đổi đúng mỗi lần (points 7296→13440→16368→18720, cells 14588→26876→32732→37436, bounds giãn đúng hướng), không tạo surface/actor trùng, `Render()` thành công mỗi lần, 0 crash report mới.
+
+**D9 và C7 chính thức chuyển PARTIAL → WORKING**, có bằng chứng runtime đầy đủ, có thể tái lập — xem `CT3D_P08_ROI3D_CLOSURE_REPORT.md`.
+
+**Loại**: bugfix logic thật trên code plugin (đề tài), không đụng file nào trong `invesalius/` (core gốc).
+
 ---
 
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc
