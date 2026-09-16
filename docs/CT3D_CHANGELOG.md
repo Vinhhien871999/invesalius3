@@ -219,7 +219,7 @@ Quét thật 3 dataset local (`0051`/`0801`/`mri3`) bằng `invesalius.reader.di
 Dice/Jaccard: edge case empty/empty=1.0, empty/non-empty=0.0 (document rõ, không rơi ngẫu nhiên từ công thức); quan hệ Dice=2J/(1+J) verify đúng ở 3 mức overlap. Hausdorff: dùng `spacing_zyx` tường minh, verify đúng với spacing anisotropic (dịch 1 voxel theo trục spacing 3mm → Hausdorff=3mm chính xác, KHÔNG PHẢI 1 nếu tính sai theo voxel-index thuần); empty/empty=0.0, một mask rỗng → raise `ValueError` rõ ràng (không trả `inf`/`nan` ngầm). HD95 verify là metric KHÁC HD max (luôn ≤ HD max, khác nhau rõ khi có outlier). Phantom A (cuboid chính xác, không dùng sphere cho test volume exact) verify volume khớp tuyệt đối công thức tay. Phantom B (cuboid dịch chuyển biết trước) verify Dice/Jaccard/Hausdorff khớp tuyệt đối công thức tay ở 3 mức dịch chuyển.
 
 ### Tests
-`tests/ct3d`: **158 passed → 159 sau khi thêm test_dicom_grouping.py và các test NRRD/MaskEditorManager mới**, xem báo cáo mục 19 cho số liệu chính xác cuối cùng sau 3 lần chạy liên tiếp. `tests/` gốc (upstream): 94 passed, không đổi.
+`tests/ct3d`: **158 passed, 1 skipped (159 collected)** sau khi thêm `test_dicom_grouping.py` và các test NRRD/MaskEditorManager mới — xem báo cáo mục 19 cho bảng đầy đủ, xác nhận lại 3 lần chạy liên tiếp. `tests/` gốc (upstream): 94 passed, không đổi.
 
 ### Performance
 Region Growing full-volume CT thật (0051, 28.311.552 voxel): runtime 0.30s, RSS +28.5MB — đóng dứt điểm nghi vấn "treo do giới hạn thuật toán" từ vòng 3 (xác nhận là do RAM máy lúc đó thấp, machine-state-dependent).
@@ -232,6 +232,44 @@ Region Growing full-volume CT thật (0051, 28.311.552 voxel): runtime 0.30s, RS
 
 ### Release Readiness
 `AUTOMATED_TECHNICAL_READY`: xem báo cáo mục 25. `MANUAL_QA_COMPLETE`: NO. `EXTERNAL_VALIDATION_COMPLETE`: NO. `RELEASE_CANDIDATE_READY`: xem báo cáo mục 25.
+
+### Phase Gate
+`PHASE_GATE: PASS`
+
+## `<Phase 13 commit>` — Phase 13 (CT3D_P13_PERFORMANCE_COMPARISON): đóng Manual QA + benchmark hiệu năng + chuẩn bị comparison/SUS
+
+### Goal
+Đóng chính thức Manual QA 7/7 (bằng chứng thật từ người vận hành). Sửa documentation drift/hygiene còn sót (test count ambiguous, CSV lỗi quote, câu văn stale về đa vendor/Dice-Jaccard-Hausdorff). Benchmark hiệu năng có phương pháp trên dataset local thật. Chuẩn bị comparison methodology (InVesalius gốc vs plugin, 3D Slicer) và SUS protocol — không bịa dữ liệu.
+
+### Added
+- `tools/ct3d_benchmark.py` (mới) — benchmark tool tracked trong repo, không phải ad-hoc, không nhét vào GUI. Output CSV machine-readable.
+- `docs/CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` (mới, 27 mục).
+- `docs/CT3D_P13_PERFORMANCE_RESULTS.csv` (mới, 29 dòng dữ liệu benchmark thật).
+- `docs/CT3D_SUS_PROTOCOL.md` (mới) — protocol SUS chuẩn (Brooke 1996), chưa có người tham gia thật.
+
+### Changed
+- `docs/CT3D_MANUAL_QA_CHECKLIST.md`: viết lại tại chỗ với evidence thật 7/7 PASS từ người vận hành (không tạo file mới/duplicate).
+- `docs/CT3D_MASTER_PROGRESS.md`, `docs/CT3D_FEATURE_AUDIT.md`: B4/C3/D4/D5/E2/E3 nâng `NEEDS_MANUAL_QA` → `WORKING`; D9/C7 KHÔNG đổi status, chỉ bổ sung ghi chú GUI evidence.
+- `docs/CT3D_REMAINING_WORK.md`: đóng mục "1c" (Manual QA), sửa câu văn stale về đa vendor ("chưa đọc 0801/mri3") và Dice/Jaccard/Hausdorff ("hoàn toàn chưa thực hiện").
+- `docs/CT3D_CHANGELOG.md`: sửa câu mập mờ "158 passed → 159" thành rõ ràng "158 passed, 1 skipped (159 collected)".
+
+### Fixed
+`docs/CT3D_P12_QUANTITATIVE_RESULTS.csv`: 1 dòng (`AREA-M-U-scaled`) có dấu phẩy trong cột Notes chưa quote đúng chuẩn CSV, làm dòng thành 11 field thay vì 10. Đã sửa bằng cách quote đúng — verify lại bằng `csv` module + `pandas.read_csv()`, không sửa số liệu metric nào.
+
+### Tests
+`tests/ct3d`: 158 passed, 1 skipped (159 collected), 3 lần chạy liên tiếp đều giống nhau. `tests/` gốc (upstream): 94 passed. `pyflakes plugins/roi_viewer`: 0 finding.
+
+### Performance
+Benchmark thật trên dataset local (`0051`/`0801`/`mri3`): Import DICOM ~8.2s (`0051`, 28.3M voxel); Otsu threshold ~0.44-0.65s; Region Growing ~0.4-0.7s (kết quả nhất quán với Phase 12); Surface build (quality "Low", 1 lần/dataset — phát hiện thật: build lặp lại 3 lần trên máy RAM thấp chậm hơn 6-7 lần mỗi lần lặp, không an toàn để lặp) ~10-13s; Project Save/Open (small controlled) <0.15s mỗi thao tác. Chi tiết đầy đủ + phát hiện thật về RAM/multiprocessing: `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 8-15.
+
+### Documentation
+Xem mục "Changed" ở trên, và toàn bộ file mới liệt kê ở mục "Added".
+
+### Known Issues
+GE/Canon, ground-truth thật cho Dice/Jaccard/Hausdorff, và người tham gia SUS thật vẫn `BLOCKED_EXTERNAL_DATA`/chưa có — không bịa.
+
+### Release Readiness
+`AUTOMATED_TECHNICAL_READY`: YES. `MANUAL_QA_COMPLETE`: YES (7/7 PASS thật). `SOFTWARE_TECHNICAL_COMPLETE`: YES. `EXTERNAL_VALIDATION_COMPLETE`: NO. Chi tiết: `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 24.
 
 ### Phase Gate
 `PHASE_GATE: PASS`

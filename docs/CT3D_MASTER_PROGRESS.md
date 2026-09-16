@@ -4,11 +4,11 @@
 
 ## Current baseline
 
-- Current phase: 12 (hoàn tất, PASS)
+- Current phase: 13 (hoàn tất, PASS)
 - Branch: `thesis-ct-roi-tools`
-- HEAD: `52004e28`
-- Last completed phase: 12 — Technical Closure & Quantitative Validation
-- Next phase: 13 — Performance, Comparison & Usability Preparation (chưa bắt đầu)
+- HEAD: *(cập nhật sau commit Phase 13 — xem `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md`)*
+- Last completed phase: 13 — Manual-QA Closure, Performance, Comparison & Usability Preparation
+- Next phase: 14 — Final Audit & Release Candidate (chưa bắt đầu)
 
 ## Progress Matrix
 
@@ -21,10 +21,10 @@
 | B1 | 3 view Axial/Coronal/Sagittal | WORKING | Ảnh chụp UI thật | Vòng 1 |
 | B2 | Scroll slice đồng bộ | WORKING | Pick 3D → slice AXIAL đổi đúng | Vòng 1 |
 | B3 | Window/Level | WORKING | Export PNG windowing đúng | Vòng 1 |
-| B4 | Zoom/Pan 2D | NEEDS_MANUAL_QA | Cần thao tác chuột thật, checklist ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9 | Phase 09 |
+| B4 | Zoom/Pan 2D | **WORKING** (Phase 13) | Manual QA thật PASS — zoom/pan đúng trên cả 3 khung 2D, xem `CT3D_MANUAL_QA_CHECKLIST.md` mục 2 | **Phase 13** |
 | C1 | Marching Cubes | WORKING | Đo thật extraction/cleaning time | Vòng 1 |
 | C2 | Render 3D + FPS | WORKING | 122-158 FPS, 3 bộ dữ liệu | Vòng 1 |
-| C3 | Rotate/Pan/Zoom 3D | NEEDS_MANUAL_QA | Camera VTK gốc, cần thao tác chuột thật, checklist ở Phase 09 report | Phase 09 |
+| C3 | Rotate/Pan/Zoom 3D | **WORKING** (Phase 13) | Manual QA thật PASS — camera xoay/zoom/pan đúng, surface không biến dạng, xem `CT3D_MANUAL_QA_CHECKLIST.md` mục 3 | **Phase 13** |
 | C4 | Pick điểm 3D | WORKING | Toạ độ world thật từ `vtkCellPicker` | Vòng 1 |
 | C5 | Liên kết 3D→2D | WORKING | Slice AXIAL tự nhảy đúng từ pick thật | Vòng 1 |
 | C6 | Raycasting thuần | NOT_CONNECTED | 0 call-site `Volume.OnShowVolume()` trong toàn InVesalius gốc | Vòng 2 |
@@ -32,18 +32,18 @@
 | D1 | Threshold segmentation | WORKING | mask_dict tăng đúng | Vòng 1 |
 | D2 | Auto-threshold Otsu | WORKING | Test 3 bộ dữ liệu | Vòng 1 |
 | D3 | Chọn mask hiện tại | WORKING | `Slice().current_mask.index` khớp | Vòng 1 |
-| D4 | Brush vẽ tay | NEEDS_MANUAL_QA | Chỉ verify state chuyển, cần thao tác chuột thật, checklist ở Phase 09 report | Phase 09 |
-| D5 | Eraser | NEEDS_MANUAL_QA | Tương tự D4 | Phase 09 |
+| D4 | Brush vẽ tay | **WORKING** (Phase 13) | Manual QA thật PASS — vẽ đúng vị trí, giữ nguyên qua đổi slice, không lệch toạ độ, xem `CT3D_MANUAL_QA_CHECKLIST.md` mục 4 | **Phase 13** |
+| D5 | Eraser | **WORKING** (Phase 13) | Manual QA thật PASS — xoá đúng vùng kéo chuột, phần còn lại giữ nguyên, xem `CT3D_MANUAL_QA_CHECKLIST.md` mục 5 | **Phase 13** |
 | D6 | Kích thước brush | WORKING | Đổi operation/shape/size không lỗi | Vòng 1 |
 | D7 | Undo/Redo | **WORKING**, đã đo + tối ưu bộ nhớ | Checksum khớp trước/sau undo (Vòng 1). Phase 10: benchmark thật (27.36MB/checkpoint ở quy mô CT thật) → giảm `max_history` mặc định 20→10, verify 20/20 test (UR-T1..T9). **Sửa lại ở Phase 11**: Phase 10 tính worst case là `1.07GB → 547MB` (giả định 2 stack cùng đầy `max_history` một lúc) — invariant thật (chứng minh bằng test `test_undo_redo_memory_invariant_*`, 300+ chuỗi ngẫu nhiên + 6 chuỗi xác định) cho thấy tổng `len(undo_stack)+len(redo_stack)` KHÔNG BAO GIỜ vượt quá `max_history` (không phải `2×max_history`) — vì `save_state()` luôn xoá sạch `redo_stack` mỗi khi có nội dung mới. Worst case thật đúng: `10 × 27.36MB ≈ 273.6MB` (không phải 547MB — Phase 10 ước lượng cao gấp 2 lần). Quyết định `max_history=10` GIỮ NGUYÊN (vẫn hợp lý, chỉ số liệu justify được sửa đúng) | **Phase 10, sửa số liệu ở Phase 11** |
 | D8 | Quản lý ROI List | WORKING | Cache/view đồng bộ 2 chiều thật | Vòng 2 |
-| D9 | Mask sửa → Surface cập nhật | **WORKING** (nâng từ PARTIAL) | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` — root cause `algorithm="Default"` tìm ra + sửa, verify runtime 36/36. + Phase 11: logic policy tách thành `choose_surface_algorithm()` (hàm thuần, hành vi giữ nguyên) + `tests/ct3d/test_surface_policy.py` (SP-T1/T2, persistent, unit) | **Phase 08** |
+| D9 | Mask sửa → Surface cập nhật | **WORKING** (nâng từ PARTIAL) | `CT3D_P08_ROI3D_CLOSURE_REPORT.md` — root cause `algorithm="Default"` tìm ra + sửa, verify runtime 36/36. + Phase 11: logic policy tách thành `choose_surface_algorithm()` (hàm thuần, hành vi giữ nguyên) + `tests/ct3d/test_surface_policy.py` (SP-T1/T2, persistent, unit). + **Phase 13**: real-GUI evidence (P08.5) — Brush/Eraser thật → "Update 3D Surface from Selected ROI" qua dialog thật, surface đổi đúng, xem `CT3D_MANUAL_QA_CHECKLIST.md` mục 1 | **Phase 08** |
 | D10 | Region Growing an toàn | WORKING | 16/16 test thuật toán + mask thật 16.2M voxel. + Phase 11: `tests/ct3d/test_segmentation.py` (RG-U1..U8, persistent, unit). + **Phase 12**: full-volume CT thật (0051, 28.3M voxel) chạy lại có kiểm soát RAM — PASS thật (0.30s, 6.84M voxel output, RSS+28.5MB) — đóng dứt điểm item "treo ở vòng 3 do RAM thấp" | **Phase 12** |
 | D11 | Watershed (custom) | ĐÃ XOÁ (quyết định kiến trúc) | Trùng Watershed thật InVesalius gốc | Vòng 2 |
 | D12 | Morphology | ĐÃ XOÁ (quyết định kiến trúc) | 0 call-site, ngoài phạm vi | Vòng 2 |
 | E1 | Đo khoảng cách 3D | WORKING | 59.56mm, verify thật | Vòng 1 |
-| E2 | Đo khoảng cách 2D | NEEDS_MANUAL_QA | Bật đúng style, cần test chuột thật, checklist ở Phase 09 report | Phase 09 |
-| E3 | Đo diện tích 2D | NEEDS_MANUAL_QA | Tương tự E2 | Phase 09 |
+| E2 | Đo khoảng cách 2D | **WORKING** (Phase 13) | Manual QA thật PASS — M1=143.951mm, M2=189.741mm, đúng chiều vật lý, xem `CT3D_MANUAL_QA_CHECKLIST.md` mục 6 | **Phase 13** |
+| E3 | Đo diện tích 2D | **WORKING** (Phase 13) | Manual QA thật PASS — Sagittal=2674.851mm², Coronal=5367.750mm², đúng chiều vật lý, xem `CT3D_MANUAL_QA_CHECKLIST.md` mục 7 | **Phase 13** |
 | E4 | Đo thể tích mask | WORKING | Đã sửa bug đếm nhầm padding (vòng 3). + Phase 11: `tests/ct3d/test_measurement.py` (M-U4, regression trực tiếp cho bug padding, persistent, unit) | Vòng 3 |
 | E5 | Spacing thật áp dụng | WORKING | Dùng `Slice().spacing` trực tiếp | Vòng 1 |
 | F1 | Thêm annotation | WORKING | add → count=1 | Vòng 1 |
@@ -63,11 +63,11 @@
 
 ## Critical blockers
 
-- Không có blocker nghiêm trọng nào đang mở sau Phase 12.
+- Không có blocker nghiêm trọng nào đang mở sau Phase 13. Manual QA 7/7 PASS — `MANUAL_QA_COMPLETE = YES`. Blocker external còn lại (GE/Canon, real ground-truth, SUS participants) đều `BLOCKED_EXTERNAL_DATA`, không phải blocker kỹ thuật.
 
 ## High-priority remaining work
 
-1. **Manual QA thao tác chuột thật** cho 7 mục: P08.5 (D9/C7), B4, C3, D4, D5, E2, E3 — checklist đầy đủ ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9.
+*(Đã đóng ở Phase 13: Manual QA thao tác chuột thật cho 7 mục — P08.5 (D9/C7), B4, C3, D4, D5, E2, E3 — 7/7 PASS thật, `MANUAL_QA_COMPLETE = YES`. Xem `CT3D_MANUAL_QA_CHECKLIST.md`, `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 4. Không còn mục high-priority nào đang mở.)*
 
 ## Medium-priority work
 
@@ -79,11 +79,11 @@
 
 > **Cập nhật Phase 12 (baseline reconciliation)**: mục "bộ pytest độc lập" từng liệt kê ở đây **đã đóng từ Phase 11** (`tests/ct3d/`, 158 test — xem `CT3D_P11_TEST_AUTOMATION_REPORT.md`) — đã xoá khỏi danh sách bên dưới, không còn để stale. Dice/Jaccard/Hausdorff **đã có hạ tầng thật + unit test synthetic đầy đủ ở Phase 12** (`plugins/roi_viewer/core/evaluation.py`, `tests/ct3d/test_evaluation_metrics.py`, `tests/ct3d/test_phantom_validation.py`) — không còn "hoàn toàn chưa thực hiện" như trước, nhưng **ground-truth THẬT (không phải synthetic) vẫn `BLOCKED_EXTERNAL_DATA`** (cần dataset có nhãn sẵn, ví dụ Medical Segmentation Decathlon — không có local). Đa vendor: **2/2 vendor thật xác nhận trong dữ liệu local hiện có** (SIEMENS, Philips — xem `CT3D_DATASET_REGISTRY.md`), GE/Canon vẫn `BLOCKED_EXTERNAL_DATA`.
 
-- Ground-truth THẬT cho Dice/Jaccard/Hausdorff (cần dataset có nhãn, `BLOCKED_EXTERNAL_DATA`), khảo sát Usability (SUS), bảng so sánh với 3D Slicer, GE/Canon (`BLOCKED_EXTERNAL_DATA`) — xem `Ke_hoach_de_tai_InVesalius_CT3D.md` mục 4 và `DANH_GIA_TIEN_DO_THEO_GIAI_DOAN.md` (Nội dung 6b) — dự kiến Phase 13+.
+- Ground-truth THẬT cho Dice/Jaccard/Hausdorff (cần dataset có nhãn, `BLOCKED_EXTERNAL_DATA`), người tham gia SUS thật (protocol đã sẵn sàng — `CT3D_SUS_PROTOCOL.md`, `SUS_PROTOCOL_READY=YES`/`SUS_REAL_PARTICIPANTS_COMPLETE=NO`), benchmark thật với 3D Slicer (không cài trên máy hiện tại — `NEEDS_EXTERNAL_VERIFICATION`, xem `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 17), GE/Canon (`BLOCKED_EXTERNAL_DATA`) — xem `Ke_hoach_de_tai_InVesalius_CT3D.md` mục 4 và `DANH_GIA_TIEN_DO_THEO_GIAI_DOAN.md` (Nội dung 6b) — dự kiến Phase 14+.
 
 ## Manual QA remaining
 
-- 7 mục: P08.5 (D9/C7 qua dialog mặc định), B4, C3, D4, D5, E2, E3 — checklist đầy đủ ở `CT3D_P09_INTERACTION_QA_REPORT.md` mục 9.
+**Không còn mục nào — 7/7 PASS (Phase 13, 16/09/2026, real mouse/GUI session).** P08.5 (D9/C7 qua dialog thật), B4, C3, D4, D5, E2, E3 — xem `CT3D_MANUAL_QA_CHECKLIST.md` cho evidence đầy đủ từng mục.
 
 ## Out-of-scope items
 
@@ -100,3 +100,4 @@
 | 10 | Data Integrity, Save/Open Forensics & Undo/Redo Memory | **PASS** | `0e51bcf9` | `CT3D_P10_DATA_INTEGRITY_REPORT.md` |
 | 11 | Persistent Test & Regression Architecture + Code Hardening | **PASS** | `36dc59ba` | `CT3D_P11_TEST_AUTOMATION_REPORT.md` |
 | 12 | Technical Closure & Quantitative Validation | **PASS** | `52004e28` | `CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md` |
+| 13 | Manual-QA Closure, Performance, Comparison & Usability Preparation | **PASS** | *(xem response cuối)* | `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` |

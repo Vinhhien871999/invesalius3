@@ -29,7 +29,7 @@ SPHERE_VOLUME_APPROX,SYNTHETIC_GROUND_TRUTH,Volume,14137.17,varies,<700,<5.0,mm3
 DIST-M-U1,SYNTHETIC_GROUND_TRUTH,Distance,5.0,5.0,0.0,0.0,mm,PASS,"3-4-5 triangle (0,0,0)-(3,4,0) isotropic spacing"
 DIST-M-U2,SYNTHETIC_GROUND_TRUTH,Distance,6.3245553203,6.3245553203,0.0,0.0,mm,PASS,"(3,4,0) with spacing (2.0,0.5,1.0) - dx=6 dy=2 -> sqrt(40)"
 AREA-M-U-unitsquare,SYNTHETIC_GROUND_TRUTH,Area,1.0,1.0,0.0,0.0,mm2,PASS,Unit square spacing 1.0mm
-AREA-M-U-scaled,SYNTHETIC_GROUND_TRUTH,Area,6.0,6.0,0.0,0.0,mm2,PASS,Unit square spacing (2.0,3.0)mm
+AREA-M-U-scaled,SYNTHETIC_GROUND_TRUTH,Area,6.0,6.0,0.0,0.0,mm2,PASS,"Unit square spacing (2.0,3.0)mm"
 VOLUME-M-U3,SYNTHETIC_GROUND_TRUTH,Volume,500.0,500.0,0.0,0.0,mm3,PASS,"10x10x10 foreground block spacing (0.5,0.5,2.0)mm - see tests/ct3d/test_measurement.py M-U3"
 VOLUME-PADDING-M-U4,SYNTHETIC_GROUND_TRUTH,Volume,0.0,0.0,0.0,0.0,mm3,PASS,"Payload-only (matrix[1:,1:,1:], correct/current code) = 0.0; full-padded-matrix (matrix incl. sentinel column, WRONG/pre-fix behavior) = 10.0 - the two-value comparison IS the regression check for the Round-3 E4 bug, see tests/ct3d/test_measurement.py M-U4"
 REGIONGROWING_FULLVOLUME_0051,REAL_DATASET,VoxelCount,N/A,6843727,N/A,N/A,voxels,PASS,"Real 0051 CT (28,311,552 voxels), seed=volume center, tolerance=100HU, runtime=0.30s, RSS_delta=28.5MB - see Section 17"
