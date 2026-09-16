@@ -236,7 +236,7 @@ Region Growing full-volume CT thật (0051, 28.311.552 voxel): runtime 0.30s, RS
 ### Phase Gate
 `PHASE_GATE: PASS`
 
-## `<Phase 13 commit>` — Phase 13 (CT3D_P13_PERFORMANCE_COMPARISON): đóng Manual QA + benchmark hiệu năng + chuẩn bị comparison/SUS
+## `787fad80` — Phase 13 (CT3D_P13_PERFORMANCE_COMPARISON): đóng Manual QA + benchmark hiệu năng + chuẩn bị comparison/SUS
 
 ### Goal
 Đóng chính thức Manual QA 7/7 (bằng chứng thật từ người vận hành). Sửa documentation drift/hygiene còn sót (test count ambiguous, CSV lỗi quote, câu văn stale về đa vendor/Dice-Jaccard-Hausdorff). Benchmark hiệu năng có phương pháp trên dataset local thật. Chuẩn bị comparison methodology (InVesalius gốc vs plugin, 3D Slicer) và SUS protocol — không bịa dữ liệu.

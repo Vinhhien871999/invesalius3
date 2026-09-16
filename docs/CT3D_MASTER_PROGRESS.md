@@ -6,7 +6,7 @@
 
 - Current phase: 13 (hoàn tất, PASS)
 - Branch: `thesis-ct-roi-tools`
-- HEAD: *(cập nhật sau commit Phase 13 — xem `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md`)*
+- HEAD: `787fad80`
 - Last completed phase: 13 — Manual-QA Closure, Performance, Comparison & Usability Preparation
 - Next phase: 14 — Final Audit & Release Candidate (chưa bắt đầu)
 
@@ -100,4 +100,4 @@
 | 10 | Data Integrity, Save/Open Forensics & Undo/Redo Memory | **PASS** | `0e51bcf9` | `CT3D_P10_DATA_INTEGRITY_REPORT.md` |
 | 11 | Persistent Test & Regression Architecture + Code Hardening | **PASS** | `36dc59ba` | `CT3D_P11_TEST_AUTOMATION_REPORT.md` |
 | 12 | Technical Closure & Quantitative Validation | **PASS** | `52004e28` | `CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md` |
-| 13 | Manual-QA Closure, Performance, Comparison & Usability Preparation | **PASS** | *(xem response cuối)* | `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` |
+| 13 | Manual-QA Closure, Performance, Comparison & Usability Preparation | **PASS** | `787fad80` | `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` |
