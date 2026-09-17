@@ -6,7 +6,7 @@
 
 - **Current phase: 14 (FINAL — hoàn tất, PASS).** Đây là phase cuối của roadmap phần mềm (Phase 08→14). **KHÔNG có Phase 15.**
 - Branch: `thesis-ct-roi-tools`
-- HEAD: xem `CT3D_P14_FINAL_AUDIT_REPORT.md` mục Git cho commit hash chính xác (điền sau khi commit Phase 14 thật)
+- HEAD: `bed0c624`
 - Last completed phase: 14
 - Next phase: **NONE.** Software roadmap complete. Remaining work is external research / clinical validation only (xem `CT3D_KNOWN_LIMITATIONS.md`, `CT3D_RELEASE_NOTES.md` mục 11) — không còn công việc kỹ thuật phần mềm nào cần Claude Code tiếp tục.
 
@@ -104,4 +104,4 @@
 | 12 | Technical Closure & Quantitative Validation | **PASS** | `52004e28` | `CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md` |
 | 13 | Manual-QA Closure, Performance, Comparison & Usability Preparation | **PASS** | `787fad80` | `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` |
 | 13.5 | Pre-Phase-14: Visual 2D→3D Slice Synchronization (mini-phase) | **PASS** | `3d070f7c` | `CT3D_P13_5_VISUAL_SYNC_REPORT.md` |
-| 14 | Final Audit & Software Release Candidate (FINAL — KHÔNG có Phase 15) | **PASS** | `<điền sau commit Phase 14 — xem CT3D_P14_FINAL_AUDIT_REPORT.md>` | `CT3D_P14_FINAL_AUDIT_REPORT.md` |
+| 14 | Final Audit & Software Release Candidate (FINAL — KHÔNG có Phase 15) | **PASS** | `bed0c624` | `CT3D_P14_FINAL_AUDIT_REPORT.md` |

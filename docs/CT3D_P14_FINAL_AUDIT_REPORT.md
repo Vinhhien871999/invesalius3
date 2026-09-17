@@ -9,7 +9,7 @@
 | Branch | `thesis-ct-roi-tools` |
 | HEAD before this phase | `e56594c6929cba4a84fde3053aa85b524703983d` |
 | Housekeeping commit (worktree cleanup, before audit proper) | `54f2f479` |
-| HEAD after this phase | see §29/§30 — filled in after the final commit (same hash-fill-in pattern used every prior phase) |
+| HEAD after this phase | `bed0c624` (main Phase 14 commit); this hash-fill-in follow-up commit updates the 3 self-referencing placeholders left in this file, `CT3D_MASTER_PROGRESS.md`, and `CT3D_CHANGELOG.md` |
 | Python | 3.11.7 (`D:\PyTools\invx-venv\Scripts\python.exe`) |
 | This is the **FINAL** phase of the software roadmap (Phase 08→14). **No Phase 15.** |
 

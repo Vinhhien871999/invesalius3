@@ -305,7 +305,7 @@ Mục mới "C8 — Visual Sync 2D → 3D Slice Planes" (9 bước A-I) trong `C
 
 ---
 
-## `<điền sau commit Phase 14>` — Phase 14 Final Audit & Software Release Candidate
+## `bed0c624` — Phase 14 Final Audit & Software Release Candidate
 
 ### Goal
 Phase CUỐI của roadmap phần mềm (Phase 08→14). Không thêm feature mới, không refactor lớn, không đổi kiến trúc ổn định nếu không có bug thật. Audit toàn diện + đóng gói release-candidate: reconcile C8, sửa doc drift, đối chiếu benchmark, static analysis riêng biệt plugin/tool, regression 3x, không dữ liệu/bằng chứng giả.
