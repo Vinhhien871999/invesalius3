@@ -10,14 +10,14 @@ Dataset_ID,Operation,Run,Volume_Shape,Input_Voxels,Runtime_Seconds,RSS_Before_MB
 0051,"Rendering (Surface mode, vtkRenderer.GetLastRenderTimeInSeconds)",2,"(108, 512, 512)",28311552,0.0001,,,,PASS,FPS=10000.0 Rendering_mode=Surface (NOT volume raycasting - C6 remains NOT_CONNECTED)
 0051,"Rendering (Surface mode, vtkRenderer.GetLastRenderTimeInSeconds)",3,"(108, 512, 512)",28311552,0.0001,,,,PASS,FPS=10000.0 Rendering_mode=Surface (NOT volume raycasting - C6 remains NOT_CONNECTED)
 0051,Import DICOM,1,"(108, 512, 512)",28311552,8.181,732.3,1037.3,305.0,PASS,"modality=CT manufacturer=SIEMENS spacing=(0.4785156, 0.4785156, 1.5)"
-0051,Import DICOM,1,"(108, 512, 512)",28311552,8.271,731.6,1035.7,304.1,PASS,"modality=CT manufacturer=SIEMENS spacing=(0.4785156, 0.4785156, 1.5)"
+0051,Import DICOM,2,"(108, 512, 512)",28311552,8.271,731.6,1035.7,304.1,PASS,"modality=CT manufacturer=SIEMENS spacing=(0.4785156, 0.4785156, 1.5) Phase14_note=label-only fix, was duplicate Run=1 from two separate real process launches; measured values unchanged"
 0801,Otsu threshold,1,"(162, 512, 512)",42467328,0.6467,1113.9,1115.5,1.6,PASS,"modality=CT result_range=(-472, 3095)"
 0801,Otsu threshold,2,"(162, 512, 512)",42467328,0.6431,1115.5,1116.0,0.5,PASS,"modality=CT result_range=(-472, 3095)"
 0801,Otsu threshold,3,"(162, 512, 512)",42467328,0.6367,1116.0,1116.0,0.0,PASS,"modality=CT result_range=(-472, 3095)"
 0801,Region Growing,1,"(162, 512, 512)",42467328,0.7163,1116.0,1158.7,42.6,PASS,"seed=(81, 256, 256) tolerance=100 output_voxels=6778190 fraction=0.1596 exceeds_20pct=False"
 0801,Region Growing,2,"(162, 512, 512)",42467328,0.7262,1158.7,1158.7,0.0,PASS,"seed=(81, 256, 256) tolerance=100 output_voxels=6778190 fraction=0.1596 exceeds_20pct=False"
 0801,Region Growing,3,"(162, 512, 512)",42467328,0.5687,1158.7,1158.7,0.0,PASS,"seed=(81, 256, 256) tolerance=100 output_voxels=6778190 fraction=0.1596 exceeds_20pct=False"
-0801,"Surface build (Default algorithm, batch_mode)",1,"(162, 512, 512)",42467328,12.652,1201.5,1494.3,292.9,FAIL,"mask_threshold=(2995, 3095) mask_foreground_fraction=0.0000 points=0 cells=0"
+0801,"Surface build (Default algorithm, batch_mode)",1,"(162, 512, 512)",42467328,12.652,1201.5,1494.3,292.9,FAIL,"mask_threshold=(2995, 3095) mask_foreground_fraction=0.0000 points=0 cells=0 Phase14_classification=BENCHMARK_INPUT_EMPTY (threshold band chosen near Otsu max happened to select 0 foreground voxels for this dataset; not a product surface-build defect - see Run=2 below for a representative rerun with a data-derived non-empty threshold)"
 0801,"Rendering (Surface mode, vtkRenderer.GetLastRenderTimeInSeconds)",1,"(162, 512, 512)",42467328,0.0001,,,,PASS,FPS=10000.0 Rendering_mode=Surface (NOT volume raycasting - C6 remains NOT_CONNECTED)
 0801,"Rendering (Surface mode, vtkRenderer.GetLastRenderTimeInSeconds)",2,"(162, 512, 512)",42467328,0.0001,,,,PASS,FPS=10000.0 Rendering_mode=Surface (NOT volume raycasting - C6 remains NOT_CONNECTED)
 0801,"Rendering (Surface mode, vtkRenderer.GetLastRenderTimeInSeconds)",3,"(162, 512, 512)",42467328,0.0001,,,,PASS,FPS=10000.0 Rendering_mode=Surface (NOT volume raycasting - C6 remains NOT_CONNECTED)
@@ -28,3 +28,4 @@ synthetic_small,Project Save,2,"(30, 128, 128)",515871,0.042,135.9,136.0,,PASS,"
 synthetic_small,Project Open,2,"(30, 128, 128)",515871,0.0315,,136.0,0.0,PASS,
 synthetic_small,Project Save,3,"(30, 128, 128)",515871,0.0328,136.0,136.0,,PASS,"compress=False, small controlled mask (30x128x128)"
 synthetic_small,Project Open,3,"(30, 128, 128)",515871,0.0572,,136.0,0.0,PASS,
+0801,"Surface build (Default algorithm, batch_mode)",2,"(162, 512, 512)",42467328,11.121,1156.4,1497.1,340.7,PASS,"Phase14_representative_rerun quality=Low mask_threshold=(-472, 3095) mask_foreground_fraction=0.2670 foreground_count=11340153 ram_available_before_build_GB=1.82 points=145772 cells=254978"

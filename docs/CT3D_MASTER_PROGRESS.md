@@ -4,11 +4,11 @@
 
 ## Current baseline
 
-- Current phase: 13 (hoàn tất, PASS) — **+ mini-phase Pre-Phase-14: C8 Visual 2D→3D Slice Synchronization** (16/09/2026, xem `CT3D_P13_5_VISUAL_SYNC_REPORT.md`) — KHÔNG phải Phase 14, chưa mở Phase 14
+- **Current phase: 14 (FINAL — hoàn tất, PASS).** Đây là phase cuối của roadmap phần mềm (Phase 08→14). **KHÔNG có Phase 15.**
 - Branch: `thesis-ct-roi-tools`
-- HEAD: `3d070f7c`
-- Last completed phase: 13 (+ mini-phase Pre-Phase-14 C8 visual enhancement)
-- Next phase: 14 — Final Audit & Release Candidate (chưa bắt đầu — chờ người dùng tự xác nhận manual QA mục C8 Visual Sync trước, xem `CT3D_MANUAL_QA_CHECKLIST.md`)
+- HEAD: xem `CT3D_P14_FINAL_AUDIT_REPORT.md` mục Git cho commit hash chính xác (điền sau khi commit Phase 14 thật)
+- Last completed phase: 14
+- Next phase: **NONE.** Software roadmap complete. Remaining work is external research / clinical validation only (xem `CT3D_KNOWN_LIMITATIONS.md`, `CT3D_RELEASE_NOTES.md` mục 11) — không còn công việc kỹ thuật phần mềm nào cần Claude Code tiếp tục.
 
 ## Progress Matrix
 
@@ -58,12 +58,12 @@
 | H5 | Export Surface VTK | WORKING | File thật 74.5MB. + Phase 11: `tests/ct3d/test_exporters.py` (EX-T4, small synthetic mesh round-trip, persistent, integration) | Vòng 1 |
 | H6 | Export ảnh slice | WORKING | PNG windowing đúng | Vòng 1 |
 | H7 | Export DICOM-SEG | MISSING | Ngoài phạm vi đã triển khai | Vòng 1 |
-| Sync 2D→3D (C8) | Checkbox đồng bộ ngược + mặt phẳng lát cắt trực quan | **WORKING** (nâng từ NOT_IMPLEMENTED) | Phase 09: tái sử dụng topic thật `"Set cross focal point"`, marker 3D thật cập nhật đúng, verify runtime 8/8 test (SYNC-T1..T6). + Phase 11: `tests/ct3d/test_sync_2d3d.py` (marker VTK thật không renderer trùng lặp, detach, enable/disable, F3 priority, persistent, integration). + **Pre-Phase-14 (16/09/2026)**: `core/slice_planes_3d.SlicePlanes3D` (3 mặt phẳng bán trong suốt, cùng event/cờ, không topic/timer mới) — 16 unit test (`test_slice_planes_3d.py`) + 9 integration test (`SYNC3D-T1..T9`) PASS thật. Checkbox `"Show slice planes in 3D"` mới, prerequisite native tool ghi rõ trong UI, không tự bật tool gốc, không cản pick 3D, không rebuild surface, không tự đổi camera. Manual GUI: `NOT_RUN` — `CT3D_MANUAL_QA_CHECKLIST.md` mục "C8 — Visual Sync 2D → 3D Slice Planes" | Phase 09, +Pre-Phase-14 |
+| Sync 2D→3D (C8) | Checkbox đồng bộ ngược + mặt phẳng lát cắt trực quan | **WORKING** (nâng từ NOT_IMPLEMENTED) | Phase 09: tái sử dụng topic thật `"Set cross focal point"`, marker 3D thật cập nhật đúng, verify runtime 8/8 test (SYNC-T1..T6). + Phase 11: `tests/ct3d/test_sync_2d3d.py` (marker VTK thật không renderer trùng lặp, detach, enable/disable, F3 priority, persistent, integration). + **Phase 13.5 (16/09/2026)**: `core/slice_planes_3d.SlicePlanes3D` (3 mặt phẳng bán trong suốt, cùng event/cờ, không topic/timer mới) — 16 unit test (`test_slice_planes_3d.py`) + 9 integration test (`SYNC3D-T1..T9`) PASS thật. Checkbox `"Show slice planes in 3D"` mới, prerequisite native tool ghi rõ trong UI, không tự bật tool gốc, không cản pick 3D, không rebuild surface, không tự đổi camera. + **Phase 14 (17/09/2026, FINAL)**: người vận hành thật đã tự chạy 1 phiên smoke test core path — `C8_VISUAL_OPERATOR_SMOKE = PASS` (marker/mặt phẳng di chuyển đúng, surface không đổi hình học). 9 mục lettered A-I vẫn `NOT_EXPLICITLY_MANUAL_VERIFIED` (không phải FAIL — optional, xem `CT3D_REMAINING_WORK.md` mục 8) — xem `CT3D_MANUAL_QA_CHECKLIST.md` mục "C8 — Visual Sync 2D → 3D Slice Planes" | Phase 09, +Phase 13.5, +Phase 14 |
 | Quantitative Metrics | Dice/Jaccard/Hausdorff (+HD95) | **WORKING** (hạ tầng + synthetic validation, mới ở Phase 12) | `core/evaluation.py` (thuần numpy/scipy, spacing anisotropic đúng — `spacing_zyx` tường minh, không mặc định trục). 42 test thật (`test_evaluation_metrics.py` 30, `test_phantom_validation.py` 12) — edge case empty/empty, empty/non-empty, shift-phantom khớp tuyệt đối công thức tay. **Ground-truth THẬT (không synthetic) vẫn `BLOCKED_EXTERNAL_DATA`** — chưa wire vào GUI (chỉ là module core/, đúng chỉ đạo không nhét research code vào GUI panel nếu chưa cần) | **Phase 12** |
 
 ## Critical blockers
 
-- Không có blocker nghiêm trọng nào đang mở sau Phase 13. Manual QA 7/7 PASS — `MANUAL_QA_COMPLETE = YES`. Blocker external còn lại (GE/Canon, real ground-truth, SUS participants) đều `BLOCKED_EXTERNAL_DATA`, không phải blocker kỹ thuật.
+- **Không có blocker nghiêm trọng nào đang mở sau Phase 14 (phase cuối).** Manual QA 7/7 PASS — `MANUAL_QA_COMPLETE = YES`. C8 core path có operator evidence thật (`C8_VISUAL_OPERATOR_SMOKE = PASS`) + 25/25 automated regression PASS. Blocker external còn lại (GE/Canon, real ground-truth, SUS participants, 3D Slicer comparison) đều `EXTERNAL_VALIDATION_GAP`/`BLOCKED_EXTERNAL_DATA`, không phải blocker kỹ thuật — xem `CT3D_KNOWN_LIMITATIONS.md`.
 
 ## High-priority remaining work
 
@@ -85,7 +85,7 @@
 
 **7 mục gốc — 7/7 PASS (Phase 13, 16/09/2026, real mouse/GUI session).** P08.5 (D9/C7 qua dialog thật), B4, C3, D4, D5, E2, E3 — xem `CT3D_MANUAL_QA_CHECKLIST.md` cho evidence đầy đủ từng mục.
 
-**+1 mục mới (Pre-Phase-14, chưa chạy)**: C8 Visual Sync (mặt phẳng lát cắt 2D→3D) — `NOT_RUN`, chờ người dùng tự thao tác chuột thật theo checklist "C8 — Visual Sync 2D → 3D Slice Planes" ở `CT3D_MANUAL_QA_CHECKLIST.md`.
+**C8 Visual Sync (mặt phẳng lát cắt 2D→3D, Phase 13.5/14)**: core path đã có `C8_VISUAL_OPERATOR_SMOKE = PASS` (Phase 14, real operator evidence). 9 mục lettered A-I (TEST A-I) vẫn `NOT_EXPLICITLY_MANUAL_VERIFIED` — optional, không phải blocker cho release candidate, xem `CT3D_MANUAL_QA_CHECKLIST.md` và `CT3D_REMAINING_WORK.md` mục 8.
 
 ## Out-of-scope items
 
@@ -103,3 +103,5 @@
 | 11 | Persistent Test & Regression Architecture + Code Hardening | **PASS** | `36dc59ba` | `CT3D_P11_TEST_AUTOMATION_REPORT.md` |
 | 12 | Technical Closure & Quantitative Validation | **PASS** | `52004e28` | `CT3D_P12_QUANTITATIVE_VALIDATION_REPORT.md` |
 | 13 | Manual-QA Closure, Performance, Comparison & Usability Preparation | **PASS** | `787fad80` | `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` |
+| 13.5 | Pre-Phase-14: Visual 2D→3D Slice Synchronization (mini-phase) | **PASS** | `3d070f7c` | `CT3D_P13_5_VISUAL_SYNC_REPORT.md` |
+| 14 | Final Audit & Software Release Candidate (FINAL — KHÔNG có Phase 15) | **PASS** | `<điền sau commit Phase 14 — xem CT3D_P14_FINAL_AUDIT_REPORT.md>` | `CT3D_P14_FINAL_AUDIT_REPORT.md` |

@@ -1,6 +1,6 @@
 # Hướng dẫn sử dụng Plugin ROI Viewer
 
-> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau Phase 12 (CT3D_P12_QUANTITATIVE_VALIDATION, 14/09/2026). Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
+> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau Phase 14 (CT3D_P14_FINAL_AUDIT_REPORT, 17/09/2026) — bao gồm nội dung C8 mặt phẳng 2D→3D (`core/slice_planes_3d.SlicePlanes3D`, thêm ở Phase 13.5) và toàn bộ phần mềm ở trạng thái release-candidate cuối cùng của roadmap. Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
 
 ---
 

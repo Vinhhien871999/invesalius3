@@ -305,6 +305,46 @@ Mục mới "C8 — Visual Sync 2D → 3D Slice Planes" (9 bước A-I) trong `C
 
 ---
 
+## `<điền sau commit Phase 14>` — Phase 14 Final Audit & Software Release Candidate
+
+### Goal
+Phase CUỐI của roadmap phần mềm (Phase 08→14). Không thêm feature mới, không refactor lớn, không đổi kiến trúc ổn định nếu không có bug thật. Audit toàn diện + đóng gói release-candidate: reconcile C8, sửa doc drift, đối chiếu benchmark, static analysis riêng biệt plugin/tool, regression 3x, không dữ liệu/bằng chứng giả.
+
+### Final audit
+Git lineage xác nhận linear (không branch/merge). Worktree pre-existing: 3 file `.md` kế hoạch gốc ở root (`Ke_hoach_de_tai_InVesalius_CT3D.md`, `Lộ trình phát triển.md`, `Đề cương NCKH.md`) đã bị di chuyển vật lý vào `docs/` từ trước Phase 08 nhưng chưa bao giờ được `git` hoàn tất — verify nội dung byte-identical (chỉ khác CRLF/LF) giữa bản gốc (qua `git show HEAD:`) và bản `docs/`, hoàn tất rename thật qua 1 commit riêng (`54f2f479`) trước khi bắt đầu audit Phase 14. `docs/Phan_tich_tien_do_tong_the.md` (progress snapshot mồ côi, không có bản gốc ở root) cũng được commit cùng lúc.
+
+### C8 closure
+Grep xác nhận `"Create surface from index"` chỉ xuất hiện đúng 1 lần trong plugin (`segmentation_panel.py`, luồng Update Surface chủ động) — KHÔNG có trong `on_cross_focal_point_changed()` (crosshair path), khớp đúng docstring "does NOT rebuild any surface". Người vận hành thật đã tự chạy 1 phiên smoke test core path cho C8 (native tool ON + Sync 2D→3D ON + click/kéo 2D) — báo cáo PASS, ghi lại trung thực thành `C8_VISUAL_OPERATOR_SMOKE = PASS` trong `CT3D_MANUAL_QA_CHECKLIST.md`. 9 mục lettered A-I KHÔNG được nâng cấp thành PASS (không có bằng chứng itemize riêng) — ghi đúng `NOT_EXPLICITLY_MANUAL_VERIFIED`, tách rõ khỏi 25/25 automated regression PASS (`SYNC3D-T1..T9` + `SP3D-T` + extras).
+
+### Documentation consistency
+`CT3D_FEATURE_AUDIT.md`: sửa top metadata (14/09→17/09/2026, Phase 12→Phase 14), sửa inconsistency Status-vs-Runtime cho B4/C3/D4/D5/E2/E3 (Runtime `NEEDS_MANUAL_QA`→`✓ (manual)`), C8 Runtime→`✓ automated + operator visual smoke`, làm rõ lịch sử baseline test theo từng phase (không gộp lẫn 109/159/184). `HUONG_DAN_SU_DUNG_ROI_VIEWER.md`: sửa header còn ghi "Phase 12" dù đã có nội dung Phase 13.5. `CT3D_MANUAL_QA_CHECKLIST.md`: cập nhật C8 trung thực theo đúng phạm vi bằng chứng operator thật.
+
+### Benchmark reconciliation
+`CT3D_P13_PERFORMANCE_RESULTS.csv`: sửa nhãn `Run` trùng lặp cho `0051` Import DICOM (2 dòng cùng `Run=1` từ 2 tiến trình thật riêng biệt → sửa thành `Run=1`/`Run=2`, KHÔNG đụng số liệu đo). Reclassify kết quả `0801` surface build rỗng (0 điểm) thành `BENCHMARK_INPUT_EMPTY` (threshold band benchmark hẹp tình cờ chọn trúng vùng rỗng, không phải bug thật) — chạy lại đại diện thật với threshold data-derived (full Otsu range, asserted `foreground_count > 0` trước khi build): **PASS thật, 145,772 điểm, 254,978 cell**, RAM 1.82GB khả dụng lúc build — thêm dòng mới (`Run=2`), không ghi đè lịch sử. "10000.0 FPS" xác nhận là artifact đo lường tối thiểu VTK trên mesh cực nhỏ — loại khỏi mọi tuyên bố hiệu năng đại diện; con số đại diện thật dùng lại: **122.0-158.3 FPS** (đã verify trước đó, `CT3D_FEATURE_AUDIT.md` mục C2).
+
+### Static analysis
+`pyflakes plugins/roi_viewer`: sạch (exit 0, báo cáo riêng). `pyflakes tools/ct3d_benchmark.py`: sạch (exit 0, báo cáo riêng — không gộp lẫn 2 kết quả). `python -m compileall plugins/roi_viewer` + `python -m py_compile tools/ct3d_benchmark.py`: PASS riêng biệt. Sửa `tools/ct3d_benchmark.py`: `REPO_ROOT` hardcode tuyệt đối (`D:\Learns\...`) → derive từ `__file__` thật (portable, hành vi không đổi trên máy hiện tại); `DATASETS` root path → override được qua env var `CT3D_DICOM_SAMPLES_DIR` (default giữ nguyên) — không phải feature mới, là path-portability fix tối thiểu cho 1 dev tool.
+
+### Regression
+`tests/ct3d -q`: **183 passed, 1 skipped** (184 collected) — chạy **3 lần liên tiếp**, kết quả giống hệt cả 3 lần. `tests --ignore=tests/ct3d -q` (upstream): **94 passed**, không đổi. Import smoke test thật (không GUI): core modules sạch, `slice_planes_3d`/`evaluation` import OK, `plugin.json` parse đúng, `PluginManager.find_plugins()` thật xác nhận phát hiện "ROI Viewer" cùng 7 plugin gốc khác, benchmark tool `--help` chạy đúng.
+
+### Manual evidence
+7/7 mục gốc PASS (Phase 13) giữ nguyên, không đụng. C8 core path: `C8_VISUAL_OPERATOR_SMOKE = PASS` (Phase 14, evidence thật). Không có mục nào bị nâng cấp thành PASS khi thiếu bằng chứng cụ thể.
+
+### Known limitations
+Tài liệu hoá đầy đủ 14 mục, phân loại `SOFTWARE_LIMITATION`/`ENVIRONMENT_DEPENDENCY`/`EXTERNAL_VALIDATION_GAP`/`OUT_OF_SCOPE` — xem `CT3D_KNOWN_LIMITATIONS.md` (mới).
+
+### Release readiness
+`docs/CT3D_RELEASE_NOTES.md` (mới) — bao gồm disclaimer research-prototype rõ ràng, KHÔNG phải thiết bị y tế, chưa clinical validation.
+
+### External validation
+`RESEARCH_EXTERNAL_VALIDATION_COMPLETE = NO`, `CLINICAL_VALIDATION_COMPLETE = NO` — không đổi, không giả lập.
+
+### Phase Gate
+`PHASE_GATE: PASS` — xem `CT3D_P14_FINAL_AUDIT_REPORT.md` cho chi tiết đầy đủ 27 tiêu chí. **SOFTWARE ROADMAP PHASE 08–14: COMPLETE. KHÔNG CÓ PHASE 15.**
+
+---
+
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc
 
 - **100% code mới của đề tài**: toàn bộ `plugins/roi_viewer/` (main.py, gui/, core/, interface/) — ~4700+ dòng.

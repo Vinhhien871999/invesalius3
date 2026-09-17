@@ -12,7 +12,10 @@
 - Kỹ thuật viên CT/MRI (Radiologic Technologist).
 - Sinh viên/nghiên cứu sinh ngành Kỹ thuật Y sinh hoặc Chẩn đoán hình ảnh có kinh nghiệm dùng phần mềm xem ảnh y tế (PACS, 3D Slicer, InVesalius, OsiriX, v.v.).
 
-**Số lượng khuyến nghị**: tối thiểu 5 người (theo Nielsen — 5 người phát hiện được phần lớn vấn đề usability nghiêm trọng), lý tưởng 10-20 người để điểm SUS trung bình có ý nghĩa thống kê chấp nhận được.
+**Số lượng khuyến nghị — Phase 14 làm rõ, tách 2 khái niệm KHÔNG được gộp lẫn nhau**:
+- **Phát hiện vấn đề usability nghiêm trọng (qualitative, formative)**: theo heuristic của Nielsen, ~5 người tham gia đã đủ để phát hiện phần lớn (~85%) các vấn đề usability nghiêm trọng qua quan sát/task-based testing. Đây là ngưỡng cho **phát hiện vấn đề định tính**, KHÔNG phải ngưỡng cho điểm SUS trung bình có ý nghĩa thống kê.
+- **Điểm SUS trung bình có ý nghĩa thống kê (quantitative)**: cần cỡ mẫu lớn hơn nhiều — khuyến nghị tối thiểu **10-20 người** để điểm SUS trung bình đủ tin cậy để báo cáo/so sánh định lượng (n=5 KHÔNG đủ để suy luận thống kê có ý nghĩa cho điểm SUS trung bình, dù vẫn đủ để phát hiện vấn đề usability định tính).
+- Hai mục tiêu này **độc lập**: một buổi khảo sát 5 người có thể phát hiện vấn đề usability nghiêm trọng thật, nhưng KHÔNG được dùng điểm SUS trung bình từ 5 người đó để kết luận "phần mềm có usability tốt/xấu" theo nghĩa thống kê.
 
 ## 3. Điều kiện tham gia
 
@@ -98,4 +101,4 @@ Nếu cơ sở nghiên cứu yêu cầu quy trình IRB/đạo đức nghiên c�
 | Số người tham gia thật tính đến nay | 0 |
 | File kết quả | Chưa tạo — sẽ tạo `CT3D_SUS_RESULTS.csv` khi có dữ liệu thật |
 
-Không kết luận usability tốt/xấu cho đến khi có dữ liệu khảo sát thật từ ít nhất 5 người tham gia đủ điều kiện (mục 3).
+Không kết luận usability tốt/xấu (theo nghĩa thống kê, dựa trên điểm SUS trung bình) cho đến khi có dữ liệu khảo sát thật từ ít nhất **10-20 người** tham gia đủ điều kiện (mục 3) — xem phân biệt rõ ở mục 2 giữa ngưỡng phát hiện vấn đề định tính (~5 người, Nielsen) và ngưỡng thống kê cho điểm SUS trung bình (10-20 người). Một buổi khảo sát nhỏ hơn (kể cả chỉ 5 người) vẫn có giá trị để phát hiện vấn đề usability nghiêm trọng cụ thể, nhưng không được dùng để báo cáo điểm SUS trung bình như một kết luận định lượng.

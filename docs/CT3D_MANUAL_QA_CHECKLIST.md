@@ -164,7 +164,11 @@
 
 > **Phase 13.5 (pre-Phase-14)**: nâng cấp trực quan cho C8 (Sync 2D→3D, đã `WORKING` từ Phase 09/11) — thêm 3 mặt phẳng bán trong suốt (`core/slice_planes_3d.SlicePlanes3D`) trong khung Volume, thể hiện đúng vị trí 3 mặt cắt Axial/Coronal/Sagittal hiện tại, bên cạnh marker nhỏ đã có sẵn. **KHÔNG phải feature ID mới (không phải C9)** — chỉ là visual enhancement của C8.
 >
-> **KHÔNG mục nào dưới đây đã PASS.** Claude Code không tự thao tác chuột thật — mọi kết quả để `NOT_RUN` cho đến khi người dùng tự thao tác và tự điền, giống các mục 1-7 ở trên trước khi có bằng chứng thật.
+> **Cập nhật Phase 14**: Người vận hành thật đã tự thao tác một phiên **smoke test tổng quát** (không đi từng mục A-I riêng lẻ) trên GUI InVesalius thật: bật công cụ native `"Slices' cross intersection"`, tick `Sync 2D -> 3D`, sau đó click/kéo trên khung 2D. Kết quả báo cáo nguyên văn: **hoạt động đúng theo thiết kế** — marker và 3 mặt phẳng di chuyển theo đúng vị trí crosshair 2D; surface 3D KHÔNG thay đổi hình học (đúng như thiết kế — chỉ actor geometry di chuyển, không rebuild surface). Đây là bằng chứng thật, do người vận hành tự cung cấp — không phải Claude Code tự thao tác/tự bịa.
+>
+> **QUAN TRỌNG**: phiên smoke test trên xác nhận **core path** (đường đi chính của tính năng) nhưng KHÔNG đi riêng từng mục lettered A-I bên dưới (ví dụ: không xác nhận riêng biệt việc tắt `Show slice planes` ở TEST E, tắt `Sync 2D->3D` ở TEST F, bật lại ở TEST G, hay đóng/mở lại plugin ở TEST I). Vì vậy các mục A-I dưới đây được ghi `NOT_EXPLICITLY_MANUAL_VERIFIED` (không phải `PASS`) trừ khi có xác nhận riêng — Claude Code KHÔNG tự nâng cấp thành PASS khi không có bằng chứng cụ thể cho từng mục. Xem `C8_VISUAL_OPERATOR_SMOKE` bên dưới cho phạm vi chính xác của bằng chứng thật đã có, và mục "Tổng kết" cho cách 9 test tự động `SYNC3D-T1..T9` (đã PASS, xem `tests/ct3d/test_sync_2d3d.py`) bổ sung bằng chứng máy-kiểm-thử riêng cho hành vi toggle/lifecycle/no-duplicate/visibility/pick-safety.
+>
+> **`C8_VISUAL_OPERATOR_SMOKE = PASS`** (phạm vi: core path — native tool ON + Sync 2D->3D ON + click/kéo 2D → marker/mặt phẳng di chuyển đúng, surface không đổi hình học. KHÔNG bao phủ riêng từng mục A-I bên dưới.)
 
 **PRECONDITION**:
 1. Import `0051`.
@@ -177,49 +181,49 @@
 ### TEST A — Axial
 Click/kéo crosshair trên khung Axial.
 **Expected**: marker di chuyển; mặt phẳng axial di chuyển; mặt phẳng sagittal/coronal vẫn giao đúng tại cùng điểm.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — overlaps with the Phase 14 operator smoke test's general "click/drag 2D → marker/planes move" observation, but the axial-specific intersection detail was not itemized separately. | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
 ### TEST B — Sagittal
 Click/kéo trên khung Sagittal.
 **Expected**: cả 3 mặt phẳng cập nhật đúng.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — same general overlap as TEST A; not itemized separately by the operator. | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
 ### TEST C — Coronal
 Click/kéo trên khung Coronal.
 **Expected**: cả 3 mặt phẳng cập nhật đúng.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — same general overlap as TEST A; not itemized separately by the operator. | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
 ### TEST D — Continuous drag
 Kéo crosshair liên tục (giữ chuột kéo qua nhiều vị trí).
 **Expected**: mặt phẳng di chuyển mượt; không tạo actor trùng lặp; không crash.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — not itemized by the operator; continuous-drag no-duplicate-actor behavior is covered instead by automated `SYNC3D-T` tests (see summary below). | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
 ### TEST E — Show planes OFF
 Bỏ tick **`Show slice planes in 3D`**.
 **Expected**: 3 mặt phẳng biến mất; marker vẫn tiếp tục di chuyển theo crosshair.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — operator did not report toggling this checkbox during the Phase 14 smoke session. | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
 ### TEST F — Sync OFF
 Bỏ tick **`Sync 2D -> 3D`**.
 **Expected**: marker và mặt phẳng đứng yên, không cập nhật nữa dù có click/kéo 2D.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — operator did not report toggling this checkbox during the Phase 14 smoke session. | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
 ### TEST G — Sync ON trở lại
 Tick lại **`Sync 2D -> 3D`** (và **`Show slice planes in 3D`** nếu đã tắt ở TEST E).
 **Expected**: cập nhật tiếp tục hoạt động, mặt phẳng hiện đúng vị trí hiện tại (không phải vị trí cũ trước khi tắt).
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — depends on TEST F having been run first; not itemized by the operator. | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
 ### TEST H — Camera giữ nguyên
 Xoay/zoom/pan khung 3D bằng tay, sau đó kéo crosshair trên khung 2D.
 **Expected**: mặt phẳng/marker di chuyển đúng; **hướng camera KHÔNG tự đổi** (plugin không tự rotate/zoom/pan/reset camera).
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — the operator's report did confirm the surface itself stayed geometrically unchanged, which is a related but distinct claim from camera orientation; manual camera-rotation-then-crosshair-drag was not explicitly itemized. | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
 ### TEST I — Đóng/mở lại plugin
 Đóng cửa sổ ROI Viewer, mở lại từ menu Plugins, lặp lại TEST A.
 **Expected**: không có actor trùng lặp (đúng 1 marker + 3 mặt phẳng, không phải 2+6).
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result**: `NOT_EXPLICITLY_MANUAL_VERIFIED` — not itemized by the operator; reattach/no-duplicate-actor behavior is covered instead by automated `SP3D-T`/`SYNC3D-T` tests (see summary below). | **PASS/FAIL**: `NOT_EXPLICITLY_MANUAL_VERIFIED`
 
-**C8 Visual Sync tổng kết**: `NOT_RUN` (9/9 mục A-I chưa chạy — người dùng tự chạy sau khi Claude hoàn thành phần code/test tự động).
+**C8 Visual Sync tổng kết**: `C8_VISUAL_OPERATOR_SMOKE = PASS` (core path only — real operator evidence, xem block phía trên). Itemized TEST A-I: `NOT_EXPLICITLY_MANUAL_VERIFIED` (0/9 confirmed riêng lẻ — không phải FAIL, chỉ là chưa có bằng chứng thao tác riêng cho từng mục). Bằng chứng máy-kiểm-thử riêng, độc lập, đã PASS: 9/9 automated `SYNC3D-T1..T9` (toggle/lifecycle/no-duplicate/visibility/pick-safety) trong `tests/ct3d/test_sync_2d3d.py`, cộng 16/16 automated `SP3D-T` trong `tests/ct3d/test_slice_planes_3d.py` (geometry/attach/detach/idempotency). Hai loại bằng chứng này KHÔNG được gộp lẫn nhau trong báo cáo — automated ≠ manual.
 
 ---
 
@@ -234,8 +238,10 @@ Xoay/zoom/pan khung 3D bằng tay, sau đó kéo crosshair trên khung 2D.
 | 5 | D5 (Eraser) | `PASS` |
 | 6 | E2 (Distance 2D) | `PASS` |
 | 7 | E3 (Area 2D) | `PASS` |
-| 8 | C8 Visual Sync (mặt phẳng 2D→3D, Phase 13.5, mục A-I) | `NOT_RUN` |
+| 8 | C8 Visual Sync — operator core-path smoke test (Phase 14) | `PASS` (`C8_VISUAL_OPERATOR_SMOKE`) |
+| 8a | C8 Visual Sync — itemized TEST A-I | `NOT_EXPLICITLY_MANUAL_VERIFIED` (0/9 itemized) |
+| 8b | C8 Visual Sync — automated regression (`SYNC3D-T1..T9` + `SP3D-T1..T12`+extras) | `PASS` (25/25 automated, machine-verified) |
 
 **MANUAL_QA_COMPLETE (7 mục gốc): YES** — 7/7 PASS, xác nhận bằng phiên thao tác chuột thật của người vận hành trên GUI InVesalius thật (dataset `0051`, 16/09/2026). Xem `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 4 cho closure đầy đủ và cập nhật status matrix liên quan.
 
-**C8 Visual Sync (Phase 13.5): `NOT_RUN`** — chờ người dùng tự thao tác chuột thật theo checklist ở mục "C8 — Visual Sync 2D → 3D Slice Planes" phía trên.
+**C8 Visual Sync (Phase 14 final state)**: Core path đã có bằng chứng thao tác thật của người vận hành (`C8_VISUAL_OPERATOR_SMOKE = PASS`). 9 mục lettered A-I vẫn `NOT_EXPLICITLY_MANUAL_VERIFIED` — KHÔNG bị coi là FAIL, chỉ đơn giản là chưa có phiên thao tác itemize riêng từng mục; nếu người vận hành muốn nâng từng mục lên PASS/FAIL, tự thao tác theo đúng "Exact Steps" của từng TEST và tự điền — Claude Code sẽ không tự nâng cấp khi chưa có bằng chứng.

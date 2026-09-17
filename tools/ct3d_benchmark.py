@@ -38,16 +38,26 @@ Methodology (Phase 13 spec):
 import argparse
 import json
 import os
+import pathlib
 import sys
 import time
 
-REPO_ROOT = r"D:\Learns\DeAn\invesalius\invesalius3"
+# Phase 14 (Section XXIII): derived from this file's real location instead of
+# a hardcoded developer-machine absolute path - same effective value on this
+# machine, but no longer breaks on a different checkout location.
+REPO_ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 sys.path.insert(0, REPO_ROOT)
 
+# Local DICOM sample fixtures are not part of the repository (real patient-
+# derived imaging data, kept outside version control - see
+# docs/CT3D_DATASET_REGISTRY.md). Overridable via CT3D_DICOM_SAMPLES_DIR for
+# any other machine; defaults to this project's established local layout.
+_DATASET_ROOT_BASE = os.environ.get("CT3D_DICOM_SAMPLES_DIR", r"D:\PyTools\dicom_samples")
+
 DATASETS = {
-    "0051": {"root": r"D:\PyTools\dicom_samples\0051", "modality": "CT", "manufacturer": "SIEMENS"},
-    "0801": {"root": r"D:\PyTools\dicom_samples\0801", "modality": "CT", "manufacturer": "Philips"},
-    "mri3": {"root": r"D:\PyTools\dicom_samples\mri3", "modality": "MR", "manufacturer": "Philips Medical Systems"},
+    "0051": {"root": os.path.join(_DATASET_ROOT_BASE, "0051"), "modality": "CT", "manufacturer": "SIEMENS"},
+    "0801": {"root": os.path.join(_DATASET_ROOT_BASE, "0801"), "modality": "CT", "manufacturer": "Philips"},
+    "mri3": {"root": os.path.join(_DATASET_ROOT_BASE, "mri3"), "modality": "MR", "manufacturer": "Philips Medical Systems"},
 }
 
 CSV_FIELDS = [
