@@ -6,7 +6,7 @@
 
 - Current phase: 13 (hoàn tất, PASS) — **+ mini-phase Pre-Phase-14: C8 Visual 2D→3D Slice Synchronization** (16/09/2026, xem `CT3D_P13_5_VISUAL_SYNC_REPORT.md`) — KHÔNG phải Phase 14, chưa mở Phase 14
 - Branch: `thesis-ct-roi-tools`
-- HEAD: *(cập nhật sau commit mini-phase — xem `CT3D_P13_5_VISUAL_SYNC_REPORT.md`)*
+- HEAD: `3d070f7c`
 - Last completed phase: 13 (+ mini-phase Pre-Phase-14 C8 visual enhancement)
 - Next phase: 14 — Final Audit & Release Candidate (chưa bắt đầu — chờ người dùng tự xác nhận manual QA mục C8 Visual Sync trước, xem `CT3D_MANUAL_QA_CHECKLIST.md`)
 

@@ -274,7 +274,7 @@ GE/Canon, ground-truth thật cho Dice/Jaccard/Hausdorff, và người tham gia 
 ### Phase Gate
 `PHASE_GATE: PASS`
 
-## `<Pre-Phase-14 commit>` — Pre-Phase-14: Visual 2D→3D Slice Synchronization
+## `3d070f7c` — Pre-Phase-14: Visual 2D→3D Slice Synchronization
 
 ### Goal
 Hoàn thiện trực quan cho C8 (Sync 2D→3D, đã WORKING từ Phase 09) theo yêu cầu UX thật của người dùng: khi click/kéo crosshair trên 2D, khung Volume thể hiện rõ hơn vị trí 3 mặt cắt hiện tại, không chỉ 1 marker nhỏ. KHÔNG phải feature ID mới (không phải C9). KHÔNG tự động bật native tool `"Slices' cross intersection"` — người dùng tự bật khi cần.
