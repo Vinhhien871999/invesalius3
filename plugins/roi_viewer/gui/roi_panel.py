@@ -38,7 +38,10 @@ except ImportError:
         return s
 
 # Import core modules
-from ..core import roi_manager, picker_3d, sync_2d3d, segmentation, mask_editor, measurement, annotation, exporters, marker_3d
+from ..core import (
+    roi_manager, picker_3d, sync_2d3d, segmentation, mask_editor, measurement,
+    annotation, exporters, marker_3d, slice_planes_3d,
+)
 
 # Import the real, wired tool panels.
 from .interaction_panel import InteractionPanel
@@ -76,6 +79,15 @@ class ROIViewerFrame(wx.Frame):
         # Phase 09 (Sync 2D -> 3D): visual counterpart to the real 2D
         # crosshair - see on_cross_focal_point_changed() below.
         self.marker_3d = marker_3d.CrosshairMarker3D()
+        # Phase 13.5 (pre-Phase-14, visual enhancement of the same C8
+        # feature - not a new C9): 3 geometric planes showing the
+        # current Axial/Coronal/Sagital slice positions inside the
+        # Volume view. Driven by the exact same event as marker_3d
+        # above (see on_cross_focal_point_changed()). Default ON, per
+        # the "Show slice planes in 3D" checkbox in interaction_panel.py
+        # (a separate concern from whether Sync 2D->3D itself is on).
+        self.slice_planes_3d = slice_planes_3d.SlicePlanes3D()
+        self.show_slice_planes = True
         # Phase 09 (F3 fix): tracked independently of the Sync 2D->3D
         # checkbox/visual marker above - this is "the last real,
         # trustworthy world position InVesalius told us about", used
@@ -162,6 +174,12 @@ class ROIViewerFrame(wx.Frame):
             self.marker_3d.detach()
         except Exception as e:
             print(f"ROI Viewer: 3D marker cleanup on close failed - {e}")
+        try:
+            # Same leak class as marker_3d above (Phase 13.5) - all 3
+            # plane actors must be removed here too.
+            self.slice_planes_3d.detach()
+        except Exception as e:
+            print(f"ROI Viewer: 3D slice planes cleanup on close failed - {e}")
         self.Destroy()
 
     def _init_ui(self):
@@ -221,6 +239,21 @@ class ROIViewerFrame(wx.Frame):
         """Handle project load event."""
         self.project_loaded = True
         print("ROI Viewer: Project loaded")
+        # Phase 13.5: a freshly-loaded project may have entirely
+        # different dimensions/spacing than whatever the slice planes
+        # were last sized for (e.g. opening a second, different
+        # dataset in the same InVesalius session) - refresh bounds now
+        # rather than only lazily inside on_cross_focal_point_changed()
+        # (which also does this defensively - see that method's NOTE -
+        # but doing it eagerly here too means the planes are correctly
+        # sized the moment a real crosshair event arrives, not one
+        # event behind).
+        bounds = self._compute_volume_bounds()
+        if bounds is not None:
+            try:
+                self.slice_planes_3d.set_bounds(bounds)
+            except ValueError as e:
+                print(f"ROI Viewer: slice planes bounds refresh on project load skipped - {e}")
         # ROIManager is a cache over real Project().mask_dict, not an
         # independent source of truth (see core/roi_manager.py's module
         # docstring) - rebuild it now so the ROI List reflects whatever
@@ -264,6 +297,10 @@ class ROIViewerFrame(wx.Frame):
         # on_cross_focal_point_changed() will re-attach() lazily the
         # next real 2D interaction in the new project.
         self.marker_3d.detach()
+        # Phase 13.5: same reasoning as marker_3d.detach() above - a
+        # plane positioned/sized for the OLD project's bounds is
+        # meaningless once a different (or no) project is loaded.
+        self.slice_planes_3d.detach()
         self._last_cross_focal_point = None
         # NOTE: the managers above were already cleared before this
         # round, but the widgets that display them were not - closing
@@ -339,16 +376,30 @@ class ROIViewerFrame(wx.Frame):
         auto-rotating the camera or building a new MPR system (out of
         scope per the plan).
 
+        Phase 13.5 (pre-Phase-14 visual enhancement, same C8 feature -
+        not a new C9): ALSO updates core/slice_planes_3d.SlicePlanes3D,
+        3 semi-transparent geometric planes showing where the current
+        Axial/Coronal/Sagital 2D slices sit within the real volume -
+        driven by the exact same event, same sync_2d_3d guard, same
+        real-viewer/renderer lookup as the marker above (no second
+        event path, no new pubsub topic). Visibility of the PLANES
+        specifically is additionally gated by self.show_slice_planes
+        (the "Show slice planes in 3D" checkbox - a separate concern
+        from whether Sync 2D->3D itself is on, see interaction_panel.py)
+        - the marker's own visibility is unaffected by this flag.
+        Does NOT touch the camera (no rotate/zoom/pan/reset) and does
+        NOT rebuild any surface - only actor geometry moves.
+
         Guarded by self.sync_mgr.sync_2d_3d - the EXACT SAME flag the
         "Sync 2D -> 3D" checkbox in interaction_panel.py already toggles
         via sync_mgr.enable_sync_2d_3d()/disable_sync_2d_3d() (that
         checkbox existed since before Phase 09 but nothing ever read
         the flag it set - see CT3D_FEATURE_AUDIT.md's Sync 2D->3D row).
         When disabled, this method does nothing at all: an
-        already-placed marker stays exactly where it was (frozen, not
-        hidden), and a never-yet-placed one stays never-placed - both
-        satisfy "checkbox OFF -> 2D change -> 3D target does not
-        change" without needing extra state.
+        already-placed marker/planes stay exactly where they were
+        (frozen, not hidden), and never-yet-placed ones stay
+        never-placed - both satisfy "checkbox OFF -> 2D change -> 3D
+        target does not change" without needing extra state.
 
         No event-loop risk: this method only ever READS pubsub (it
         never calls Publisher.sendMessage() with a topic that could
@@ -380,11 +431,60 @@ class ROIViewerFrame(wx.Frame):
             x, y, z = world_position
             self.marker_3d.update_position(x, y, z)
 
+            # Slice planes: same event, same renderer, real bounds
+            # derived from real project data every time (not cached
+            # only at project-load time) - a crosshair event can
+            # legitimately arrive before any "Load project data" event
+            # this window ever saw (same class of eager-init gap
+            # self.project_loaded itself was fixed for in Phase 09 -
+            # see __init__'s NOTE), so bounds are (re)computed here
+            # defensively rather than relying solely on
+            # on_project_load()'s refresh.
+            if self.slice_planes_3d.attach(viewer.ren):
+                bounds = self._compute_volume_bounds()
+                if bounds is not None:
+                    try:
+                        self.slice_planes_3d.set_bounds(bounds)
+                        self.slice_planes_3d.update_position((x, y, z))
+                        self.slice_planes_3d.set_visible(self.show_slice_planes)
+                    except ValueError as e:
+                        print(f"ROI Viewer: slice planes geometry update skipped - {e}")
+
             from invesalius.pubsub import pub as Publisher
 
             Publisher.sendMessage("Render volume viewer")
         except Exception as e:
             print(f"ROI Viewer: Sync 2D->3D marker update failed - {e}")
+
+    def _compute_volume_bounds(self):
+        """
+        Real world-space bounds (xmin, xmax, ymin, ymax, zmin, zmax) of
+        the whole loaded volume (not just a mask/surface, which may
+        only occupy part of it) - reuses the exact same real, already
+        unit-tested voxel_to_world() convention
+        interface/project_interface.py.ProjectInterface already
+        implements (see its docstring for the axis mapping: world X =
+        SAGITAL, Y = CORONAL, Z = AXIAL). Never hardcodes dimensions/
+        spacing/origin. Returns None if no real volume shape is known
+        yet (e.g. no project loaded).
+        """
+        try:
+            from ..interface.project_interface import ProjectInterface
+
+            pi = ProjectInterface()
+            shape = pi.get_shape()
+            if not shape or shape == (0, 0, 0):
+                return None
+            corner_a = pi.voxel_to_world(0, 0, 0)
+            corner_b = pi.voxel_to_world(shape[0] - 1, shape[1] - 1, shape[2] - 1)
+            return (
+                min(corner_a[0], corner_b[0]), max(corner_a[0], corner_b[0]),
+                min(corner_a[1], corner_b[1]), max(corner_a[1], corner_b[1]),
+                min(corner_a[2], corner_b[2]), max(corner_a[2], corner_b[2]),
+            )
+        except Exception as e:
+            print(f"ROI Viewer: could not compute real volume bounds - {e}")
+            return None
 
     def on_mask_update(self):
         """Handle mask update event."""

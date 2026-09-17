@@ -64,7 +64,31 @@ class InteractionPanel(scrolled.ScrolledPanel):
         self.cb_sync_2d_3d.SetValue(True)
         self.Bind(wx.EVT_CHECKBOX, self._on_sync_2d_3d_changed, self.cb_sync_2d_3d)
         pick_sizer.Add(self.cb_sync_2d_3d, 0, wx.ALL, 3)
-        
+
+        # Phase 13.5 (pre-Phase-14, visual enhancement of Sync 2D -> 3D -
+        # still C8, not a new feature ID): a separate concern from the
+        # Sync checkbox itself - controls only whether the 3 slice-plane
+        # actors are drawn (core/slice_planes_3d.SlicePlanes3D), not
+        # whether the crosshair marker/planes track position at all.
+        self.cb_show_slice_planes = wx.CheckBox(self, wx.ID_ANY, _("Show slice planes in 3D"))
+        self.cb_show_slice_planes.SetValue(True)
+        self.Bind(wx.EVT_CHECKBOX, self._on_show_slice_planes_changed, self.cb_show_slice_planes)
+        pick_sizer.Add(self.cb_show_slice_planes, 0, wx.ALL, 3)
+
+        # Plugin never auto-toggles InVesalius's own native toolbar tool
+        # - the user must turn it on themselves for 2D click/drag to
+        # actually send the real "Set cross focal point" topic this
+        # whole feature depends on (see core/sync_2d3d.py /
+        # roi_panel.py.on_cross_focal_point_changed()'s own NOTEs for
+        # why that topic, not a new one, is used).
+        lbl_prereq = wx.StaticText(
+            self, wx.ID_ANY,
+            _('Requires InVesalius "Slices\' cross intersection" tool to be active.'),
+        )
+        lbl_prereq.Wrap(260)
+        lbl_prereq.SetForegroundColour(wx.Colour(90, 90, 90))
+        pick_sizer.Add(lbl_prereq, 0, wx.ALL, 3)
+
         # Pick point button
         self.btn_pick_point = wx.Button(self, wx.ID_ANY, _("Pick Point in 3D"))
         self.Bind(wx.EVT_BUTTON, self._on_pick_point, self.btn_pick_point)
@@ -172,6 +196,26 @@ class InteractionPanel(scrolled.ScrolledPanel):
         else:
             self.controller.sync_mgr.disable_sync_2d_3d()
         self._update_status()
+
+    def _on_show_slice_planes_changed(self, event):
+        """
+        Handle "Show slice planes in 3D" checkbox change. A separate
+        concern from Sync 2D->3D itself (self.controller.sync_mgr.
+        sync_2d_3d) - this only toggles whether the 3 plane actors are
+        DRAWN; the crosshair marker's own visibility is untouched, and
+        geometry keeps tracking the real crosshair position underneath
+        even while hidden (see core/slice_planes_3d.py's set_visible()
+        docstring for why), so toggling this back on shows the planes
+        at the CURRENT position immediately, not a stale one.
+        """
+        self.controller.show_slice_planes = event.IsChecked()
+        self.controller.slice_planes_3d.set_visible(self.controller.show_slice_planes)
+        try:
+            from invesalius.pubsub import pub as Publisher
+
+            Publisher.sendMessage("Render volume viewer")
+        except ImportError:
+            pass
 
     def _on_realtime_changed(self, event):
         """Handle real-time update checkbox change."""

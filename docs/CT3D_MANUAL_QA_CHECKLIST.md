@@ -160,6 +160,69 @@
 
 ---
 
+## C8 — Visual Sync 2D → 3D Slice Planes
+
+> **Phase 13.5 (pre-Phase-14)**: nâng cấp trực quan cho C8 (Sync 2D→3D, đã `WORKING` từ Phase 09/11) — thêm 3 mặt phẳng bán trong suốt (`core/slice_planes_3d.SlicePlanes3D`) trong khung Volume, thể hiện đúng vị trí 3 mặt cắt Axial/Coronal/Sagittal hiện tại, bên cạnh marker nhỏ đã có sẵn. **KHÔNG phải feature ID mới (không phải C9)** — chỉ là visual enhancement của C8.
+>
+> **KHÔNG mục nào dưới đây đã PASS.** Claude Code không tự thao tác chuột thật — mọi kết quả để `NOT_RUN` cho đến khi người dùng tự thao tác và tự điền, giống các mục 1-7 ở trên trước khi có bằng chứng thật.
+
+**PRECONDITION**:
+1. Import `0051`.
+2. Có surface 3D (Threshold/Otsu → Create Mask → Update 3D Surface).
+3. Mở ROI Viewer → tab Interaction.
+4. Người dùng **tự** bật công cụ native trên toolbar InVesalius: **`"Slices' cross intersection"`** (plugin KHÔNG tự bật công cụ này).
+5. Tick **`Sync 2D -> 3D`**.
+6. Tick **`Show slice planes in 3D`** (mặc định đã ON sẵn khi mở plugin).
+
+### TEST A — Axial
+Click/kéo crosshair trên khung Axial.
+**Expected**: marker di chuyển; mặt phẳng axial di chuyển; mặt phẳng sagittal/coronal vẫn giao đúng tại cùng điểm.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST B — Sagittal
+Click/kéo trên khung Sagittal.
+**Expected**: cả 3 mặt phẳng cập nhật đúng.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST C — Coronal
+Click/kéo trên khung Coronal.
+**Expected**: cả 3 mặt phẳng cập nhật đúng.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST D — Continuous drag
+Kéo crosshair liên tục (giữ chuột kéo qua nhiều vị trí).
+**Expected**: mặt phẳng di chuyển mượt; không tạo actor trùng lặp; không crash.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E — Show planes OFF
+Bỏ tick **`Show slice planes in 3D`**.
+**Expected**: 3 mặt phẳng biến mất; marker vẫn tiếp tục di chuyển theo crosshair.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST F — Sync OFF
+Bỏ tick **`Sync 2D -> 3D`**.
+**Expected**: marker và mặt phẳng đứng yên, không cập nhật nữa dù có click/kéo 2D.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST G — Sync ON trở lại
+Tick lại **`Sync 2D -> 3D`** (và **`Show slice planes in 3D`** nếu đã tắt ở TEST E).
+**Expected**: cập nhật tiếp tục hoạt động, mặt phẳng hiện đúng vị trí hiện tại (không phải vị trí cũ trước khi tắt).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST H — Camera giữ nguyên
+Xoay/zoom/pan khung 3D bằng tay, sau đó kéo crosshair trên khung 2D.
+**Expected**: mặt phẳng/marker di chuyển đúng; **hướng camera KHÔNG tự đổi** (plugin không tự rotate/zoom/pan/reset camera).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST I — Đóng/mở lại plugin
+Đóng cửa sổ ROI Viewer, mở lại từ menu Plugins, lặp lại TEST A.
+**Expected**: không có actor trùng lặp (đúng 1 marker + 3 mặt phẳng, không phải 2+6).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+**C8 Visual Sync tổng kết**: `NOT_RUN` (9/9 mục A-I chưa chạy — người dùng tự chạy sau khi Claude hoàn thành phần code/test tự động).
+
+---
+
 ## Tổng kết
 
 | # | Mục | PASS/FAIL |
@@ -171,5 +234,8 @@
 | 5 | D5 (Eraser) | `PASS` |
 | 6 | E2 (Distance 2D) | `PASS` |
 | 7 | E3 (Area 2D) | `PASS` |
+| 8 | C8 Visual Sync (mặt phẳng 2D→3D, Phase 13.5, mục A-I) | `NOT_RUN` |
 
-**MANUAL_QA_COMPLETE: YES** — 7/7 PASS, xác nhận bằng phiên thao tác chuột thật của người vận hành trên GUI InVesalius thật (dataset `0051`, 16/09/2026). Xem `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 4 cho closure đầy đủ và cập nhật status matrix liên quan.
+**MANUAL_QA_COMPLETE (7 mục gốc): YES** — 7/7 PASS, xác nhận bằng phiên thao tác chuột thật của người vận hành trên GUI InVesalius thật (dataset `0051`, 16/09/2026). Xem `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 4 cho closure đầy đủ và cập nhật status matrix liên quan.
+
+**C8 Visual Sync (Phase 13.5): `NOT_RUN`** — chờ người dùng tự thao tác chuột thật theo checklist ở mục "C8 — Visual Sync 2D → 3D Slice Planes" phía trên.

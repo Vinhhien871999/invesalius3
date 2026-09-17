@@ -274,6 +274,35 @@ GE/Canon, ground-truth thật cho Dice/Jaccard/Hausdorff, và người tham gia 
 ### Phase Gate
 `PHASE_GATE: PASS`
 
+## `<Pre-Phase-14 commit>` — Pre-Phase-14: Visual 2D→3D Slice Synchronization
+
+### Goal
+Hoàn thiện trực quan cho C8 (Sync 2D→3D, đã WORKING từ Phase 09) theo yêu cầu UX thật của người dùng: khi click/kéo crosshair trên 2D, khung Volume thể hiện rõ hơn vị trí 3 mặt cắt hiện tại, không chỉ 1 marker nhỏ. KHÔNG phải feature ID mới (không phải C9). KHÔNG tự động bật native tool `"Slices' cross intersection"` — người dùng tự bật khi cần.
+
+### Added
+- `plugins/roi_viewer/core/slice_planes_3d.py` (mới): `SlicePlanes3D` — 3 vtkActor (Axial/Coronal/Sagital) bán trong suốt, không texture ảnh CT (out of scope phase này), tạo actor 1 lần, chỉ update geometry mỗi lần crosshair đổi. API: `attach()`/`detach()`/`set_bounds()`/`update_position()`/`set_visible()`. Non-pickable (`SetPickable(False)`) — không cản Pick 3D/Region Growing seed/Distance 3D.
+- Checkbox `"Show slice planes in 3D"` (mặc định ON) trong tab Interaction — độc lập với checkbox `"Sync 2D -> 3D"` đã có.
+- Help text prerequisite trong UI: `Requires InVesalius "Slices' cross intersection" tool to be active.`
+- `tests/ct3d/test_slice_planes_3d.py` (16 test, unit-adjacent/integration — VTK renderer thật).
+- Mở rộng `tests/ct3d/test_sync_2d3d.py` (+9 test SYNC3D-T1..T9, qua đúng `on_cross_focal_point_changed()` thật).
+- `docs/CT3D_P13_5_VISUAL_SYNC_REPORT.md` (mới).
+
+### Changed
+- `plugins/roi_viewer/gui/roi_panel.py`: `on_cross_focal_point_changed()` mở rộng — cùng event, cùng cờ `sync_mgr.sync_2d_3d`, thêm cập nhật `slice_planes_3d` song song với `marker_3d` đã có. Thêm `_compute_volume_bounds()` (tái sử dụng `ProjectInterface().voxel_to_world()` thật, đã test — không hardcode dimensions/spacing/origin). `on_project_load()`/`on_project_close()`/`_on_close()` cập nhật để refresh bounds/detach đúng lifecycle, cùng pattern đã có với `marker_3d`.
+- `plugins/roi_viewer/gui/interaction_panel.py`: thêm checkbox + handler cho "Show slice planes in 3D".
+
+### Tests
+`tests/ct3d`: 184 collected, 183 passed, 1 skipped, 0 failed (3 lần chạy liên tiếp giống nhau). Upstream `tests/`: 94 passed. `pyflakes plugins/roi_viewer tools`: 0 finding. `python -m compileall plugins/roi_viewer`: sạch.
+
+### Manual QA Required
+Mục mới "C8 — Visual Sync 2D → 3D Slice Planes" (9 bước A-I) trong `CT3D_MANUAL_QA_CHECKLIST.md` — tất cả `NOT_RUN`, chờ người dùng tự thao tác chuột thật.
+
+### Known Behavior
+`"Slices' cross intersection"` vẫn là công cụ native, người dùng tự bật/tắt trên toolbar InVesalius gốc — plugin không bao giờ tự động bật/tắt tool này. Mặt phẳng chỉ mang tính trực quan vị trí (không texture ảnh CT). Crosshair di chuyển KHÔNG rebuild surface 3D (surface chỉ dựng lại khi bấm "Update 3D Surface from Selected ROI" — tránh biến thao tác crosshair thành operation nặng ~10-13s theo Phase 13). Camera không tự động rotate/zoom/pan/reset khi crosshair đổi.
+
+### Phase Gate
+`PHASE_GATE: PASS` (automated); manual GUI evidence cho mục C8 Visual Sync: `NOT_RUN`.
+
 ---
 
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc
