@@ -289,3 +289,24 @@ This addendum documents a follow-up consistency pass performed after Phase 14's 
 **9. Final worktree status.** `git status` clean before this closure pass began (Phase 14's own commits left it clean). After this closure pass's edits, staged and committed as a single dated commit (see the final response for the exact hash) — `git status` clean again afterward, verified.
 
 **RELEASE_CLOSURE_GATE: PASS** (19/19 criteria — see the final response's Closure Gate section for the itemized checklist). No PHI introduced by any edit in this addendum. No feature/algorithm/architecture change. No Phase 15 created.
+
+---
+
+## Final Release Freeze Note (22/09/2026)
+
+Not Phase 15. No functional/algorithm/architecture change. This note breaks the self-referencing-HEAD metadata loop that the two preceding fill-in cycles (Phase 14 → `bed0c624`/`6dae0922`, Release Closure → `c43fa569`) exhibited: each cycle's commit had to be followed by another commit just to record its own hash, and that follow-up commit immediately became the new (undocumented) tip.
+
+**Canonical, fixed historical identities** (these commits exist, are ancestors of the current tip, and never change — safe to hard-code permanently):
+- Historical Phase 14 main commit: `bed0c624`
+- Phase 14 hash-fill-in follow-up: `6dae0922`
+- Post-Phase-14 Release Closure (main documentation-fix commit): `c43fa569`
+
+**The current branch tip is intentionally NOT embedded as a static value anywhere in this file or in `CT3D_MASTER_PROGRESS.md` from this point forward.** Any commit made after this note — including this note's own hash-fill-in follow-up, if one is needed — would immediately make a hard-coded "current HEAD" stale. The authoritative, always-correct method to obtain it is:
+
+```
+git rev-parse HEAD
+```
+
+**Release identity going forward is established via a Git tag** (see `docs/CT3D_RELEASE_MANIFEST.md` and the tag recommendation in the final response), created only after all release documentation is committed and only with explicit operator authorization — never auto-created by Claude Code.
+
+`RELEASE_FREEZE_GATE` criteria for this note: self-referencing-HEAD issue **FIXED** (structurally, not just re-pointed to a new stale value); historical commit identities preserved and verified via `git merge-base --is-ancestor`; no historical report content altered.

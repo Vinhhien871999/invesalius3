@@ -6,7 +6,9 @@
 
 - **Current phase: 14 (FINAL — hoàn tất, PASS).** Đây là phase cuối của roadmap phần mềm (Phase 08→14). **KHÔNG có Phase 15.**
 - Branch: `thesis-ct-roi-tools`
-- HEAD: `6dae0922` (main Phase 14 commit `bed0c624`, followed by the hash-fill-in commit `6dae0922` which is the actual current branch tip — see `CT3D_P14_FINAL_AUDIT_REPORT.md`'s Post-Phase-14 Release Closure Corrections section for the reconciliation)
+- **Release baseline**: Post-Phase-14 Release Closure
+- **Release baseline commit**: `c43fa569` (last commit that changed substantive documentation content; its own hash-fill-in follow-up is `9dc1a593`)
+- **Current branch tip**: use `git rev-parse HEAD` — intentionally not hard-coded here. A static hash in this file goes stale the moment any further commit lands (including the hash-fill-in commit that would have to reference this very edit), which produced a self-referencing-metadata loop in earlier phases. Canonical historical commits (main implementation commits, not their hash-fill-in follow-ups) are listed in `docs/CT3D_RELEASE_MANIFEST.md` and in the "Completed phase history" table below.
 - Last completed phase: 14
 - Next phase: **NONE.** Software roadmap complete. **Không còn công việc phần mềm BẮT BUỘC nào còn lại.** Phần còn lại chia 2 loại, không loại nào là blocker cho release candidate:
   - **OPTIONAL_INTERNAL** (có thể tự làm trong repo hiện tại, không cần dữ liệu/người dùng ngoài, không bắt buộc): C8 — 9 mục lettered A-I chưa itemize manual riêng lẻ (xem `CT3D_MANUAL_QA_CHECKLIST.md`, `CT3D_REMAINING_WORK.md` mục 8); đánh giá `"ca_smoothing"` thay `"Binary"` cho D9/C7 (không bắt buộc).

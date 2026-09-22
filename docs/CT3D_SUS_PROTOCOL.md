@@ -26,7 +26,7 @@
 
 ## 4. Task Scenario (kịch bản thao tác trước khi trả lời khảo sát)
 
-Người tham gia thực hiện đúng trình tự sau trên 1 dataset CT thật (ví dụ `D:\PyTools\dicom_samples\0051`, xem `CT3D_DATASET_REGISTRY.md`), có người hướng dẫn (không phải tự học), trước khi điền SUS:
+Người tham gia thực hiện đúng trình tự sau trên 1 dataset CT thật — dataset `0051` (xem `CT3D_DATASET_REGISTRY.md` cho chi tiết vendor/modality/kích thước; đường dẫn cục bộ cụ thể tuỳ máy chạy khảo sát, ví dụ `<DICOM_DATASET_DIR>/0051`, xem `CT3D_INSTALL_AND_RUN.md` mục 8 cho cách trỏ dataset qua biến môi trường `CT3D_DICOM_SAMPLES_DIR`) — có người hướng dẫn (không phải tự học), trước khi điền SUS:
 
 1. Import CT, mở plugin ROI Viewer.
 2. Tạo 1 mask bằng Threshold (Otsu tự động hoặc tay).

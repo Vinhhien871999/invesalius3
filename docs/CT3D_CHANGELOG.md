@@ -372,6 +372,19 @@ Xác định lại chính xác: main Phase 14 commit = `bed0c624`, hash-fill-in 
 
 ---
 
+## Final Release Freeze (22/09/2026)
+
+- **Không phải Phase 15.** Không có thay đổi chức năng/thuật toán/UI/architecture.
+- Sửa cấu trúc self-referencing HEAD metadata (không còn 1 file nào hard-code "current HEAD" tự tham chiếu chính commit đang được tạo) — thay bằng "release baseline commit" cố định (`c43fa569`) + hướng dẫn dùng `git rev-parse HEAD` cho tip thật. Xem `CT3D_P14_FINAL_AUDIT_REPORT.md` mục "Final Release Freeze Note" và `CT3D_MASTER_PROGRESS.md`.
+- Tạo `docs/CT3D_RELEASE_MANIFEST.md` (bản đồ release tổng thể, mọi commit hash đã verify thật qua `git log`) và `docs/CT3D_INSTALL_AND_RUN.md` (hướng dẫn cài đặt/chạy đặc thù CT3D — README gốc chỉ trỏ tới wiki upstream, không có hướng dẫn riêng cho plugin/test/benchmark tool).
+- Sửa `CT3D_SUS_PROTOCOL.md`: bỏ đường dẫn Windows cục bộ của máy phát triển (`D:\PyTools\dicom_samples\0051`) khỏi Task Scenario — không portable cho protocol khảo sát thật với người tham gia bên ngoài; thay bằng tham chiếu dataset kỹ thuật (`0051`) + biến môi trường.
+- Final verification only: regression re-run (183 passed/1 skipped/184 collected, upstream 94 passed — không đổi), CSV re-check (P12 34 rows/10 cols, P13 30 rows/11 cols, 0 duplicate key), production-path scan sạch, `git status` sạch trước/sau commit.
+- **Release candidate frozen after regression.** Git tag khuyến nghị sau commit này: `ct3d-rc1` — KHÔNG tự tạo/tự push, chờ operator xác nhận.
+
+`RELEASE_FREEZE_GATE: PASS`. Roadmap phần mềm Phase 08-14 vẫn COMPLETE. KHÔNG CÓ PHASE 15.
+
+---
+
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc
 
 - **100% code mới của đề tài**: toàn bộ `plugins/roi_viewer/` (main.py, gui/, core/, interface/) — ~4700+ dòng.
