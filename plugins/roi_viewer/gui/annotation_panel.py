@@ -5,7 +5,6 @@
 
 import wx
 import wx.lib.colourselect as csel
-import datetime
 
 try:
     from invesalius.i18n import tr as _
@@ -145,37 +144,66 @@ class AnnotationPanel(wx.Panel):
 
         color = self.color_picker.GetColour()
 
-        # NOTE: there's no full 3D-cursor position tracker wired to this
-        # panel, so "current position" is the last point picked in the
-        # 3D view (shared picker_3d.PointPicker3D - see
-        # gui/interaction_panel.py), if any; otherwise the annotation is
-        # tagged with the current 2D slice only, with a (0, 0, 0)
-        # world position placeholder.
+        # Phase 09 (F3 fix): previously fell back to a fake (0, 0, 0)
+        # world position when nothing had been picked yet - silently
+        # wrong data with no indication to the user. Now uses the
+        # frame's single real reference-position helper (3D pick, else
+        # the last real 2D crosshair position, else refuse - see
+        # roi_panel.py.ROIViewerFrame.get_current_reference_position()'s
+        # docstring for the exact priority) and never creates an
+        # annotation without a real position behind it.
+        position = self.controller.get_current_reference_position()
+        if position is None:
+            wx.MessageBox(
+                _("Please select a position in the 2D or 3D viewer before adding an annotation "
+                  "(click a point in the 3D view, or click/scroll on a 2D slice)."),
+                _("No position selected"), wx.OK | wx.ICON_WARNING,
+            )
+            return
+
         plane, slice_index = "AXIAL", 0
-        position = (0.0, 0.0, 0.0)
+        voxel_position = (0, 0, 0)
         try:
             from ..interface.view_interface import ViewInterface
+            from ..interface.project_interface import ProjectInterface
 
             plane, slice_index = ViewInterface().get_slice_position()
-            last_point = self.controller.picker.get_last_point()
-            if last_point is not None:
-                position = last_point
-        except Exception:
-            pass
+            pi = ProjectInterface()
+            self.controller.sync_mgr.set_volume_info(pi.get_spacing(), pi.get_shape())
+            voxel_position = self.controller.sync_mgr.world_to_voxel(*position)
+        except Exception as e:
+            print(f"ROI Viewer: could not resolve slice/voxel position for annotation - {e}")
 
         annotation_id = self.controller.annotation_mgr.add_annotation(
             text=text,
             position=position,
-            voxel_position=(0, 0, 0),
+            voxel_position=voxel_position,
             slice_index=slice_index,
             plane=plane,
             color=(color.Red(), color.Green(), color.Blue()),
         )
 
-        display_text = f"{annotation_id + 1}. {text[:30]}{'...' if len(text) > 30 else ''}"
-        self.annotation_list.Append(display_text)
+        self.refresh_from_manager()
         self.txt_annotation.Clear()
         self._notify_annotation_added(annotation_id)
+
+    def refresh_from_manager(self):
+        """
+        Rebuild the list widget from controller.annotation_mgr - the
+        single source of truth for annotation text/order (see
+        core/annotation.AnnotationManager). Used both after a plugin
+        action (add/edit/delete) and after annotations are loaded from
+        a project's sidecar file (gui/roi_panel.py's
+        _try_load_annotation_sidecar()) or cleared on project close
+        (roi_panel.py's on_project_close()) - those bypass
+        _on_add_annotation()'s incremental Append(), so without this
+        the widget could show stale or empty rows that don't match the
+        real annotation list.
+        """
+        self.annotation_list.Clear()
+        for i, ann in enumerate(self.controller.annotation_mgr.annotations):
+            display_text = f"{i + 1}. {ann.text[:30]}{'...' if len(ann.text) > 30 else ''}"
+            self.annotation_list.Append(display_text)
 
     def _on_select_annotation(self, event):
         """Handle annotation selection."""

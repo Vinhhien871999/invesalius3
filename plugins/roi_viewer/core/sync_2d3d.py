@@ -3,7 +3,7 @@
 # Description: Manages synchronization between 2D slices and 3D view
 # --------------------------------------------------------------------------
 
-from typing import Tuple, Optional, Callable, List, Dict
+from typing import Tuple, Callable, List, Dict
 import time
 
 

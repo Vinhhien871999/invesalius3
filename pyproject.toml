@@ -72,6 +72,17 @@ inv = 'invesalius.app:main'
 installer = [
     "pyinstaller>=6.12.0",
 ]
+# CT3D thesis project (Phase 12, CT3D_P12_QUANTITATIVE_VALIDATION): the
+# ROI Viewer plugin's "Export Mask -> NRRD" option (plugins/roi_viewer/
+# core/exporters.py.export_mask_nrrd()) is optional - the plugin already
+# fails soft (no crash) when this isn't installed, and the export UI
+# (plugins/roi_viewer/gui/export_panel.py) detects it and tells the user
+# clearly rather than implying NRRD is guaranteed to work. Install with
+# `pip install invesalius[nrrd]` (or `uv sync --extra nrrd`) for real
+# NRRD export.
+nrrd = [
+    "pynrrd>=1.0.0",
+]
 
 [tool.uv.sources]
 torch = [
@@ -90,6 +101,19 @@ name = "pytorch-cu118"
 url = "https://download.pytorch.org/whl/cu118"
 explicit = true
 
+
+[tool.pytest.ini_options]
+# CT3D thesis project (Phase 11, CT3D_P11_TEST_AUTOMATION): markers for
+# plugins/roi_viewer's own persistent test suite under tests/ct3d/. Does
+# not affect the pre-existing upstream tests/ suite (no markers required
+# there - unmarked tests are unaffected by -m filters).
+markers = [
+    "unit: pure deterministic tests - no DICOM/GUI/VTK-renderer/dataset required",
+    "integration: tests that use real InVesalius singletons (Project/Slice), VTK objects, or pubsub wiring, but no mouse/keyboard interaction",
+    "gui: requires real GUI mouse/keyboard interaction - not automatable, never faked",
+    "slow: relatively expensive integration tests (real DICOM import, full-size builds)",
+    "dataset: requires an external DICOM dataset on disk",
+]
 
 [build-system]
 requires = ["maturin>=1.0,<2.0"]

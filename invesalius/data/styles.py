@@ -684,7 +684,15 @@ class WWWLInteractorStyle(DefaultInteractorStyle):
     def CleanUp(self):
         self.viewer.on_wl = False
         Publisher.sendMessage("Toggle toolbar item", _id=self.state_code, value=False)
-        if self.viewer.wl_text is not None:
+        # NOTE: self.viewer.canvas is set back to None by Viewer.
+        # CloseProject() (see viewer_slice.py) - a real crash was
+        # reported where CleanUp() ran (via "Enable style" ->
+        # STATE_DEFAULT during a fresh DICOM import's progress/cancel
+        # handling) after the project had already been closed, leaving
+        # this stale style holding a viewer whose canvas is None.
+        # viewer_slice.py itself already guards this same attribute
+        # with `if self.canvas:` in several places - matching that here.
+        if self.viewer.wl_text is not None and self.viewer.canvas is not None:
             self.viewer.canvas.draw_list.remove(self.viewer.wl_text)
             self.viewer.UpdateCanvas()
 
@@ -1061,8 +1069,16 @@ class DensityMeasureStyle(DefaultInteractorStyle):
         self.viewer.canvas.Refresh()
 
     def CleanUp(self):
-        self.viewer.canvas.unsubscribe_event("LeftButtonPressEvent", self.OnInsertPoint)
-        self.viewer.canvas.unsubscribe_event("LeftButtonDoubleClickEvent", self.OnInsertPolygon)
+        # NOTE: self.viewer.canvas can already be None here - see the
+        # matching NOTE on WindowLevelInteractorStyle.CleanUp() above.
+        # Confirmed as a real crash: deleting all masks then
+        # re-importing DICOM while this style (density/polygon area
+        # measurement - "Measure Area (2D)") was still active raised
+        # AttributeError: 'NoneType' object has no attribute
+        # 'unsubscribe_event'.
+        if self.viewer.canvas is not None:
+            self.viewer.canvas.unsubscribe_event("LeftButtonPressEvent", self.OnInsertPoint)
+            self.viewer.canvas.unsubscribe_event("LeftButtonDoubleClickEvent", self.OnInsertPolygon)
         old_list = self.viewer.draw_by_slice_number
         self.viewer.draw_by_slice_number.clear()
         for n in old_list:
@@ -1073,7 +1089,7 @@ class DensityMeasureStyle(DefaultInteractorStyle):
                 else:
                     self.viewer.draw_by_slice_number[n].append(i)
 
-        self.viewer.UpdateCanvas()
+        self.viewer.UpdateCanvas()  # already guards self.canvas is None internally
 
     def _2d_to_3d(self, pos):
         mx, my = pos
@@ -2648,7 +2664,11 @@ class CropMaskInteractorStyle(DefaultInteractorStyle):
         # Publisher.sendMessage('Reload actual slice')
 
     def CleanUp(self):
-        self.viewer.canvas.draw_list.remove(self.draw_retangle)
+        # NOTE: see the matching NOTE on WindowLevelInteractorStyle.
+        # CleanUp() above - self.viewer.canvas can be None here too if
+        # the project was closed while this style was still active.
+        if self.viewer.canvas is not None:
+            self.viewer.canvas.draw_list.remove(self.draw_retangle)
         Publisher.sendMessage("Redraw canvas")
 
     def CropMask(self):

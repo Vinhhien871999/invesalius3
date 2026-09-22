@@ -6,7 +6,6 @@
 import numpy as np
 from typing import List, Tuple, Optional, Dict
 from dataclasses import dataclass
-import time
 
 
 @dataclass

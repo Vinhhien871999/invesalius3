@@ -128,7 +128,8 @@ class ProjectInterface:
         try:
             import invesalius.project as prj
             return prj.Project().name != ""
-        except:
+        except Exception as e:
+            print(f"ROI Viewer: is_project_loaded check failed - {e}")
             return False
             
     def get_volume_data(self) -> Optional[np.ndarray]:
@@ -236,7 +237,8 @@ class ProjectInterface:
         try:
             import invesalius.project as prj
             return prj.Project().mask_dict or {}
-        except:
+        except Exception as e:
+            print(f"ROI Viewer: get_mask_dict failed - {e}")
             return {}
             
     def get_current_mask(self) -> Optional[Any]:
@@ -244,7 +246,8 @@ class ProjectInterface:
         try:
             import invesalius.data.slice_ as sl
             return sl.Slice().current_mask
-        except:
+        except Exception as e:
+            print(f"ROI Viewer: get_current_mask failed - {e}")
             return None
             
     def get_surface_dict(self) -> Dict[int, Any]:
@@ -252,7 +255,8 @@ class ProjectInterface:
         try:
             import invesalius.project as prj
             return prj.Project().surface_dict or {}
-        except:
+        except Exception as e:
+            print(f"ROI Viewer: get_surface_dict failed - {e}")
             return {}
             
     def get_project_name(self) -> str:
@@ -260,7 +264,8 @@ class ProjectInterface:
         try:
             import invesalius.project as prj
             return prj.Project().name
-        except:
+        except Exception as e:
+            print(f"ROI Viewer: get_project_name failed - {e}")
             return ""
             
     def get_patient_name(self) -> str:

@@ -4,13 +4,29 @@
 # --------------------------------------------------------------------------
 
 import wx
-import os
 
 try:
     from invesalius.i18n import tr as _
 except ImportError:
     def _(s):
         return s
+
+
+def _is_nrrd_available() -> bool:
+    """
+    Phase 12 (CT3D_P12_QUANTITATIVE_VALIDATION - NRRD packaging/dependency
+    audit): `pynrrd` is an optional dependency (see pyproject.toml's
+    `[project.optional-dependencies]` "nrrd" extra) - core/exporters.py's
+    export_mask_nrrd() already fails soft (returns False, never raises)
+    when it's missing, but the UI used to always advertise "NRRD (.nrrd)"
+    as a plain, seemingly-always-available choice, only revealing the
+    real problem in a generic error message AFTER the user picked a
+    filename. Checked once here so the dropdown/tooltip can tell the
+    user up front instead.
+    """
+    import importlib.util
+
+    return importlib.util.find_spec("nrrd") is not None
 
 
 class ExportPanel(wx.Panel):
@@ -50,16 +66,32 @@ class ExportPanel(wx.Panel):
         format_row = wx.BoxSizer(wx.HORIZONTAL)
         format_row.Add(wx.StaticText(self, wx.ID_ANY, _("Format:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         
+        self._nrrd_available = _is_nrrd_available()
+        nrrd_label = "NRRD (.nrrd)" if self._nrrd_available else _("NRRD (.nrrd) - library not installed")
         self.choice_mask_format = wx.Choice(
             self, wx.ID_ANY,
             choices=[
                 "NIfTI (.nii.gz)",
-                "NRRD (.nrrd)",
-                "MetaImage (.mhd)",
+                nrrd_label,
                 "NumPy (.npy)"
+                # NOTE: "MetaImage (.mhd)" was removed here - it had no
+                # real writer anywhere (core/exporters.py has
+                # export_mask_nifti/nrrd/numpy, no export_mask_metaimage
+                # at all) and this dropdown's selection wasn't even
+                # being read by _on_export_mask() until this fix (see
+                # that method's own NOTE) - keeping an option that can
+                # never produce a file would just be a second copy of
+                # the same "advertised but not real" bug.
             ]
         )
         self.choice_mask_format.SetSelection(0)
+        if not self._nrrd_available:
+            self.choice_mask_format.SetToolTip(
+                _("The NRRD option requires the optional 'pynrrd' package "
+                  "(pip install pynrrd, or install this project's 'nrrd' extra). "
+                  "It is not installed in this environment - selecting NRRD and "
+                  "exporting will fail with a clear message rather than crash.")
+            )
         format_row.Add(self.choice_mask_format, 1, wx.ALL, 3)
         
         mask_sizer.Add(format_row, 0, wx.EXPAND, 5)
@@ -181,8 +213,7 @@ class ExportPanel(wx.Panel):
         formats = {
             0: ".nii.gz",  # NIfTI
             1: ".nrrd",    # NRRD
-            2: ".mhd",     # MetaImage
-            3: ".npy"      # NumPy
+            2: ".npy",     # NumPy
         }
         return formats.get(self.choice_mask_format.GetSelection(), ".nii.gz")
         
@@ -209,13 +240,89 @@ class ExportPanel(wx.Panel):
         
     def _on_export_mask(self, event):
         """Handle export mask button click."""
-        # NOTE: this used to open its own wx.FileDialog first and then
-        # discard the path the user picked, immediately firing InVesalius's
-        # own "Show export mask dialog" (which opens a second, real save
-        # dialog) right after - the user saw two save dialogs in a row and
-        # the first choice was silently thrown away. That dialog is the one
-        # that actually writes the file, so just fire it directly.
-        self._export_mask_to_file()
+        # NOTE (bug found + fixed via docs/ROI_VIEWER_USER_GUIDE_VERIFICATION.md's
+        # runtime testing): this used to ALWAYS call
+        # _export_mask_to_file() regardless of the "Format:" dropdown's
+        # selection. That method only ever opens InVesalius's own real
+        # "Export Mask as NIfTI" dialog (see invesalius/control.py's
+        # OnShowExportMaskDialog - it hardcodes wildcard=WILDCARD_NIFTI
+        # and force-appends ".nii.gz" to whatever filename the user
+        # types), so picking "NRRD" or the since-removed "MetaImage" in
+        # the dropdown silently did nothing - the file written was
+        # always NIfTI. Verified for real: selecting NRRD and exporting
+        # produced no .nrrd file at all. Now the dropdown selection is
+        # actually honored: NIfTI still goes through InVesalius's real
+        # dialog (unchanged, still the confirmed-working path); NRRD/
+        # NumPy use this plugin's own real exporter functions
+        # (core/exporters.py - already existed, just were never called
+        # from here) through a plugin-owned file dialog.
+        selection = self.choice_mask_format.GetSelection()
+        if selection == 0:
+            self._export_mask_to_file()
+            return
+
+        if selection == 1 and not self._nrrd_available:
+            # Fail fast (Phase 12 NRRD audit) - tell the user before they
+            # pick a filename, not after, via a generic post-hoc message.
+            wx.MessageBox(
+                _("NRRD export requires the optional 'pynrrd' package, which "
+                  "is not installed in this environment.\n\nInstall it with: "
+                  "pip install pynrrd\n(or install this project's 'nrrd' extra)."),
+                _("NRRD library not installed"), wx.OK | wx.ICON_WARNING,
+            )
+            return
+
+        try:
+            import invesalius.data.slice_ as sl
+
+            current_mask = sl.Slice().current_mask
+            if current_mask is None:
+                wx.MessageBox(_("No mask selected."), _("Error"), wx.OK | wx.ICON_ERROR)
+                return
+        except ImportError:
+            wx.MessageBox(_("Export not available."), _("Error"), wx.OK | wx.ICON_ERROR)
+            return
+
+        ext = self._get_mask_format_ext()
+        wildcard = f"{_('Mask files')} (*{ext})|*{ext}"
+        dlg = wx.FileDialog(
+            self, message=_("Export Mask"), defaultFile=f"{current_mask.name}{ext}",
+            wildcard=wildcard, style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
+        )
+        if dlg.ShowModal() == wx.ID_OK:
+            filepath = dlg.GetPath()
+            self._export_mask_via_exporter(current_mask, selection, filepath)
+        dlg.Destroy()
+
+    def _export_mask_via_exporter(self, mask, selection, filepath):
+        """
+        Real mask export for the formats InVesalius's own dialog does
+        not support (NRRD/NumPy), using core/exporters.ExporterManager
+        (already implemented, just never wired to this button before).
+        Interior voxel data only (mask.matrix[1:, 1:, 1:]) - matrix
+        carries a 1-voxel padding border that is not real image data
+        (see project_interface.py's notes on this).
+        """
+        try:
+            from ..interface.project_interface import ProjectInterface
+
+            spacing = ProjectInterface().get_spacing()
+            data = (mask.matrix[1:, 1:, 1:] > 0).astype("uint8")
+            if selection == 1:  # NRRD
+                ok = self.controller.exporter.export_mask_nrrd(data, filepath, spacing=spacing)
+            elif selection == 2:  # NumPy
+                ok = self.controller.exporter.export_mask_numpy(data, filepath)
+            else:
+                ok = False
+            if not ok:
+                wx.MessageBox(
+                    _("Mask export failed (see console for details - e.g. a required "
+                      "library like pynrrd may not be installed)."),
+                    _("Error"), wx.OK | wx.ICON_ERROR,
+                )
+        except Exception as e:
+            wx.MessageBox(_("Mask export failed."), _("Error"), wx.OK | wx.ICON_ERROR)
+            print(f"ROI Viewer: mask export via exporter failed - {e}")
         
     def _on_export_surface(self, event):
         """Handle export surface button click."""
@@ -256,16 +363,45 @@ class ExportPanel(wx.Panel):
         try:
             from invesalius.pubsub import pub as Publisher
             Publisher.sendMessage("Show save dialog")
+            self._save_annotation_sidecar()
         except ImportError:
             pass
-            
+
     def _on_save_as_project(self, event):
         """Handle save as project button click."""
         try:
             from invesalius.pubsub import pub as Publisher
             Publisher.sendMessage("Show save dialog", save_as=True)
+            self._save_annotation_sidecar()
         except ImportError:
             pass
+
+    def _save_annotation_sidecar(self):
+        """
+        Persist annotations next to the real project file, right after
+        InVesalius's own save dialog. "Show save dialog" is handled by
+        invesalius.control.Controller.OnShowDialogSaveProject(), which
+        runs the real (modal) file-pick dialog and calls the real
+        SaveProject()/Session.SaveProject() synchronously *before*
+        Publisher.sendMessage() returns here - so by this point,
+        invesalius.session.Session().GetState("project_path") already
+        reflects whatever was just saved (or, if the user cancelled,
+        whatever it was before - see core/annotation.py's module
+        docstring for why that's harmless). No wx.CallAfter needed here
+        (contrast with the load side in roi_panel.py's on_project_load(),
+        where the equivalent state update happens *after* the message
+        that triggers our handler, not before).
+        """
+        try:
+            import invesalius.session as ses
+
+            project_path = ses.Session().GetState("project_path")
+            if not project_path:
+                return  # user cancelled a first-time Save As, or nothing to save yet
+            dirpath, filename = project_path
+            self.controller.annotation_mgr.save_sidecar(dirpath, filename)
+        except Exception as e:
+            print(f"ROI Viewer: could not save annotation sidecar - {e}")
             
     def _export_mask_to_file(self):
         """Open InVesalius's own export-mask dialog for the current mask."""

@@ -1,0 +1,36 @@
+# CT3D — Known Limitations (Phase 14, Final)
+
+> Tài liệu này liệt kê đầy đủ, trung thực các giới hạn THẬT còn tồn tại của phần mềm CT3D + Plugin ROI Viewer tại thời điểm kết thúc roadmap phần mềm (Phase 14, 17/09/2026). Đây KHÔNG phải danh sách "TODO" — các mục dưới đây đã được điều tra, xác nhận là giới hạn thật (không phải bug chưa sửa), và phân loại theo đúng bản chất. Xem `CT3D_P14_FINAL_AUDIT_REPORT.md` cho bối cảnh audit đầy đủ, `CT3D_REMAINING_WORK.md` cho lịch sử điều tra từng mục.
+
+**Phân loại**:
+- `SOFTWARE_LIMITATION` — giới hạn thật của thiết kế/phạm vi phần mềm, có thể có real workaround, không phải bug.
+- `ENVIRONMENT_DEPENDENCY` — phụ thuộc vào máy/RAM/phần cứng/dataset local hiện có, không phải lỗi code.
+- `EXTERNAL_VALIDATION_GAP` — cần dữ liệu/người dùng/công cụ bên ngoài (dataset có nhãn, bác sĩ/KTV thật, phần mềm khác để so sánh) mà môi trường phát triển hiện tại không có sẵn.
+- `OUT_OF_SCOPE` — quyết định kiến trúc có lý do, chủ động không làm, không phải thiếu sót.
+
+---
+
+| # | Giới hạn | Phân loại | Chi tiết |
+|---|---|---|---|
+| 1 | Chỉ xác nhận thật 2/4 vendor CT phổ biến (SIEMENS, Philips) — thiếu GE, Canon | `EXTERNAL_VALIDATION_GAP` | Không có dataset local từ GE/Canon; không tự tải dataset ngoài. Xem `CT3D_DATASET_REGISTRY.md`, `CT3D_FEATURE_AUDIT.md` mục A2 (`PARTIAL`). |
+| 2 | Chưa test thật với study đa-series (nhiều series trong 1 study) | `EXTERNAL_VALIDATION_GAP` | Cả 3 dataset local hiện có (`0051`/`0801`/`mri3`) đều chỉ 1 series/study — logic grouping (`DicomPatientGrouper`) đã có unit test riêng dùng object giả (`tests/ct3d/test_dicom_grouping.py`), nhưng chưa có bằng chứng runtime với dữ liệu multi-series thật. Xem `CT3D_FEATURE_AUDIT.md` mục A4 (`NEEDS_RUNTIME_TEST`). |
+| 3 | Dice/Jaccard/Hausdorff chưa validate trên ground-truth THẬT | `EXTERNAL_VALIDATION_GAP` | Hạ tầng (`core/evaluation.py`) + validation trên phantom/synthetic đã hoàn tất (42 test PASS), nhưng chưa có dataset có nhãn sẵn thật (vd. Medical Segmentation Decathlon) để so sánh. Xem `CT3D_REMAINING_WORK.md` mục 4. |
+| 4 | Khảo sát SUS (System Usability Scale) chưa có người tham gia thật | `EXTERNAL_VALIDATION_GAP` | Protocol đầy đủ đã chuẩn bị (`CT3D_SUS_PROTOCOL.md`, `SUS_PROTOCOL_READY=YES`), `SUS_REAL_PARTICIPANTS_COMPLETE=NO`. Cần bác sĩ/KTV thật ngoài phạm vi kỹ thuật của các phase audit. |
+| 5 | Chưa có so sánh benchmark định lượng với 3D Slicer | `EXTERNAL_VALIDATION_GAP` | 3D Slicer không được cài trên môi trường phát triển hiện tại tại thời điểm Phase 13/14 — không tự bịa số liệu so sánh. Nếu cài đặt sau này, có thể chạy lại cùng phương pháp `tools/ct3d_benchmark.py` đã có. |
+| 6 | Volume rendering (raycasting) thuần không kết nối được từ plugin/UI | `SOFTWARE_LIMITATION` (giới hạn của InVesalius gốc, không phải plugin) | `invesalius/data/volume.py.Volume.OnShowVolume()` có 0 call-site thật trong toàn repo (xác nhận qua grep) — đây là hạn chế trong chính InVesalius gốc. Đo FPS trong benchmark dùng surface rendering, ghi rõ không phải raycasting. Trạng thái: `NOT_CONNECTED` (C6), giữ nguyên — không tự viết raycaster mới. |
+| 7 | Không export định dạng DICOM-SEG | `OUT_OF_SCOPE` | NIfTI (đã có, đã verify) đáp ứng yêu cầu tương tác chuẩn với phần mềm y tế khác theo tài liệu kế hoạch mục 4.7. DICOM-SEG chưa nằm trong phạm vi đã triển khai — quyết định phạm vi, không phải thiếu sót kỹ thuật. |
+| 8 | Undo/Redo history giới hạn 10 checkpoint (`max_history=10`) | `SOFTWARE_LIMITATION` | Quyết định kiến trúc có lý do (worst-case bộ nhớ thật đã đo và sửa số liệu ở Phase 10/11: 10×27.36MB ≈ 273.6MB) — không phải bug, là đánh đổi bộ nhớ/lịch sử có chủ đích, verify 29/29 test (`tests/ct3d/test_undo_redo.py`). |
+| 9 | Surface build ("Default" algorithm) nhạy cảm với RAM thấp trên máy phát triển | `ENVIRONMENT_DEPENDENCY` | Runtime của "Default" algorithm bị chi phối bởi kích thước ẢNH GỐC đầy đủ (không phải độ thưa của mask) — một lần thử full Otsu range ở chất lượng "Optimal *" từng làm treo máy phát triển thật do RAM thấp (0.55-2.1GB quan sát được). Dùng chất lượng "Low" + threshold band hợp lý tránh được vấn đề này. Đây là đặc tính thật của thuật toán + giới hạn RAM máy phát triển, không phải bug logic. |
+| 10 | Export NRRD cần dependency tuỳ chọn (`pynrrd`) | `ENVIRONMENT_DEPENDENCY` | Không bundle mặc định — UI phát hiện + cảnh báo rõ khi thiếu (`_is_nrrd_available()`), người dùng tự `pip install pynrrd` (hoặc extra `nrrd` trong `pyproject.toml`) nếu cần định dạng này. Phụ thuộc vào việc package tuỳ chọn có được cài trong môi trường hay không (không phải giới hạn thiết kế cố định) — **sửa lại 22/09/2026 (Post-Phase-14 Release Closure)**: trước đó phân loại `SOFTWARE_LIMITATION`, chính xác hơn là `ENVIRONMENT_DEPENDENCY` vì bản chất là môi trường thiếu package tuỳ chọn, không phải bug hay giới hạn của chính phần mềm. |
+| 11 | C8 (mặt phẳng 2D→3D) cần người dùng TỰ bật công cụ native `"Slices' cross intersection"` trước | `SOFTWARE_LIMITATION` (thiết kế có chủ đích) | Plugin **cố tình không tự động bật** công cụ này — tránh chiếm quyền toolbar gốc/thay đổi trạng thái InVesalius ngoài ý muốn người dùng. UI đã ghi rõ prerequisite này (`interaction_panel.py`, `HUONG_DAN_SU_DUNG_ROI_VIEWER.md`). Không phải thiếu sót — là ranh giới trách nhiệm rõ ràng giữa plugin và phần mềm gốc. |
+| 12 | Mặt phẳng C8 (`SlicePlanes3D`) chỉ là hình học bán trong suốt, không có texture ảnh CT thật trên bề mặt | `SOFTWARE_LIMITATION` | Mục tiêu là trực quan hoá VỊ TRÍ 3 mặt cắt hiện tại (không phải render lại nội dung ảnh CT trên mặt phẳng đó, việc này đã có sẵn ở 3 khung 2D riêng) — phạm vi có chủ đích, không phải thiếu sót. |
+| 13 | Di chuyển crosshair (C8) không tự rebuild surface 3D | `SOFTWARE_LIMITATION` (thiết kế đúng, không phải bug) | Đây là hành vi ĐÚNG theo thiết kế: surface chỉ được dựng lại khi người dùng chủ động bấm "Update 3D Surface from Selected ROI" (D9/C7). Marker/mặt phẳng C8 chỉ di chuyển geometry hiển thị vị trí, không kích hoạt marching cubes lại — tránh rebuild tốn kém (giây) mỗi lần kéo chuột 2D. Xem `docs/HUONG_DAN_SU_DUNG_ROI_VIEWER.md` mục 2 cho phân biệt rõ 2 luồng. |
+| 14 | Số liệu benchmark hiệu năng (`CT3D_P13_PERFORMANCE_RESULTS.csv`) đo trên 1 máy phát triển duy nhất, RAM hạn chế | `ENVIRONMENT_DEPENDENCY` | Không đại diện cho mọi cấu hình phần cứng. Số liệu FPS "10000.0" trong CSV là artifact của độ phân giải đo tối thiểu của VTK (`render_time≈0.0001s` trên mesh cực nhỏ 13-0 điểm) — **KHÔNG được dùng làm con số FPS đại diện**; con số FPS đại diện thật đã verify trước đó là **122.0–158.3 FPS** (3 bộ dữ liệu, xem `CT3D_FEATURE_AUDIT.md` mục C2). Mọi tuyên bố hiệu năng phải ghi rõ là đo được trên môi trường/phần cứng cụ thể, không phải tuyệt đối. |
+
+---
+
+## Tổng kết
+
+- **Không có `PRODUCT_SURFACE_FAILURE` hay bug kỹ thuật thật nào còn mở** — toàn bộ 14 mục trên đều là giới hạn phạm vi/môi trường/external-validation đã hiểu rõ nguyên nhân, không phải lỗi chưa sửa.
+- Phần mềm ở trạng thái **release-candidate** cho phần kỹ thuật (`SOFTWARE_RELEASE_CANDIDATE_READY = YES`); các mục `EXTERNAL_VALIDATION_GAP` (1,2,3,4,5) và `CLINICAL_VALIDATION_COMPLETE = NO` là công việc ngoài phạm vi kỹ thuật thuần, cần dữ liệu/người dùng/phần mềm bên ngoài không có sẵn trong môi trường phát triển hiện tại.
+- Xem `CT3D_RELEASE_NOTES.md` cho tuyên bố research-prototype disclaimer đầy đủ.

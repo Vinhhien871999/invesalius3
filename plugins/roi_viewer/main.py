@@ -5,10 +5,16 @@
 # --------------------------------------------------------------------------
 
 import wx
-import os
 
-from .gui import roi_panel, interaction_panel, measurement_panel, annotation_panel, export_panel
-from .interface import project_interface, view_interface, task_panel
+# Phase 11 (CT3D_P11_TEST_AUTOMATION) static-quality audit: only
+# roi_panel is actually referenced by name in this module - it
+# constructs the real ROIViewerFrame, which itself imports
+# interaction_panel/measurement_panel/annotation_panel/export_panel and
+# project_interface/view_interface directly (see roi_panel.py's own
+# header note). The extra names main.py used to import here were dead
+# (0 real uses, confirmed via pyflakes + grep) - trimmed to what this
+# module actually needs.
+from .gui import roi_panel
 
 # Global reference to the main window
 _main_frame = None
@@ -26,17 +32,44 @@ def load():
     This function is called when the plugin is selected from the menu.
     """
     global _main_frame, _roi_viewer_window
-    
+
+    # NOTE: nothing prevented this from running again while a ROI
+    # Viewer window was already open (selecting "ROI Viewer" from the
+    # Plugins menu more than once) - each call created a whole second
+    # ROIViewerFrame with its own new PointPicker3D, which
+    # initialize_picker() then attached to the *same* real, singleton
+    # VTK interactor (invesalius.data.viewer_volume.Viewer outlives any
+    # single plugin window). Every extra open left one more permanent
+    # observer on that interactor, and _subscribe_events() below
+    # duplicated every pubsub subscription too. If the user later
+    # closed one of the windows, its stale observer/subscriptions kept
+    # firing into now-destroyed widgets - this is exactly the real
+    # crash InVesalius's own crash handler caught ("wrapped C/C++
+    # object of type TextCtrl has been deleted" from interaction_panel.
+    # py's update_coordinates). Reuse the existing window instead of
+    # creating a second one.
+    if _roi_viewer_window is not None:
+        try:
+            _roi_viewer_window.Raise()
+            _roi_viewer_window.SetFocus()
+            print("ROI Viewer: window already open, bringing it to front")
+            return
+        except RuntimeError:
+            # The wx C++ object is gone (window was closed) even though
+            # this module-level reference wasn't cleared - fall through
+            # and create a fresh one.
+            _roi_viewer_window = None
+
     top_window = wx.GetApp().GetTopWindow()
     _main_frame = top_window
-    
+
     # Create main ROI Viewer window
     _roi_viewer_window = roi_panel.ROIViewerFrame(top_window)
     _roi_viewer_window.Show()
-    
+
     # Subscribe to pubsub events
     _subscribe_events()
-    
+
     print("ROI Viewer plugin loaded successfully")
 
 
@@ -75,7 +108,37 @@ def _subscribe_events():
         # Mask events
         Publisher.subscribe(_on_mask_created, "Create new mask")
         Publisher.subscribe(_on_mask_selected, "Change mask selected")
-        
+
+        # NOTE (Round-2 audit, section E): these three additionally
+        # keep ROIManager's cache in sync with masks renamed/hidden/
+        # removed through InVesalius's OWN native Masks tab, not just
+        # through this plugin's own ROI List buttons - see
+        # core/roi_manager.py's module docstring. Signatures matched
+        # exactly to invesalius/data/slice_.py's real subscribers
+        # (__set_mask_name(index, name), __show_mask(index, value),
+        # OnRemoveMasks(mask_indexes)) - Slice() is always the first
+        # subscriber on these topics (registered at app startup, well
+        # before any plugin loads), so it fixes each topic's pypubsub
+        # message-data-spec; a mismatched signature here would raise
+        # ListenerMismatchError at subscribe time.
+        Publisher.subscribe(_on_mask_name_changed, "Change mask name")
+        Publisher.subscribe(_on_mask_visibility_changed, "Show mask")
+        Publisher.subscribe(_on_masks_removed, "Remove masks")
+
+        # Phase 09 (CT3D_P09): "Sync 2D -> 3D". "Set cross focal point"
+        # is InVesalius's own real topic for "the user just changed
+        # position on a 2D view" - fired with a real world (x, y, z) mm
+        # position from invesalius/data/styles.py's default 2D
+        # interactor style on every click/drag on a 2D slice (and by a
+        # few other real features - reoriented navigation, tractography
+        # - that also move the shared crosshair). Reusing this exact
+        # topic (not a new one) is what lets Sync 2D->3D work for any
+        # real way the crosshair moves, not just plugin-driven ones.
+        # invesalius/data/record_coords.py's UpdateCurrentCoords(self,
+        # position) is a real first-subscriber elsewhere in the app, so
+        # `position` (not e.g. `pos`) is the fixed pypubsub MDS kwarg.
+        Publisher.subscribe(_on_cross_focal_point, "Set cross focal point")
+
         print("ROI Viewer: Subscribed to pubsub events")
     except ImportError as e:
         print(f"ROI Viewer: Could not import Publisher - {e}")
@@ -94,44 +157,69 @@ def _on_project_load(create_default_mask=True, end_busy_cursor=True):
     the whole plugin the instant `load()` ran, before any of the other
     subscriptions below were even registered.
     """
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_project_load()
 
 
 def _on_project_close():
     """Handle project close event."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_project_close()
 
 
 def _on_slice_change(plane, index):
     """Handle slice position change."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_slice_change(plane, index)
 
 
 def _on_mask_update():
     """Handle mask update event."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_mask_update()
 
 
 def _on_mask_created(mask_name, thresh, colour):
     """Handle mask created event."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_mask_created(mask_name, thresh, colour)
+        _roi_viewer_window.on_roi_source_changed()
 
 
 def _on_mask_selected(index):
     """Handle mask selected event."""
-    global _roi_viewer_window
     if _roi_viewer_window:
         _roi_viewer_window.on_mask_selected(index)
+
+
+def _on_mask_name_changed(index, name):
+    """A mask was renamed (through this plugin or InVesalius's native Masks tab)."""
+    if _roi_viewer_window:
+        _roi_viewer_window.on_roi_source_changed()
+
+
+def _on_mask_visibility_changed(index, value):
+    """A mask's visibility was toggled (through this plugin or the native Masks tab)."""
+    if _roi_viewer_window:
+        _roi_viewer_window.on_roi_source_changed()
+
+
+def _on_masks_removed(mask_indexes):
+    """One or more masks were removed (through this plugin or the native Masks tab)."""
+    if _roi_viewer_window:
+        _roi_viewer_window.on_roi_source_changed()
+
+
+def _on_cross_focal_point(position):
+    """
+    The user changed position on a real 2D view (or any other real
+    InVesalius feature that moves the shared crosshair) - see the NOTE
+    by this topic's subscription above. `position` is a list/array of
+    at least 3 real world-space (mm) coordinates; only x/y/z matter
+    here (some senders pad it to 6 elements).
+    """
+    if _roi_viewer_window:
+        _roi_viewer_window.on_cross_focal_point_changed(position[:3])
 
 
 def get_plugin_info():
@@ -177,11 +265,21 @@ def unload():
         Publisher.unsubscribe(_on_mask_update, "Reload actual slice")
         Publisher.unsubscribe(_on_mask_created, "Create new mask")
         Publisher.unsubscribe(_on_mask_selected, "Change mask selected")
+        Publisher.unsubscribe(_on_mask_name_changed, "Change mask name")
+        Publisher.unsubscribe(_on_mask_visibility_changed, "Show mask")
+        Publisher.unsubscribe(_on_masks_removed, "Remove masks")
+        Publisher.unsubscribe(_on_cross_focal_point, "Set cross focal point")
     except ImportError:
         pass
     
     if _roi_viewer_window:
-        _roi_viewer_window.Destroy()
+        # NOTE: Close() (not Destroy() directly) so ROIViewerFrame's own
+        # EVT_CLOSE handler runs first and detaches the shared picker
+        # from the real VTK interactor - see picker_3d.PointPicker3D.
+        # cleanup()'s docstring and roi_panel.ROIViewerFrame._on_close().
+        # Calling Destroy() here directly used to skip that cleanup
+        # entirely.
+        _roi_viewer_window.Close()
         _roi_viewer_window = None
     
     print("ROI Viewer plugin unloaded")
