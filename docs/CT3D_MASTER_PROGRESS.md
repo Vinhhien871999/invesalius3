@@ -6,9 +6,11 @@
 
 - **Current phase: 14 (FINAL — hoàn tất, PASS).** Đây là phase cuối của roadmap phần mềm (Phase 08→14). **KHÔNG có Phase 15.**
 - Branch: `thesis-ct-roi-tools`
-- HEAD: `bed0c624`
+- HEAD: `6dae0922` (main Phase 14 commit `bed0c624`, followed by the hash-fill-in commit `6dae0922` which is the actual current branch tip — see `CT3D_P14_FINAL_AUDIT_REPORT.md`'s Post-Phase-14 Release Closure Corrections section for the reconciliation)
 - Last completed phase: 14
-- Next phase: **NONE.** Software roadmap complete. Remaining work is external research / clinical validation only (xem `CT3D_KNOWN_LIMITATIONS.md`, `CT3D_RELEASE_NOTES.md` mục 11) — không còn công việc kỹ thuật phần mềm nào cần Claude Code tiếp tục.
+- Next phase: **NONE.** Software roadmap complete. **Không còn công việc phần mềm BẮT BUỘC nào còn lại.** Phần còn lại chia 2 loại, không loại nào là blocker cho release candidate:
+  - **OPTIONAL_INTERNAL** (có thể tự làm trong repo hiện tại, không cần dữ liệu/người dùng ngoài, không bắt buộc): C8 — 9 mục lettered A-I chưa itemize manual riêng lẻ (xem `CT3D_MANUAL_QA_CHECKLIST.md`, `CT3D_REMAINING_WORK.md` mục 8); đánh giá `"ca_smoothing"` thay `"Binary"` cho D9/C7 (không bắt buộc).
+  - **EXTERNAL** (cần dữ liệu/người dùng/phần mềm bên ngoài môi trường phát triển hiện tại): GE/Canon vendor, ground-truth thật cho Dice/Jaccard/Hausdorff, SUS participants thật, benchmark 3D Slicer, clinical validation — xem `CT3D_KNOWN_LIMITATIONS.md`, `CT3D_RELEASE_NOTES.md` mục 11.
 
 ## Progress Matrix
 
@@ -77,9 +79,9 @@
 
 ## Research/evaluation remaining work
 
-> **Cập nhật Phase 12 (baseline reconciliation)**: mục "bộ pytest độc lập" từng liệt kê ở đây **đã đóng từ Phase 11** (`tests/ct3d/`, 158 test — xem `CT3D_P11_TEST_AUTOMATION_REPORT.md`) — đã xoá khỏi danh sách bên dưới, không còn để stale. Dice/Jaccard/Hausdorff **đã có hạ tầng thật + unit test synthetic đầy đủ ở Phase 12** (`plugins/roi_viewer/core/evaluation.py`, `tests/ct3d/test_evaluation_metrics.py`, `tests/ct3d/test_phantom_validation.py`) — không còn "hoàn toàn chưa thực hiện" như trước, nhưng **ground-truth THẬT (không phải synthetic) vẫn `BLOCKED_EXTERNAL_DATA`** (cần dataset có nhãn sẵn, ví dụ Medical Segmentation Decathlon — không có local). Đa vendor: **2/2 vendor thật xác nhận trong dữ liệu local hiện có** (SIEMENS, Philips — xem `CT3D_DATASET_REGISTRY.md`), GE/Canon vẫn `BLOCKED_EXTERNAL_DATA`.
+> **Cập nhật Phase 12 (baseline reconciliation)**: mục "bộ pytest độc lập" từng liệt kê ở đây **đã đóng từ Phase 11** (`tests/ct3d/` — hạ tầng pytest bền vững được giới thiệu ở Phase 11, ~109 test, xem `CT3D_P11_TEST_AUTOMATION_REPORT.md`; mở rộng lên 159 collected/158 passed/1 skipped ở Phase 12; mở rộng tiếp lên 184 collected/183 passed/1 skipped ở Phase 13.5, baseline hiện tại — xem `CT3D_FEATURE_AUDIT.md` header cho lịch sử đầy đủ, không gộp lẫn các mốc) — đã xoá khỏi danh sách bên dưới, không còn để stale. **[Sửa 22/09/2026, Post-Phase-14 Release Closure]**: câu trên trước đó ghi nhầm "158 test" là số liệu của Phase 11 — số đúng của Phase 11 là ~109 test; 158 là số liệu Phase 12/13 (trước Phase 13.5). Dice/Jaccard/Hausdorff **đã có hạ tầng thật + unit test synthetic đầy đủ ở Phase 12** (`plugins/roi_viewer/core/evaluation.py`, `tests/ct3d/test_evaluation_metrics.py`, `tests/ct3d/test_phantom_validation.py`) — không còn "hoàn toàn chưa thực hiện" như trước, nhưng **ground-truth THẬT (không phải synthetic) vẫn `BLOCKED_EXTERNAL_DATA`** (cần dataset có nhãn sẵn, ví dụ Medical Segmentation Decathlon — không có local). Đa vendor: **2/2 vendor thật xác nhận trong dữ liệu local hiện có** (SIEMENS, Philips — xem `CT3D_DATASET_REGISTRY.md`), GE/Canon vẫn `BLOCKED_EXTERNAL_DATA`.
 
-- Ground-truth THẬT cho Dice/Jaccard/Hausdorff (cần dataset có nhãn, `BLOCKED_EXTERNAL_DATA`), người tham gia SUS thật (protocol đã sẵn sàng — `CT3D_SUS_PROTOCOL.md`, `SUS_PROTOCOL_READY=YES`/`SUS_REAL_PARTICIPANTS_COMPLETE=NO`), benchmark thật với 3D Slicer (không cài trên máy hiện tại — `NEEDS_EXTERNAL_VERIFICATION`, xem `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 17), GE/Canon (`BLOCKED_EXTERNAL_DATA`) — xem `Ke_hoach_de_tai_InVesalius_CT3D.md` mục 4 và `DANH_GIA_TIEN_DO_THEO_GIAI_DOAN.md` (Nội dung 6b) — dự kiến Phase 14+.
+- Ground-truth THẬT cho Dice/Jaccard/Hausdorff (cần dataset có nhãn, `BLOCKED_EXTERNAL_DATA`), người tham gia SUS thật (protocol đã sẵn sàng — `CT3D_SUS_PROTOCOL.md`, `SUS_PROTOCOL_READY=YES`/`SUS_REAL_PARTICIPANTS_COMPLETE=NO`), benchmark thật với 3D Slicer (không cài trên máy hiện tại — `NEEDS_EXTERNAL_VERIFICATION`, xem `CT3D_P13_PERFORMANCE_COMPARISON_REPORT.md` mục 17), GE/Canon (`BLOCKED_EXTERNAL_DATA`) — xem `Ke_hoach_de_tai_InVesalius_CT3D.md` mục 4 và `DANH_GIA_TIEN_DO_THEO_GIAI_DOAN.md` (Nội dung 6b) — thuộc **post-roadmap external research work** (roadmap phần mềm Phase 08-14 đã COMPLETE, đây là công việc ngoài phạm vi kỹ thuật, không phải "Phase 14+").
 
 ## Manual QA remaining
 

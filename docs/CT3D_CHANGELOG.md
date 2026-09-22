@@ -345,6 +345,33 @@ Tài liệu hoá đầy đủ 14 mục, phân loại `SOFTWARE_LIMITATION`/`ENVI
 
 ---
 
+## `<điền sau commit>` — Post-Phase-14 Release Closure (22/09/2026)
+
+### Goal
+KHÔNG phải Phase 15. Chỉ sửa consistency cuối cùng, khoá tài liệu release, xác minh Git history, chạy final regression, xác minh worktree sạch. Không thêm feature, không sửa thuật toán đang WORKING, không refactor lớn, không đổi architecture.
+
+### Git reconciliation
+Xác định lại chính xác: main Phase 14 commit = `bed0c624`, hash-fill-in follow-up = `6dae0922` (= HEAD thật tại thời điểm bắt đầu phiên này). Phase 14 report trước đó ghi "HEAD after this phase = bed0c624" — không sai về commit chính nhưng thiếu rõ ràng vì không nhắc tới follow-up commit đứng sau nó. Đã sửa đồng nhất trong `CT3D_P14_FINAL_AUDIT_REPORT.md`, `CT3D_MASTER_PROGRESS.md`. Không rewrite/reset/amend lịch sử Git.
+
+### Documentation fixes
+- `CT3D_MASTER_PROGRESS.md`: sửa mis-attribution "Phase 11 = 158 test" (đúng: Phase 11 ~109 test, 158 là Phase 12/13); sửa "Phase 14+" → "post-roadmap external research work"; tách rõ OPTIONAL_INTERNAL (C8 A-I, ca_smoothing) khỏi EXTERNAL trong "Next phase".
+- `CT3D_REMAINING_WORK.md`: thêm cột "Loại" (EXTERNAL_VALIDATION/OUT_OF_SCOPE/OPTIONAL_INTERNAL) vào bảng P3; thêm mục 9 (`ca_smoothing`); sửa 3 chỗ "Phase 14+".
+- `HUONG_DAN_SU_DUNG_ROI_VIEWER.md`: sửa wording ngưỡng RAM cố định "~5GB" (không có bằng chứng) thành wording evidence-based (memory-sensitive, phụ thuộc nhiều yếu tố, dẫn chứng thật: `0801` build thành công với chỉ 1.82GB khả dụng).
+- `CT3D_SUS_PROTOCOL.md`: làm mềm wording "10-20 người đủ tin cậy" thành "practical target", yêu cầu báo cáo n/mean/SD/CI, không có cỡ mẫu nào tự động đảm bảo ý nghĩa thống kê.
+- `CT3D_KNOWN_LIMITATIONS.md`: sửa taxonomy NRRD (`SOFTWARE_LIMITATION` → `ENVIRONMENT_DEPENDENCY`).
+- `CT3D_P14_FINAL_AUDIT_REPORT.md`: sửa §24 (DICOM-SEG từng bị liệt kê đồng thời ở cả `SOFTWARE_LIMITATION` và `OUT_OF_SCOPE` — sửa còn `OUT_OF_SCOPE` duy nhất; NRRD đồng bộ theo `CT3D_KNOWN_LIMITATIONS.md`); thêm section "Post-Phase-14 Release Closure Corrections" (addendum, không xoá nội dung gốc).
+
+### Regression (re-run)
+`tests/ct3d -q`: 183 passed, 1 skipped (184 collected) — giống hệt baseline Phase 14, không có drift. Upstream: 94 passed. `pyflakes` plugin + benchmark tool: đều exit 0 (báo cáo riêng). `compileall`/`py_compile`: PASS. CSV P12 (34 rows/10 cols) + P13 (30 rows/11 cols): đều valid, 0 duplicate key. Production path scan `plugins/roi_viewer`: 0 hardcoded machine path.
+
+### Worktree
+`git status` sạch trước và sau khi commit closure pass này.
+
+### Phase Gate
+`RELEASE_CLOSURE_GATE: PASS`. KHÔNG PHẢI Phase 15. Không thêm feature/thuật toán/architecture. Roadmap phần mềm Phase 08-14 vẫn COMPLETE.
+
+---
+
 ## Tổng kết: phần nào của đề tài, phần nào của InVesalius gốc
 
 - **100% code mới của đề tài**: toàn bộ `plugins/roi_viewer/` (main.py, gui/, core/, interface/) — ~4700+ dòng.

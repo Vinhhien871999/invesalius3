@@ -55,11 +55,14 @@ Ngoài phạm vi đã triển khai — NIfTI (đã có, đã verify) đáp ứng
 
 > **Cập nhật sau Phase 13 (16/09/2026)**: **Manual QA 7/7 PASS thật** (mục "1c" cũ, người vận hành thao tác chuột thật trên GUI thật — xem `CT3D_MANUAL_QA_CHECKLIST.md`) — đã đóng hoàn toàn, xoá khỏi bảng. Không còn mục P1 nào đang mở. D9/C7 (Phase 08), Sync 2D→3D và F3 (Phase 09), checksum Save/Open "2a" (Phase 10) đã đóng. Undo/Redo: số liệu worst-case đã sửa đúng (273.6MB) ở Phase 11. Dead code `MaskEditor`/`MaskEditorManager` đã xoá thật. Region Growing full-volume CT thật đã đóng ở Phase 12. Đa vendor: 2/2 vendor thật xác nhận (SIEMENS, Philips) — chỉ còn thiếu GE/Canon (`BLOCKED_EXTERNAL_DATA`). Dice/Jaccard/Hausdorff: infrastructure + synthetic validation complete — chỉ còn thiếu ground-truth THẬT (`BLOCKED_EXTERNAL_DATA`). Bảng dưới đây phản ánh đúng baseline SAU Phase 13 — **chỉ còn các mục `BLOCKED_EXTERNAL_DATA`/ngoài phạm vi kỹ thuật, không còn mục P1 nào**.
 
-| # | Việc | Ưu tiên | Ước lượng thời gian |
-|---|---|---|---|
-| 3 | GE/Canon CT — `BLOCKED_EXTERNAL_DATA` (2/4 vendor phổ biến đã xác nhận thật: SIEMENS, Philips — xem `CT3D_DATASET_REGISTRY.md`) | P3 | Cần dataset ngoài, ngoài khả năng môi trường hiện tại (Phase 14+) |
-| 4 | Ground-truth THẬT cho Dice/Jaccard/Hausdorff — `BLOCKED_EXTERNAL_DATA` (hạ tầng + synthetic validation đã xong ở Phase 12, `core/evaluation.py`) | P3 | Cần dataset có nhãn sẵn (vd. Medical Segmentation Decathlon), ngoài khả năng môi trường hiện tại (Phase 14+) |
-| 5 | Khảo sát Usability (SUS) — protocol đã chuẩn bị ở Phase 13 (`CT3D_SUS_PROTOCOL.md`), chưa có người tham gia thật | P3 | Cần người dùng thật (bác sĩ/KTV), ngoài phạm vi kỹ thuật (Phase 14+) |
-| 6 | Volume rendering raycasting thuần | P3 | Hạn chế của InVesalius gốc, không tự viết raycaster mới |
-| 7 | Export DICOM-SEG | P3 | Ngoài phạm vi đã triển khai (NIfTI đã đáp ứng) |
-| 8 | C8 — 9 mục lettered A-I (TEST A-I) chưa itemize riêng lẻ bằng tay | P3 (optional) | Core path đã có `C8_VISUAL_OPERATOR_SMOKE = PASS` + 25/25 automated PASS; không blocker — người dùng tự chạy theo `CT3D_MANUAL_QA_CHECKLIST.md` nếu muốn nâng từng mục lên PASS/FAIL |
+| # | Việc | Loại | Ưu tiên | Ước lượng thời gian |
+|---|---|---|---|---|
+| 3 | GE/Canon CT — `BLOCKED_EXTERNAL_DATA` (2/4 vendor phổ biến đã xác nhận thật: SIEMENS, Philips — xem `CT3D_DATASET_REGISTRY.md`) | **EXTERNAL_VALIDATION** | P3 | Cần dataset ngoài, ngoài khả năng môi trường hiện tại (post-roadmap external research work) |
+| 4 | Ground-truth THẬT cho Dice/Jaccard/Hausdorff — `BLOCKED_EXTERNAL_DATA` (hạ tầng + synthetic validation đã xong ở Phase 12, `core/evaluation.py`) | **EXTERNAL_VALIDATION** | P3 | Cần dataset có nhãn sẵn (vd. Medical Segmentation Decathlon), ngoài khả năng môi trường hiện tại (post-roadmap external research work) |
+| 5 | Khảo sát Usability (SUS) — protocol đã chuẩn bị ở Phase 13 (`CT3D_SUS_PROTOCOL.md`), chưa có người tham gia thật | **EXTERNAL_VALIDATION** | P3 | Cần người dùng thật (bác sĩ/KTV), ngoài phạm vi kỹ thuật (post-roadmap external research work) |
+| 6 | Volume rendering raycasting thuần | **OUT_OF_SCOPE** | P3 | Hạn chế của InVesalius gốc, không tự viết raycaster mới |
+| 7 | Export DICOM-SEG | **OUT_OF_SCOPE** | P3 | Ngoài phạm vi đã triển khai (NIfTI đã đáp ứng) |
+| 8 | C8 — 9 mục lettered A-I (TEST A-I) chưa itemize riêng lẻ bằng tay | **OPTIONAL_INTERNAL** | P3 (optional) | Core path đã có `C8_VISUAL_OPERATOR_SMOKE = PASS` + 25/25 automated PASS; không blocker — người dùng tự chạy theo `CT3D_MANUAL_QA_CHECKLIST.md` nếu muốn nâng từng mục lên PASS/FAIL |
+| 9 | Đánh giá `"ca_smoothing"` như lựa chọn thay thế mượt hơn `"Binary"` cho D9/C7 | **OPTIONAL_INTERNAL** | P3 (optional) | Không bắt buộc — `"Binary"` hiện tại hoạt động đúng (D9/C7 = WORKING); đây là một khảo sát cải tiến tuỳ chọn, không phải bug/thiếu sót, có thể làm trong repo hiện tại không cần dữ liệu ngoài |
+
+**[Sửa 22/09/2026, Post-Phase-14 Release Closure]**: đã thêm cột "Loại" (phân biệt `EXTERNAL_VALIDATION` — cần dữ liệu/người dùng/phần mềm bên ngoài, `OUT_OF_SCOPE` — quyết định kiến trúc đã chốt, `OPTIONAL_INTERNAL` — có thể tự làm trong repo hiện tại, không bắt buộc, không phải blocker) và mục 9 (`ca_smoothing`, trước đó chỉ nằm ở `CT3D_MASTER_PROGRESS.md` mục "Medium-priority work", nay liệt kê tường minh ở đây). Đã sửa toàn bộ "(Phase 14+)" thành "(post-roadmap external research work)" — roadmap phần mềm Phase 08-14 đã COMPLETE, không có Phase 15, "Phase 14+" là wording sai/stale.
