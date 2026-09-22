@@ -345,7 +345,7 @@ Tài liệu hoá đầy đủ 14 mục, phân loại `SOFTWARE_LIMITATION`/`ENVI
 
 ---
 
-## `<điền sau commit>` — Post-Phase-14 Release Closure (22/09/2026)
+## `c43fa569` — Post-Phase-14 Release Closure (22/09/2026)
 
 ### Goal
 KHÔNG phải Phase 15. Chỉ sửa consistency cuối cùng, khoá tài liệu release, xác minh Git history, chạy final regression, xác minh worktree sạch. Không thêm feature, không sửa thuật toán đang WORKING, không refactor lớn, không đổi architecture.
