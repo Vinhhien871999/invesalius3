@@ -26,19 +26,14 @@ pytestmark = pytest.mark.integration
 _SHAPE = (6, 16, 16)
 
 
-@pytest.fixture(scope="module")
-def _shared_real_slice_once(wx_app):
-    import invesalius.data.slice_ as sl
-    import invesalius.project as prj
-
-    proj = prj.Project()
-    s = sl.Slice()
-    return s, proj, prj.Project, sl.Slice
-
-
 @pytest.fixture
-def real_slice(_shared_real_slice_once):
-    s, proj, Project, Slice = _shared_real_slice_once
+def real_slice(real_slice_and_project_singleton):
+    """Reuses the ONE real Slice()/Project() pair shared across the whole
+    session (conftest.py's real_slice_and_project_singleton) - see its
+    docstring for why a single shared pair, not a fresh Slice()/Project()
+    per test or per module, is required once real pubsub/aux_matrices
+    state is involved."""
+    s, proj, Project, Slice = real_slice_and_project_singleton
     Project.instance = proj
     Slice.instance = s
 

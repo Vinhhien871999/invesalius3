@@ -146,6 +146,77 @@ Lock the current ROI, then try Preview Otsu/Region Growing (should still work - 
 
 ---
 
+## E3 — Segmentation Cleanup (Current ROI)
+
+**Additional precondition**: a real mask with some real "mess" to clean up (e.g. Threshold on a noisy region so the result has scattered small components, or an enclosed cavity) - ideally created via classic Threshold/Region Growing first.
+
+### TEST E3-A — Keep Largest Component on noisy ROI
+Select a ROI with multiple disconnected pieces (e.g. main structure + scattered noise voxels), click **"Keep Largest Component"**.
+**Expected**: only the largest connected piece remains visible in 2D/3D (after a manual "Update 3D Surface" refresh); status shows before/after voxel counts and how many components were removed.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-B — Undo Keep Largest Component
+Click **"Undo"** (in the existing Undo/Redo box) right after E3-A.
+**Expected**: the mask returns to EXACTLY its pre-cleanup state (all the noise pieces are back).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-C — Redo Keep Largest Component
+Click **"Redo"** right after E3-B.
+**Expected**: the mask returns to EXACTLY the cleaned (largest-component-only) state.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-D — Remove Small Islands
+Set **"Min component size (voxels)"** to a value that should remove some but not all noise, click **"Remove Small Islands"**.
+**Expected**: only components smaller than the threshold disappear; status shows count/voxels removed.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-E — Remove Small Islands threshold boundary
+Create (or identify) a component whose size exactly equals the "Min component size" value, run Remove Small Islands.
+**Expected**: that exact-size component is KEPT (documented behavior: `size < min_voxels` removed, `size == min_voxels` kept).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-F — Fill Holes
+On a ROI with a visible internal cavity (e.g. after Eraser carved a hole inside a solid region), click **"Fill Holes"**.
+**Expected**: the enclosed cavity is filled; background touching the outside of the mask is NOT affected; status shows voxels added.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-G — Smooth Mask, one iteration
+Set **"Smooth iterations"** to 1, click **"Smooth Mask"** on a jagged-boundary ROI.
+**Expected**: boundary visibly smoother in the 2D views; status shows a small, bounded voxel-count change (not a drastic volume loss).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-H — Lock prevents cleanup
+Lock the current ROI (E1), try any of the 4 cleanup buttons.
+**Expected**: a warning dialog appears ("...is locked. Unlock it before running cleanup.") and nothing changes.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-I — Unlock permits cleanup
+Unlock the same ROI, retry.
+**Expected**: cleanup now runs normally.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-J — No-op operation
+Run **"Keep Largest Component"** on a ROI that already has only one connected component.
+**Expected**: status reads "No changes were necessary."; no Undo checkpoint is added (Undo button state/behavior unaffected by this click).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-K — Update 3D Surface after cleanup
+After any real cleanup operation (E3-A/D/F/G), observe the 3D view BEFORE clicking "Update 3D Surface from Selected ROI".
+**Expected**: the 3D surface does NOT change automatically; status message explicitly says the surface hasn't been rebuilt. Click "Update 3D Surface from Selected ROI" - the 3D view now reflects the cleaned mask.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-L — Plugin close/reopen
+Close the ROI Viewer window, reopen it, verify the cleaned mask persisted (session-independent, since it's a real mask edit) and the Cleanup box behaves normally again.
+**Expected**: no crash; cleaned mask state is exactly as left; cleanup buttons work normally on the reopened panel.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E3-M — Classic workflow unchanged
+With no cleanup operations run, verify the rest of the classic workflow (Threshold, Otsu, Region Growing, Brush, Eraser, Undo/Redo, Update Surface, E1 Lock/Solo, E2 Preview) all behave exactly as in prior milestones.
+**Expected**: identical behavior - E3 only adds new, opt-in buttons, changes nothing else.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+---
+
 ## Summary
 
 | # | Test | PASS/FAIL |
@@ -176,7 +247,22 @@ Lock the current ROI, then try Preview Otsu/Region Growing (should still work - 
 | E2-J | Plugin close/reopen with preview active | `NOT_RUN` |
 | E2-K | Classic workflow with Preview mode OFF | `NOT_RUN` |
 | E2-L | E1 Lock/Solo interaction with preview | `NOT_RUN` |
+| E3-A | Keep Largest Component on noisy ROI | `NOT_RUN` |
+| E3-B | Undo Keep Largest Component | `NOT_RUN` |
+| E3-C | Redo Keep Largest Component | `NOT_RUN` |
+| E3-D | Remove Small Islands | `NOT_RUN` |
+| E3-E | Remove Small Islands threshold boundary | `NOT_RUN` |
+| E3-F | Fill Holes | `NOT_RUN` |
+| E3-G | Smooth Mask, one iteration | `NOT_RUN` |
+| E3-H | Lock prevents cleanup | `NOT_RUN` |
+| E3-I | Unlock permits cleanup | `NOT_RUN` |
+| E3-J | No-op operation | `NOT_RUN` |
+| E3-K | Update 3D Surface after cleanup | `NOT_RUN` |
+| E3-L | Plugin close/reopen | `NOT_RUN` |
+| E3-M | Classic workflow unchanged | `NOT_RUN` |
 
 **E1_MANUAL_QA_COMPLETE: NOT_RUN** (0/14) — awaiting a real operator session. This does not block E1's automated `PASS` gate (see `CT3D_ADVANCED_SEGMENTATION_PROGRESS.md`), consistent with how the stable release separated automated evidence from manual GUI confirmation throughout Phase 08-14.
 
 **E2_MANUAL_QA_COMPLETE: NOT_RUN** (0/12) — same discipline, same reasoning. Does not block E2's automated `PASS` gate.
+
+**E3_MANUAL_QA_COMPLETE: NOT_RUN** (0/13) — same discipline, same reasoning. Does not block E3's automated `PASS` gate (Current ROI target).

@@ -98,6 +98,52 @@ def reset_invesalius_singletons():
         pass
 
 
+@pytest.fixture(scope="session")
+def real_slice_and_project_singleton(wx_app):
+    """
+    A SINGLE real Slice()/Project() pair, constructed exactly once for
+    the whole pytest session, shared by every test file that needs to
+    exercise real pubsub-driven InVesalius behavior (e.g. actually
+    sending the real "Create new mask" message and letting
+    Slice.__add_mask_thresh handle it - not a fake/mocked stand-in).
+
+    Why a SINGLE shared pair, not "construct a fresh Slice()/Project()
+    per test or per module" (an earlier version of the CT3D E2/E3 test
+    files each did this independently, once per module): the autouse
+    reset_invesalius_singletons fixture above nulls Slice.instance/
+    Project.instance before AND after every test, but that only
+    un-points the singleton lookup - it does not unsubscribe the real
+    pypubsub bindings a Slice() instance makes once, inside its own
+    __init__ (e.g. to the real "Create new mask" topic). Those bindings
+    stay alive and registered for as long as anything still holds a
+    reference to that old instance. Constructing more than one "fresh"
+    real Slice() across the session therefore accumulates several real,
+    still-subscribed instances; when a real message is later sent,
+    pypubsub invokes ALL of their handlers - not only whichever one
+    `.instance` currently points to - and every handler beyond the
+    intended one operates on stale/mismatched state. This was found for
+    real (deterministic, not flaky - reproduced identically across
+    repeated full-suite runs) once a second and third module-scoped
+    "fresh Slice()" pattern coexisted in the same test session while
+    building CT3D's E2/E3 tests. Reusing exactly one real pair for the
+    whole session - resetting only ITS mutable data (mask_dict, matrix,
+    current_mask, ...) between tests, never constructing new objects -
+    avoids the accumulation entirely. Test files use this by
+    re-pointing `.instance` back to the SAME shared objects at the start
+    of each test (see e.g. tests/ct3d/test_segmentation_preview_commit.py's
+    `real_slice_and_project` fixture), undoing the autouse reset above
+    for just that one test.
+    """
+    import invesalius.data.slice_ as sl
+    import invesalius.project as prj
+
+    prj.Project.instance = None
+    sl.Slice.instance = None
+    proj = prj.Project()
+    s = sl.Slice()
+    return s, proj, prj.Project, sl.Slice
+
+
 @pytest.fixture
 def isolated_cwd_tmp(tmp_path, monkeypatch):
     """

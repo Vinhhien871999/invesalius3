@@ -51,7 +51,27 @@
 
 ## E3 — Segmentation cleanup tools
 
-`PLANNED`. Not started. Will require: `keep_largest_component()`, `remove_small_components()`, `fill_holes()`, `smooth_binary_mask()` - pure numpy/scipy, deterministic, dimension-preserving, integrated with `UndoRedoManager` so every destructive cleanup op is undoable.
+| ID | Feature | Backend | UI | Tests | Manual | Status |
+|---|---|---|---|---|---|---|
+| E3.1 | Keep Largest Component | `core/segmentation_cleanup.keep_largest_component()` (new, pure) - 6-connected (matches `region_growing()`'s connectivity), deterministic smallest-label-id tie-break | `btn_cleanup_keep_largest` | 4 unit tests PASS | `NOT_RUN` | **WORKING** |
+| E3.2 | Remove Small Islands | `core/segmentation_cleanup.remove_small_components()` (new, pure) - `size < min_voxels` removed (documented boundary: exactly `min_voxels` is kept) | `btn_cleanup_remove_small` + `spin_min_component_size` | 4 unit tests PASS | `NOT_RUN` | **WORKING** |
+| E3.3 | Fill Holes | `core/segmentation_cleanup.fill_holes()` (new, pure) - real `scipy.ndimage.binary_fill_holes()`, border-touching background verified never filled | `btn_cleanup_fill_holes` | 3 unit tests PASS | `NOT_RUN` | **WORKING** |
+| E3.4 | Smooth Mask | `core/segmentation_cleanup.smooth_binary_mask()` (new, pure) - binary closing→opening, chosen over Gaussian+threshold via a real synthetic-phantom comparison (measured: -0.6% vs -4.4% volume drift on a sphere phantom), bounded `iterations` (1-5) | `btn_cleanup_smooth` + `spin_smooth_iterations` | 4 unit tests PASS | `NOT_RUN` | **WORKING** |
+| E3.5 | Shared cleanup contract (shape preserved, binary output, no input mutation, `cleanup_stats()`) | `core/segmentation_cleanup.py` | — | 8 parametrized/shared unit tests PASS | `NOT_RUN` | **WORKING** |
+| E3.6 | Current ROI commit (real mask write, real padding/sentinel preserved) | `SegmentationPanel._run_cleanup()` (new), writes only `mask.matrix[1:,1:,1:]`, explicitly re-marks the axial "already thresholded" sentinel (`mask.matrix[1:,0,0]=1`) after every write | Shared across all 4 buttons | `test_cleanup_current_roi_updates_logical_region`, `test_cleanup_preserves_padding`, `test_cleanup_sets_axial_sentinel_after_write` PASS (real `Mask()`/`Slice()`) | `NOT_RUN` | **WORKING** |
+| E3.7 | E1 Lock integration | `_run_cleanup()` delegates to the same pure `ROIManager.is_locked_for_mask_index()` E1's brush/undo/redo/delete guards already use | Warning dialog on a locked ROI | `test_cleanup_locked_roi_refused`, `test_cleanup_unlocked_roi_allowed` PASS | `NOT_RUN` | **WORKING** |
+| E3.8 | Undo/Redo integration | `_run_cleanup()` calls the EXISTING `controller.mask_mgr`/`UndoRedoManager.save_state()` - no E3-specific undo stack | Reuses the existing Undo/Redo buttons above | `test_keep_largest_undo_exact`, `test_keep_largest_redo_exact`, `test_remove_small_undo_exact`, `test_fill_holes_undo_exact`, `test_smooth_undo_exact` PASS (exact array equality) | `NOT_RUN` | **WORKING** |
+| E3.9 | No-op policy | `_run_cleanup()` compares result to input before touching anything - no checkpoint, no mutation, no `was_edited` flip for a true no-op | Status: "No changes were necessary." | `test_noop_does_not_corrupt_mask` PASS | `NOT_RUN` | **WORKING** |
+| E3.10 | No automatic surface rebuild | `_run_cleanup()` never sends `"Create surface from index"` | Status message tells the user to use "Update 3D Surface..." manually | `test_cleanup_does_not_build_surface` PASS (real pubsub spy, zero calls) | `NOT_RUN` | **WORKING** |
+| E3.11 | Active Preview cleanup target | — | — | — | — | **DEFERRED** - see `docs/CT3D_ADVANCED_E3_CLEANUP_REPORT.md`'s "Cleanup targets" section for the real Otsu-Accept-semantics correctness reason |
+
+**E3 automated regression this run**: `tests/ct3d -q` = **274 passed, 1 skipped** (was 234/1 after E2 - 40 new tests: 27 unit (`test_segmentation_cleanup.py`) + 13 integration (`test_segmentation_cleanup_integration.py`), 0 removed, 0 failed), verified identical across 5 consecutive runs. Upstream `tests --ignore=tests/ct3d -q` = **94 passed**, unchanged. `pyflakes plugins/roi_viewer` = exit 0. `compileall plugins/roi_viewer` = exit 0.
+
+**Real, pre-existing cross-file test-isolation bug found and fixed while writing E3's tests**: a second and third module each independently constructing "one real `Slice()`/`Project()` per module" (E2's own `test_segmentation_preview_commit.py`/`test_segmentation_preview_overlay.py`, unchanged since E2) accumulated multiple real, still-pypubsub-subscribed `Slice()` instances across the session once E3's own real-mask test file joined them - a real, deterministic (not flaky) regression in E2's own previously-passing tests, caught by this run's own regression pass, not shipped. Fixed by hoisting a single, session-scoped `real_slice_and_project_singleton` fixture into `tests/ct3d/conftest.py`, shared by all three files. See `docs/CT3D_ADVANCED_E3_CLEANUP_REPORT.md` for the full writeup.
+
+**E3 manual GUI QA**: see `docs/CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md`'s E3 section - all items `NOT_RUN`.
+
+**E3_GATE: PASS** (automated, Current ROI target). Active Preview target explicitly `DEFERRED` for correctness reasons, not attempted unsafely.
 
 ## E4 — Fast live 3D preview
 
@@ -69,7 +89,7 @@
 
 | Flag | Default | Status |
 |---|---|---|
-| `ENABLE_ADVANCED_ROI` | — | **Not yet introduced as an explicit flag this run** - E1's new controls live inside the existing "Segmentation Set" box, additive to (not replacing) the classic Rename/Delete/visibility controls, and every new action (lock/solo/show-all/hide-all) is purely opt-in per-click. A dedicated on/off flag was judged unnecessary risk-wise for E1 specifically (nothing it added can silently change classic-workflow behavior when unused) - this decision, and whether E2+ needs one, is revisited per-milestone. |
-| `ENABLE_PREVIEW_SEGMENTATION` | OFF (once E2 exists) | not yet introduced |
+| `ENABLE_ADVANCED_ROI` | — | **Not introduced as an explicit flag** - E1's new controls live inside the existing "Segmentation Set" box, additive to (not replacing) the classic Rename/Delete/visibility controls, and every new action (lock/solo/show-all/hide-all) is purely opt-in per-click. A dedicated on/off flag was judged unnecessary risk-wise for E1 specifically (nothing it added can silently change classic-workflow behavior when unused) - this decision, and whether later milestones need one, is revisited per-milestone. |
+| `ENABLE_PREVIEW_SEGMENTATION` | **OFF** | **IMPLEMENTED / WORKING** — realized as the real `cb_enable_preview` checkbox ("Enable Preview Workflow") in `gui/segmentation_panel.py`, unchecked by default. With it unchecked, `btn_preview_otsu`/`btn_preview_region_growing` stay disabled and `_on_seed_picked()` takes its original immediate-grow branch - see `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`'s "E2 Preview Architecture" section and `docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md` §5-6. **[Corrected 24/09/2026, E3 run]**: this row previously read "OFF (once E2 exists) / not yet introduced" - stale, left over from before E2 was implemented; E2 landed with this flag real and working, but this table was never updated to match. |
 | `ENABLE_LIVE_3D_PREVIEW` | OFF (once E4 exists) | not yet introduced |
 | `ENABLE_AI_SEGMENTATION` | OFF (once E6 exists) | not yet introduced |

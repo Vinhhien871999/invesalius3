@@ -121,6 +121,23 @@ Cạnh nhãn **"Active ROI:"** phía trên danh sách có 1 ô màu nhỏ hiển
 - Đóng project hoặc đóng cửa sổ plugin trong khi đang xem preview sẽ tự huỷ preview an toàn (không crash, không để lại overlay "ma").
 - Preview thứ 2 luôn thay thế preview thứ 1 (không chồng nhiều overlay).
 
+### 3.3d (chỉ nhánh `enhancement/advanced-segmentation`) — Post-processing / Cleanup (E3)
+
+> **Chỉ có trên nhánh `enhancement/advanced-segmentation`.** Thao tác trên **ROI hiện hành (Current ROI)** — mask thật đang chọn/đang là current mask. **Chưa hỗ trợ dọn dẹp trên Preview (E2)** — xem lý do kỹ thuật thật trong `CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md` mục "Cleanup targets" (Accept của Otsu Preview tạo lại mask từ threshold, không phải từ mảng dữ liệu, nên dọn dẹp trước rồi Accept sẽ vô tình mất kết quả dọn dẹp — quyết định hoãn lại toàn bộ mục tiêu này để tránh bug đúng đắn/không nhất quán).
+
+| Nút | Chức năng thật |
+|---|---|
+| **Keep Largest Component** | Chỉ giữ lại thành phần liên thông LỚN NHẤT của mask, xoá hết phần còn lại (nhiễu rời rạc) |
+| **Min component size (voxels)** + **Remove Small Islands** | Xoá mọi thành phần liên thông có kích thước NHỎ HƠN số voxel nhập (đúng bằng số nhập thì GIỮ LẠI) |
+| **Fill Holes** | Lấp đầy khoang rỗng bị bao kín hoàn toàn bên trong mask (không đụng tới nền bên ngoài) |
+| **Smooth iterations** + **Smooth Mask** | Làm mượt biên mask (đóng rồi mở hình thái học — thuật toán chọn qua so sánh thật, xem architecture doc), tối đa 5 lần lặp |
+
+**Hành vi quan trọng, giống hệt Brush/Undo/Redo đã có**:
+- Bị **chặn nếu ROI đang Lock (E1)** — hiện cảnh báo, không đổi gì.
+- Mỗi thao tác dọn dẹp thật sự thay đổi mask sẽ tự **lưu 1 checkpoint Undo** (dùng đúng cơ chế Undo/Redo đã có ở mục 3.5 bên dưới) — **Undo/Redo hoạt động bình thường** sau khi dọn dẹp.
+- Nếu kết quả dọn dẹp giống hệt trước đó (không có gì để dọn): KHÔNG lưu checkpoint, KHÔNG đổi gì, trạng thái hiện "No changes were necessary."
+- **KHÔNG tự dựng lại surface 3D** — giống Brush/Region Growing, phải tự bấm "Update 3D Surface from Selected ROI" (mục 3.3) để thấy kết quả mới trên khối 3D.
+
 ### 3.4 Brush Tools (real 2D editor)
 - **Draw / Erase**: chọn chế độ vẽ hay xoá.
 - **Circle / Square**: hình dạng đầu cọ.

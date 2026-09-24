@@ -141,3 +141,95 @@ The preview overlay creates **no VTK actor/prop at all** - it is a 2D raster ble
 ## Feature flag
 
 `ENABLE_PREVIEW_SEGMENTATION` is realized as `cb_enable_preview` (a real wx checkbox, "Enable Preview Workflow"), **default unchecked**. With it unchecked: `btn_preview_otsu`/`btn_preview_region_growing` stay disabled (`Enable(False)` at construction), `_on_seed_picked()` takes its original, unmodified immediate-grow branch, and `_commit_threshold_mask()`/`_commit_region_growing_result()` are reached ONLY through the classic handlers - E2 adds no new code to the classic call path at all when the flag is off (structurally, not just behaviorally, unchanged - proven by `otsu_classic_mode_unchanged_when_flag_off`/`test_classic_region_growing_unchanged_when_flag_off`).
+
+---
+
+# E3 Cleanup Architecture
+
+## Source-first audit before any E3 code
+
+Files re-read in full/targeted for this milestone: `plugins/roi_viewer/core/segmentation.py` (for the region-growing connectivity precedent), `plugins/roi_viewer/core/segmentation_preview.py`, `plugins/roi_viewer/core/mask_editor.py`, `plugins/roi_viewer/core/roi_manager.py`, `plugins/roi_viewer/gui/segmentation_panel.py`, `plugins/roi_viewer/gui/roi_panel.py`, and - critically, per this milestone's own explicit re-audit requirement - `invesalius/data/mask.py` (`Mask.create_mask()`'s exact padded-shape construction) and `invesalius/data/slice_.py.do_threshold_to_all_slices()` (the exact real sentinel-check logic, re-read line by line rather than assumed from memory of earlier phases).
+
+## Mask/padding convention (re-audited, not assumed)
+
+`Mask.create_mask(shape)` allocates `matrix` with shape `(shape[0]+1, shape[1]+1, shape[2]+1)` - confirmed directly in `invesalius/data/mask.py`. Real logical voxel data lives at `matrix[1:, 1:, 1:]`; index 0 on every axis is padding. `do_threshold_to_all_slices()` was re-read in full: it iterates ONLY over axial slices (`range(1, mask.matrix.shape[0])`) and checks/sets ONLY `mask.matrix[n, 0, 0]` (the per-axial-slice "already thresholded" sentinel) - it never reads or writes any Coronal/Sagittal-indexed sentinel cell. This confirms the exact, minimal protection E3's real mask-write path needs: writing into `mask.matrix[1:, 1:, 1:]` (real data) and then marking `mask.matrix[1:, 0, 0] = 1` (all axial sentinels) is sufficient and correct - the same real defensive write `_on_region_grown()` already established for a newly-created region-growing mask, now reused for an EXISTING mask being cleaned up (a live risk here too: a mask that has never had a surface built for it, or been fully scrolled through in 2D, may still have some axial sentinels at 0 when E3 cleanup runs).
+
+## Connectivity decision
+
+`core/segmentation.py.SegmentationManager.region_growing()` calls `ndimage.label(thresholded)` with no explicit `structure` - scipy's real default for a 3D array is `generate_binary_structure(3, 1)`, i.e. 6-connected (face neighbors only). `core/segmentation_cleanup.py`'s `DEFAULT_CONNECTIVITY = 1` matches this exactly and is used by every connected-component operation in the module (`keep_largest_component()`, `remove_small_components()`, `fill_holes()`'s structuring element, `smooth_binary_mask()`'s structuring element) - E3 never introduces a second, silently-different adjacency convention. Diagonal-only touching voxels (sharing an edge or corner, not a face) are separate components under this scheme - locked in by `test_default_connectivity_is_six_connected`.
+
+## Cleanup core architecture
+
+`core/segmentation_cleanup.py`: pure numpy/scipy functions, zero `invesalius.*`/wx/pubsub imports (same architectural pattern as `core/segmentation.py` and `core/segmentation_preview.py`). Contract: every function takes a foreground-is-nonzero array and returns `(result: np.ndarray[uint8, 0/255], info: dict)` of the SAME shape - `info` carries operation-specific stats (component counts, voxels added, etc.); a separate `cleanup_stats(before, after, spacing_zyx=None)` computes the generic before/after voxel-count summary shared by every operation. Never mutates its input (`test_cleanup_does_not_mutate_input`).
+
+## Keep Largest Component
+
+Connected-component labeling (6-connected, see above), keeps only the component with the most voxels. **Tie-break** (deliberately documented, not left to scipy implementation-order accident): the SMALLEST label id wins. `scipy.ndimage.label()` assigns ids in a fixed, deterministic raster-scan order for a given input - so "smallest label id" is itself fully deterministic and reproducible, not an artifact - verified by `test_keep_largest_equal_size_deterministic` (identical input, repeated calls, identical result).
+
+## Remove Small Islands
+
+`size < min_voxels` is removed; a component of size EXACTLY `min_voxels` is KEPT (an inclusive lower bound - "keep everything at or above this size" is the natural reading of "Minimum component size"). Locked in by `test_remove_small_threshold_boundary`. `min_voxels < 1` raises `ValueError` (matches this project's existing validation style, e.g. `region_growing()`'s tolerance check).
+
+## Fill Holes
+
+Real `scipy.ndimage.binary_fill_holes()`, same connectivity structuring element as the rest of the module. Its real, standard definition (background reachable from the array border is never filled) was verified directly, not assumed: `test_fill_holes_external_background_unchanged` constructs a solid object whose background touches every side of the volume and asserts zero change.
+
+## Smooth algorithm selection
+
+Real synthetic-phantom comparison (not a "looks smoother" guess) between binary closing→opening and Gaussian-blur-then-threshold-at-0.5, on 5 phantoms (cube, sphere, jagged-boundary cube, single-voxel background noise, 1-voxel-thin line), 1 iteration each:
+
+| Phantom | Gaussian Δ% | Closing→Opening Δ% |
+|---|---|---|
+| cube | -10.4% | -10.4% |
+| sphere (convex) | -4.4% | **-0.6%** |
+| jagged | -5.8% | -13.4% |
+| noise (30 specks) | -12.7% | -11.7% |
+| thin (1-voxel line) | -100% (destroyed) | -100% (destroyed) |
+
+Both candidates were fully deterministic. **Closing→opening was chosen**: dramatically less unwanted volume drift on the convex sphere phantom (real anatomical ROIs are frequently convex-ish), and it reuses the exact same connectivity/structuring-element convention already established for `keep_largest_component()`/`remove_small_components()`/`fill_holes()` above, rather than introducing a second, unrelated smoothing paradigm. **Both candidates completely destroyed the 1-voxel-thin phantom** at iteration 1 - a real, shared limitation of any binary morphological/blur-based smoothing at that scale, documented here and in `CT3D_ADVANCED_E3_CLEANUP_REPORT.md` rather than hidden. `iterations` is bounded to `[1, MAX_SMOOTH_ITERATIONS=5]` (`ValueError` outside that range) - not exposed as an unbounded control.
+
+## Cleanup targets
+
+**Current ROI is the only target implemented this milestone.** Active Preview cleanup was audited and explicitly deferred: E2's `_on_preview_accept()` commits an Otsu preview by calling `_commit_threshold_mask(lo, hi)`, which re-triggers InVesalius's real threshold-based mask creation (`"Create new mask"` → `do_threshold_to_all_slices()` deriving voxels from `threshold_range` against the raw image) - it does **not** write the accepted array directly. If E3 cleaned the preview's `preview_array` and the user then clicked Accept, the committed mask would silently be the ORIGINAL, un-cleaned Otsu threshold result - a real correctness bug the task's own instructions explicitly warned against ("Never allow preview != accepted output"). Region Growing's own Accept path (`_commit_region_growing_result()`) already commits an arbitrary passed-in array directly, so it COULD safely support Active Preview cleanup - but shipping cleanup for Region-Growing-previews-only while leaving Otsu-previews silently unsupported (or worse, silently unsafe if implemented uniformly) was judged more confusing and riskier than deferring the whole target consistently. This is a deliberate, documented, correctness-first scope decision - not a limitation discovered too late to fix.
+
+## E1 Lock integration
+
+`_run_cleanup()` delegates to the same pure `ROIManager.is_locked_for_mask_index()` decision E1's brush/undo/redo/delete guards already use - no duplicated lock state, no new lock mechanism. Lock does not apply to Active Preview (moot this milestone, since that target is deferred) - a preview is not an existing ROI, so E1's per-ROI lock concept does not describe it.
+
+## Undo/Redo integration
+
+`_run_cleanup()` calls the EXISTING `controller.mask_mgr`/`core/mask_editor.UndoRedoManager.save_state()` - the SAME real mechanism the "Save Checkpoint"/"Undo"/"Redo" buttons already use, exactly once per successful (non-no-op) cleanup operation. No E3-specific undo stack. Verified with exact array-equality round-trips (`test_keep_largest_undo_exact`, `test_keep_largest_redo_exact`, `test_remove_small_undo_exact`, `test_fill_holes_undo_exact`, `test_smooth_undo_exact`).
+
+## No-op policy
+
+`_run_cleanup()` computes the real result FIRST, compares it (`np.array_equal(result > 0, before > 0)`) to the input, and returns immediately - no checkpoint pushed, no mask write, no `was_edited` flip, no dirty state - if they're identical. Verified by `test_noop_does_not_corrupt_mask` (a single, already-largest component run through Keep Largest Component: byte-identical matrix, `was_edited` stays `False`, no Undo checkpoint exists afterward).
+
+## Surface semantics
+
+`_run_cleanup()` never sends `"Create surface from index"` - verified for real via a pubsub spy asserting zero calls (`test_cleanup_does_not_build_surface`), not just by code inspection. Preserves the Phase 08 D9/C7 policy exactly: the surface intentionally goes stale after a mask edit, and the status message explicitly tells the user to use "Update 3D Surface from Selected ROI" to refresh it.
+
+## Statistics
+
+`cleanup_stats(before, after, spacing_zyx)` returns `before_voxels`/`after_voxels`/`delta_voxels`/`delta_percent`, plus `before_volume_mm3`/`after_volume_mm3`/`delta_volume_mm3` when real spacing is available (via `ProjectInterface().get_spacing()`). Each operation's own `info` dict (component counts, voxels added, etc.) is appended to the same status message - no fabricated anatomical interpretation, only real measured numbers.
+
+## Performance
+
+Measured on a representative dataset-`0051`-shaped array (108×512×512 ≈ 28.3M voxels, ~3.75M real foreground voxels, 435 real connected components including scattered noise):
+
+| Operation | Runtime |
+|---|---|
+| Keep Largest Component | 0.54s |
+| Remove Small Islands | 0.53s |
+| Fill Holes | 0.71s |
+| Smooth (iterations=1) | 0.70s |
+| Smooth (iterations=5) | 1.19s |
+
+All comfortably under 1.2s even at the maximum bounded smoothing iteration count. **Decision: synchronous, no threading** - matches this project's own established principle (see `core/segmentation.py.region_growing()`'s own history: it was vectorized specifically BECAUSE the old Python-loop BFS took over a minute; these operations, already vectorized scipy calls, do not exhibit that problem) - measured evidence, not a default guess.
+
+## Memory
+
+All four operations allocate at most a small constant number of same-shape intermediate arrays (scipy's own internal working memory for labeling/morphology) plus one `before` copy (`np.array(region)`) taken by `_run_cleanup()` for the no-op comparison and Undo checkpoint. No new persistent/long-lived array is retained beyond the operation itself - unlike E2's preview (which deliberately keeps one array alive while `PREVIEW_READY`), E3's Current ROI cleanup either commits immediately or discards, nothing lingers.
+
+## Known test-infrastructure issue found and fixed this milestone
+
+Adding this milestone's real-`Mask()`/`Slice()`/`Project()` integration test file (a THIRD file using the "one real Slice()/Project() pair, reused across a module's tests" pattern E2 already established) caused real, deterministic (non-flaky, reproduced identically across 5 consecutive full-suite runs) failures in E2's own previously-passing tests (`test_otsu_accept_creates_one_real_mask` and others in `test_segmentation_preview_commit.py`). Root cause: `reset_invesalius_singletons` (the suite's autouse per-test isolation fixture) only un-points `Slice.instance`/`Project.instance`, it does not unsubscribe a `Slice()` instance's real pypubsub bindings (made once, in `__init__`) - and pytest sets up a newly-needed MODULE-scoped fixture before the FUNCTION-scoped autouse reset runs for the first test in that module, so each of the 3 files' own private "construct once per module" fixture ended up creating its own real, still-subscribed `Slice()` instance, and pypubsub invoked ALL of their handlers (not just the current one) whenever any test sent the real `"Create new mask"` message. Fixed by hoisting a single `real_slice_and_project_singleton` fixture into `tests/ct3d/conftest.py`, session-scoped, shared by all three files - exactly one real `Slice()`/`Project()` pair now exists for the whole session, eliminating the accumulation. See that fixture's own docstring for the full explanation.

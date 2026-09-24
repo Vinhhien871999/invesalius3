@@ -11,7 +11,7 @@ from typing import Optional
 import wx
 import wx.lib.scrolledpanel as scrolled
 
-from ..core import segmentation_preview
+from ..core import segmentation_cleanup, segmentation_preview
 
 try:
     from invesalius.i18n import tr as _
@@ -272,6 +272,54 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         sizer.Add(roi_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
+        # --- E3 (Advanced Segmentation Enhancement Track, enhancement/
+        # advanced-segmentation branch ONLY): post-processing / cleanup
+        # on the real current mask (Current ROI target only this
+        # milestone - Active Preview cleanup is deferred, see
+        # docs/CT3D_ADVANCED_E3_CLEANUP_REPORT.md's "Cleanup targets"
+        # section for the real correctness reason: Otsu's Accept path
+        # recreates a mask from its threshold, not from an array, so a
+        # cleaned-then-accepted Otsu preview would silently discard the
+        # cleanup - not safe to ship this milestone). All 4 operations
+        # are pure functions in core/segmentation_cleanup.py, wired here
+        # to the real current mask + the existing UndoRedoManager (same
+        # one Save Checkpoint/Undo/Redo above already use) + E1's lock
+        # guard.
+        box_cleanup = wx.StaticBox(self, wx.ID_ANY, _("Post-processing / Cleanup (Current ROI)"))
+        cleanup_sizer = wx.StaticBoxSizer(box_cleanup, wx.VERTICAL)
+
+        self.btn_cleanup_keep_largest = wx.Button(self, wx.ID_ANY, _("Keep Largest Component"))
+        cleanup_sizer.Add(self.btn_cleanup_keep_largest, 0, wx.ALL | wx.EXPAND, 3)
+
+        remove_small_row = wx.BoxSizer(wx.HORIZONTAL)
+        remove_small_row.Add(wx.StaticText(self, wx.ID_ANY, _("Min component size (voxels):")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.spin_min_component_size = wx.SpinCtrl(self, wx.ID_ANY, "100", min=1, max=10_000_000)
+        remove_small_row.Add(self.spin_min_component_size, 1, wx.ALL, 3)
+        cleanup_sizer.Add(remove_small_row, 0, wx.EXPAND, 3)
+        self.btn_cleanup_remove_small = wx.Button(self, wx.ID_ANY, _("Remove Small Islands"))
+        cleanup_sizer.Add(self.btn_cleanup_remove_small, 0, wx.ALL | wx.EXPAND, 3)
+
+        self.btn_cleanup_fill_holes = wx.Button(self, wx.ID_ANY, _("Fill Holes"))
+        cleanup_sizer.Add(self.btn_cleanup_fill_holes, 0, wx.ALL | wx.EXPAND, 3)
+
+        smooth_row = wx.BoxSizer(wx.HORIZONTAL)
+        smooth_row.Add(wx.StaticText(self, wx.ID_ANY, _("Smooth iterations:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        # max bounded to segmentation_cleanup.MAX_SMOOTH_ITERATIONS - real,
+        # source-justified (not an arbitrary UI cap) - see that module's
+        # own comment on why unbounded iterations are refused.
+        self.spin_smooth_iterations = wx.SpinCtrl(
+            self, wx.ID_ANY, "1", min=1, max=segmentation_cleanup.MAX_SMOOTH_ITERATIONS
+        )
+        smooth_row.Add(self.spin_smooth_iterations, 1, wx.ALL, 3)
+        cleanup_sizer.Add(smooth_row, 0, wx.EXPAND, 3)
+        self.btn_cleanup_smooth = wx.Button(self, wx.ID_ANY, _("Smooth Mask"))
+        cleanup_sizer.Add(self.btn_cleanup_smooth, 0, wx.ALL | wx.EXPAND, 3)
+
+        self.lbl_cleanup_status = wx.StaticText(self, wx.ID_ANY, _(""))
+        cleanup_sizer.Add(self.lbl_cleanup_status, 0, wx.ALL | wx.EXPAND, 3)
+
+        sizer.Add(cleanup_sizer, 0, wx.ALL | wx.EXPAND, 5)
+
         # --- Brush tools ---
         # NOTE: this does NOT capture mouse events itself (that would
         # fight InVesalius's own 2D canvas interactor). Instead it
@@ -347,6 +395,10 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.cb_enable_preview.Bind(wx.EVT_CHECKBOX, self._on_enable_preview_toggle)
         self.btn_preview_accept.Bind(wx.EVT_BUTTON, self._on_preview_accept)
         self.btn_preview_cancel.Bind(wx.EVT_BUTTON, self._on_preview_cancel)
+        self.btn_cleanup_keep_largest.Bind(wx.EVT_BUTTON, self._on_cleanup_keep_largest)
+        self.btn_cleanup_remove_small.Bind(wx.EVT_BUTTON, self._on_cleanup_remove_small)
+        self.btn_cleanup_fill_holes.Bind(wx.EVT_BUTTON, self._on_cleanup_fill_holes)
+        self.btn_cleanup_smooth.Bind(wx.EVT_BUTTON, self._on_cleanup_smooth)
         self.btn_roi_rename.Bind(wx.EVT_BUTTON, self._on_roi_rename)
         self.btn_roi_delete.Bind(wx.EVT_BUTTON, self._on_roi_delete)
         self.btn_roi_lock.Bind(wx.EVT_BUTTON, self._on_roi_lock)
@@ -1556,3 +1608,126 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         except Exception as e:
             wx.MessageBox(_("Surface update failed."), _("Error"), wx.OK | wx.ICON_ERROR)
             print(f"ROI Viewer: surface update failed - {e}")
+
+    # ------------------------------------------------------------------
+    # E3 (Advanced Segmentation Enhancement Track, enhancement/advanced-
+    # segmentation branch ONLY): post-processing / cleanup (Current ROI)
+    # ------------------------------------------------------------------
+    def _run_cleanup(self, op_callable, op_label):
+        """
+        Shared real commit path for all 4 E3 cleanup operations - runs
+        `op_callable(logical_region) -> (result, op_info)` (one of
+        core/segmentation_cleanup.py's pure functions, already bound
+        with its own parameters by the caller) against the real current
+        mask's logical voxel region, and if the result actually differs:
+
+        1. Refuses if the current ROI is locked (E1 - same pure
+           decision `ROIManager.is_locked_for_mask_index()` the brush/
+           undo/redo/delete guards already delegate to).
+        2. Saves exactly ONE real Undo checkpoint via the EXISTING
+           `controller.mask_mgr`/`UndoRedoManager` (Section 16 - no
+           E3-specific undo stack).
+        3. Writes the result into `mask.matrix[1:, 1:, 1:]` ONLY - the
+           real logical voxel region (Section 6) - never touching the
+           1-voxel padding border or its per-axial-slice sentinel cells
+           beyond the one explicit, deliberate exception in step 4.
+        4. Marks every axial slice's "already thresholded" sentinel
+           (`mask.matrix[1:, 0, 0] = 1`) - the EXACT same real defensive
+           write `_on_region_grown()` already does and explains in
+           depth (see that method's own NOTE): without this, a later
+           surface build's `do_threshold_to_all_slices()` would
+           silently re-derive any not-yet-visited slice from the
+           mask's `threshold_range` against the raw image, discarding
+           this cleanup's result for that slice. Confirmed by directly
+           re-reading `invesalius/data/slice_.py.do_threshold_to_all_
+           slices()` for this milestone (Section 6's explicit
+           re-audit requirement) - it only ever checks/sets this one
+           AXIAL-indexed sentinel, never a Coronal/Sagital one, so
+           nothing else needs to be touched here.
+        5. Sets `mask.was_edited = True` (Phase 08 D9/C7 policy - see
+           choose_surface_algorithm()) but deliberately does NOT call
+           "Create surface from index" - the surface intentionally goes
+           stale, exactly like brush/undo/region-growing already do;
+           the status message tells the user how to refresh it.
+
+        If the result is logically identical to the input (Section 17 -
+        "No-op policy"): no checkpoint, no mutation, no was_edited flip,
+        no dirty flag - status simply reports nothing changed.
+        """
+        mask = self._current_mask()
+        if mask is None or mask.matrix is None:
+            self.lbl_cleanup_status.SetLabel(_("Status: No mask selected"))
+            return
+        if self._roi_locked_for_mask(mask.index):
+            wx.MessageBox(
+                _("This ROI is locked. Unlock it before running cleanup."),
+                _("ROI locked"), wx.OK | wx.ICON_WARNING,
+            )
+            return
+        try:
+            import numpy as np
+            from ..interface.project_interface import ProjectInterface
+
+            region = mask.matrix[1:, 1:, 1:]
+            before = np.array(region)  # real copy, not a view - region is about to be overwritten in place
+            result, op_info = op_callable(before)
+
+            if np.array_equal(result > 0, before > 0):
+                self.lbl_cleanup_status.SetLabel(_("Status: No changes were necessary."))
+                return
+
+            editor = self.controller.mask_mgr.get_editor(mask.index)
+            if editor is None:
+                editor = self.controller.mask_mgr.create_editor(mask.index, mask.matrix.shape)
+            editor.mask = mask.matrix
+            editor.save_state()  # exactly one checkpoint, same real UndoRedoManager as Save Checkpoint/Undo/Redo above
+
+            region[:] = result
+            mask.matrix[1:, 0, 0] = 1  # protect against a later surface build re-deriving un-visited slices - see docstring
+            mask.matrix.flush()
+            mask.was_edited = True
+
+            pi = ProjectInterface()
+            stats = segmentation_cleanup.cleanup_stats(before, result, pi.get_spacing())
+            extra = ", ".join(f"{k}={v}" for k, v in op_info.items())
+            msg = (
+                f"Status: {op_label} — {stats['before_voxels']} -> {stats['after_voxels']} voxels "
+                f"({stats['delta_percent']:+.2f}%) [{extra}]. Mask updated. 3D surface has NOT been "
+                f"rebuilt — use 'Update 3D Surface from Selected ROI' to refresh it."
+            )
+            self.lbl_cleanup_status.SetLabel(_(msg))
+            self._refresh_after_edit()
+        except ValueError as e:
+            # Real input-validation rejection (e.g. remove_small_components's
+            # min_voxels<1, smooth_binary_mask's out-of-range iterations) -
+            # a clear, specific message rather than the generic one below.
+            self.lbl_cleanup_status.SetLabel(_(f"Cleanup: {e}"))
+        except Exception as e:
+            self.lbl_cleanup_status.SetLabel(_("Cleanup failed"))
+            print(f"ROI Viewer: {op_label} failed - {e}")
+
+    def _on_cleanup_keep_largest(self, event):
+        self._run_cleanup(
+            lambda region: segmentation_cleanup.keep_largest_component(region),
+            "Keep Largest Component",
+        )
+
+    def _on_cleanup_remove_small(self, event):
+        min_voxels = self.spin_min_component_size.GetValue()
+        self._run_cleanup(
+            lambda region: segmentation_cleanup.remove_small_components(region, min_voxels=min_voxels),
+            "Remove Small Islands",
+        )
+
+    def _on_cleanup_fill_holes(self, event):
+        self._run_cleanup(
+            lambda region: segmentation_cleanup.fill_holes(region),
+            "Fill Holes",
+        )
+
+    def _on_cleanup_smooth(self, event):
+        iterations = self.spin_smooth_iterations.GetValue()
+        self._run_cleanup(
+            lambda region: segmentation_cleanup.smooth_binary_mask(region, iterations=iterations),
+            "Smooth Mask",
+        )

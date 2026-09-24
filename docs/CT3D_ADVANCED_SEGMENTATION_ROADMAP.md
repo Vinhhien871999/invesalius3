@@ -10,7 +10,7 @@
 |---|---|---|---|
 | E1 | Advanced ROI Management / Segmentation Set | P1 | **WORKING** |
 | E2 | Preview / Confirm segmentation workflow | P1 | **WORKING** (this run) |
-| E3 | Segmentation cleanup tools | P1 | PLANNED |
+| E3 | Segmentation cleanup tools | P1 | **WORKING** (Current ROI target; Active Preview target deferred — see below) |
 | E4 | Fast live 3D preview | P1 | PLANNED |
 | E5 | Advanced 3D visualization (textured planes, clipping) | P2 | PLANNED |
 | E6 | AI segmentation architecture | P2/Experimental | PLANNED |
@@ -49,6 +49,10 @@ E1 implemented the Advanced ROI Manager, per that run's explicit first-execution
 
 **Naming correction (E2 run)**: the milestone table above originally titled E1 "Multi-label / Advanced ROI Management." The source-first audit performed for E1 (and repeated again for E2) confirmed the real backend is independent InVesalius masks (`Project().mask_dict`), not a shared multi-label voxel volume - "multilabel" was never an accurate claim about the data model. Corrected to "Advanced ROI Management / Segmentation Set," matching the UI's own box title and `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`'s "Naming" section. No historical stable-release report is altered by this correction - it only fixes wording in this enhancement-track-only planning document.
 
-## E2 scope note (this run)
+## E2 scope note
 
-This run implements **E2** (Preview / Confirm segmentation workflow) for Otsu and Region Growing, per the explicit scope for this milestone. E3-E6 remain planned only - no E3-E6 code exists yet. See `docs/CT3D_ADVANCED_SEGMENTATION_PROGRESS.md` for the live status table and `docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md` for the full design/audit writeup.
+E2 implemented Preview/Confirm for Otsu and Region Growing, per that run's explicit scope. See `docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md` for the full design/audit writeup.
+
+## E3 scope note (this run)
+
+This run implements **E3** (Segmentation cleanup tools: Keep Largest Component, Remove Small Islands, Fill Holes, Smooth Mask) for the **Current ROI** target only. **Active Preview cleanup is deferred**, not implemented this milestone - the source audit found that E2's Otsu Accept path recreates its mask from the recorded threshold (not from an array), so cleaning the preview array and then Accepting would silently discard the cleanup for Otsu specifically; rather than ship an inconsistent (works-for-Region-Growing-only) or unsafe feature, this was deferred wholesale, with the exact reasoning documented in `docs/CT3D_ADVANCED_E3_CLEANUP_REPORT.md`'s "Cleanup targets" section. E4-E6 remain planned only - no E4-E6 code exists yet. See `docs/CT3D_ADVANCED_SEGMENTATION_PROGRESS.md` for the live status table.

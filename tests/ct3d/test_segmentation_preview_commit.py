@@ -22,56 +22,18 @@ pytestmark = pytest.mark.integration
 _SHAPE = (6, 16, 16)  # small, real, controlled - same reasoning as other CT3D tests' synthetic volumes
 
 
-@pytest.fixture(scope="module")
-def _shared_real_slice_and_project_once(wx_app):
-    """
-    Constructs ONE real Slice()/Project() pair for this whole test
-    module - real, not a fake, with just enough real state for
-    Slice.create_new_mask()'s real code path to run (matrix + spacing on
-    Slice, mask_dict/image_versions/surface_dict on Project) - no DICOM
-    import, no Frame/Controller.
-
-    Why module-scoped (real, discovered constraint, not a style choice):
-    conftest.py's autouse reset_invesalius_singletons fixture forces
-    Slice.instance/Project.instance back to None before EVERY test in
-    this whole session. That's correct for every OTHER integration test
-    here (none of them fire the real "Create new mask" pubsub message -
-    they manipulate project.mask_dict directly instead), but this file's
-    tests are the first to actually exercise that real topic repeatedly.
-    Each fresh Slice() re-subscribes several bound methods in its own
-    __bind_events() (e.g. to "Create new mask"); the OLD instance's
-    subscriptions are not explicitly torn down, and across several
-    real sendMessage("Create new mask", ...) calls in one session this
-    produces duplicate mask creation and pypubsub's own "BUG: Dead
-    Listener called, still subscribed!" error (verified empirically
-    while writing this file). Constructing the real Slice()/Project()
-    pair exactly ONCE, then re-pointing .instance back to that SAME
-    object every test (see real_slice_and_project() below) - rather
-    than letting a new one be constructed and subscribed each time -
-    avoids the accumulation entirely while still using 100% real
-    Slice/Project/pubsub machinery (this also matches how one real
-    running InVesalius session actually behaves: one Slice() instance
-    for its whole lifetime, not a fresh one per operation).
-    """
-    import invesalius.data.slice_ as sl
-    import invesalius.project as prj
-
-    proj = prj.Project()  # first-ever construction for this module: real __init__, real subscriptions
-    s = sl.Slice()
-    return s, proj, prj.Project, sl.Slice
-
-
 @pytest.fixture
-def real_slice_and_project(_shared_real_slice_and_project_once):
+def real_slice_and_project(real_slice_and_project_singleton):
     """Function-scoped: re-points Project.instance/Slice.instance back to
-    the single real pair created once for this module (undoing
-    conftest.py's autouse per-test reset to None, WITHOUT re-running
-    __init__/__bind_events() - see the Singleton metaclass in
-    invesalius/utils.py: `cls()` only constructs when `cls.instance is
-    None`), then resets their mutable data fresh for this one test. See
-    _shared_real_slice_and_project_once()'s docstring for why this is
-    necessary."""
-    s, proj, Project, Slice = _shared_real_slice_and_project_once
+    the ONE real pair shared across the whole session (conftest.py's
+    real_slice_and_project_singleton - see its docstring for why a
+    single shared pair, not a fresh Slice()/Project() per test or per
+    module, is required once real pubsub-driven mask creation is
+    involved), undoing conftest.py's autouse per-test reset to None
+    WITHOUT re-running __init__/__bind_events() (the Singleton metaclass
+    in invesalius/utils.py only constructs when `cls.instance is None`),
+    then resets their mutable data fresh for this one test."""
+    s, proj, Project, Slice = real_slice_and_project_singleton
     Project.instance = proj
     Slice.instance = s
 
