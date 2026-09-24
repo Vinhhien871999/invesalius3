@@ -122,8 +122,30 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # by real InVesalius operations (Change mask selected / Show
         # mask / Change mask name / Remove masks), not a disconnected
         # bookkeeping list.
-        box_roi = wx.StaticBox(self, wx.ID_ANY, _("ROI List"))
+        box_roi = wx.StaticBox(self, wx.ID_ANY, _("Segmentation Set (Advanced ROI Manager)"))
         roi_sizer = wx.StaticBoxSizer(box_roi, wx.VERTICAL)
+
+        # E1 (Advanced ROI Manager): "Advanced ROI Manager"/"Segmentation
+        # Set" is the honest name for this - the real backend is still
+        # InVesalius's independent per-ROI masks (Project().mask_dict),
+        # NOT a single shared multi-label voxel volume. See
+        # docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md for why this
+        # is not called "true multilabel" and never claims to be.
+        active_row = wx.BoxSizer(wx.HORIZONTAL)
+        active_row.Add(wx.StaticText(self, wx.ID_ANY, _("Active ROI:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.lbl_active_roi = wx.StaticText(self, wx.ID_ANY, _("(none)"))
+        active_row.Add(self.lbl_active_roi, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        # Read-only colour indicator (mirrors the real Mask.colour this
+        # ROI wraps - see core/roi_manager.py's ROI class docstring).
+        # Not an editable colour picker - E1's feature list only asks
+        # for an indicator, and inventing a new "change colour" control
+        # beyond what was actually requested is exactly the kind of
+        # unrequested scope this track's own architecture rules warn
+        # against.
+        self.roi_color_swatch = wx.Panel(self, wx.ID_ANY, size=(18, 18))
+        self.roi_color_swatch.SetBackgroundColour(wx.Colour(200, 200, 200))
+        active_row.Add(self.roi_color_swatch, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        roi_sizer.Add(active_row, 0, wx.EXPAND, 3)
 
         self.roi_list = wx.CheckListBox(self, wx.ID_ANY, size=(-1, 90))
         self.roi_list.Bind(wx.EVT_CHECKLISTBOX, self._on_roi_visibility_toggled)
@@ -136,6 +158,27 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_roi_delete = wx.Button(self, wx.ID_ANY, _("Delete"))
         roi_btn_row.Add(self.btn_roi_delete, 1, wx.ALL, 2)
         roi_sizer.Add(roi_btn_row, 0, wx.EXPAND, 3)
+
+        # E1: lock/solo/bulk-visibility - all real backend logic lives in
+        # core/roi_manager.ROIManager (pure, unit-tested without wx/
+        # pubsub); this panel only calls it and replays the resulting
+        # visibility changes onto the real "Show mask" topic (see
+        # _apply_visibility_changes() below).
+        roi_btn_row2 = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_roi_lock = wx.Button(self, wx.ID_ANY, _("Lock"))
+        roi_btn_row2.Add(self.btn_roi_lock, 1, wx.ALL, 2)
+        self.btn_roi_unlock = wx.Button(self, wx.ID_ANY, _("Unlock"))
+        roi_btn_row2.Add(self.btn_roi_unlock, 1, wx.ALL, 2)
+        self.btn_roi_solo = wx.ToggleButton(self, wx.ID_ANY, _("Solo"))
+        roi_btn_row2.Add(self.btn_roi_solo, 1, wx.ALL, 2)
+        roi_sizer.Add(roi_btn_row2, 0, wx.EXPAND, 3)
+
+        roi_btn_row3 = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_roi_show_all = wx.Button(self, wx.ID_ANY, _("Show All"))
+        roi_btn_row3.Add(self.btn_roi_show_all, 1, wx.ALL, 2)
+        self.btn_roi_hide_all = wx.Button(self, wx.ID_ANY, _("Hide All"))
+        roi_btn_row3.Add(self.btn_roi_hide_all, 1, wx.ALL, 2)
+        roi_sizer.Add(roi_btn_row3, 0, wx.EXPAND, 3)
 
         # NOTE: closes a real gap found by auditing the mask -> surface
         # chain: invesalius/data/surface.py does not subscribe to any
@@ -226,6 +269,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_pick_seed.Bind(wx.EVT_TOGGLEBUTTON, self._on_toggle_pick_seed)
         self.btn_roi_rename.Bind(wx.EVT_BUTTON, self._on_roi_rename)
         self.btn_roi_delete.Bind(wx.EVT_BUTTON, self._on_roi_delete)
+        self.btn_roi_lock.Bind(wx.EVT_BUTTON, self._on_roi_lock)
+        self.btn_roi_unlock.Bind(wx.EVT_BUTTON, self._on_roi_unlock)
+        self.btn_roi_solo.Bind(wx.EVT_TOGGLEBUTTON, self._on_roi_solo_toggled)
+        self.btn_roi_show_all.Bind(wx.EVT_BUTTON, self._on_roi_show_all)
+        self.btn_roi_hide_all.Bind(wx.EVT_BUTTON, self._on_roi_hide_all)
         self.btn_update_surface.Bind(wx.EVT_BUTTON, self._on_update_surface)
         self.btn_checkpoint.Bind(wx.EVT_BUTTON, self._on_checkpoint)
         self.btn_undo.Bind(wx.EVT_BUTTON, self._on_undo)
@@ -568,10 +616,19 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         editor.save_state()
         self.status_text.SetLabel(_("Status: Checkpoint saved"))
 
+    def _roi_locked_for_mask(self, mask_index) -> bool:
+        """Thin wx-layer wrapper - the actual decision logic lives in
+        core/roi_manager.ROIManager.is_locked_for_mask_index() so it's
+        unit-testable without wx (see that method's docstring)."""
+        return self.controller.roi_mgr.is_locked_for_mask_index(mask_index)
+
     def _on_undo(self, event):
         mask = self._current_mask()
         if mask is None or mask.matrix is None:
             self.status_text.SetLabel(_("Status: No mask selected"))
+            return
+        if self._roi_locked_for_mask(mask.index):
+            self.status_text.SetLabel(_("Status: ROI is locked - unlock to undo"))
             return
         editor = self.controller.mask_mgr.get_editor(mask.index)
         if editor is None or not editor.undo_manager.can_undo():
@@ -587,6 +644,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         mask = self._current_mask()
         if mask is None or mask.matrix is None:
             self.status_text.SetLabel(_("Status: No mask selected"))
+            return
+        if self._roi_locked_for_mask(mask.index):
+            self.status_text.SetLabel(_("Status: ROI is locked - unlock to redo"))
             return
         editor = self.controller.mask_mgr.get_editor(mask.index)
         if editor is None or not editor.undo_manager.can_redo():
@@ -618,6 +678,13 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 wx.MessageBox(
                     _("Create or select a mask first (see Threshold above)."),
                     _("No mask selected"), wx.OK | wx.ICON_WARNING,
+                )
+                return
+            if self._roi_locked_for_mask(mask.index):
+                self.btn_toggle_brush.SetValue(False)
+                wx.MessageBox(
+                    _("This ROI is locked. Unlock it before editing with the brush."),
+                    _("ROI locked"), wx.OK | wx.ICON_WARNING,
                 )
                 return
             try:
@@ -707,14 +774,30 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     # ROI list (core/roi_manager.ROIManager) <-> real InVesalius masks
     # ------------------------------------------------------------------
     def _refresh_roi_list(self):
-        """Rebuild the ROI list widget from roi_mgr, preserving check state (visibility)."""
+        """Rebuild the ROI list widget from roi_mgr, preserving check state (visibility).
+
+        E1: lock/solo markers are shown as plain-text prefixes rather
+        than owner-drawn icons - wx.CheckListBox has no built-in support
+        for per-item colour/icon columns, and adding a custom-drawn
+        ListCtrl just for this is more UI-rendering risk than this
+        milestone's scope justifies (see
+        docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md)."""
         self._roi_list_ids = list(self.controller.roi_mgr.rois.keys())
-        self.roi_list.Set([
-            f"{self.controller.roi_mgr.rois[rid].name} (mask #{self.controller.roi_mgr.rois[rid].mask_index})"
-            for rid in self._roi_list_ids
-        ])
+        solo_id = self.controller.roi_mgr.solo_roi_id
+        labels = []
+        for rid in self._roi_list_ids:
+            roi = self.controller.roi_mgr.rois[rid]
+            prefix = ""
+            if roi.locked:
+                prefix += "[LOCKED] "
+            if solo_id == rid:
+                prefix += "[SOLO] "
+            labels.append(f"{prefix}{roi.name} (mask #{roi.mask_index})")
+        self.roi_list.Set(labels)
         for i, rid in enumerate(self._roi_list_ids):
             self.roi_list.Check(i, self.controller.roi_mgr.rois[rid].visible)
+        self.btn_roi_solo.SetValue(solo_id is not None)
+        self._refresh_active_roi_indicator()
 
     def _selected_roi_id(self):
         sel = self.roi_list.GetSelection()
@@ -722,12 +805,49 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             return None
         return self._roi_list_ids[sel]
 
+    def _refresh_active_roi_indicator(self):
+        """E1: keep the "Active ROI:" label and colour swatch in sync
+        with roi_mgr.current_roi_id - called after selection changes AND
+        after any list rebuild (so it stays correct even when the active
+        ROI's own name/colour changed, or it was removed, without a
+        selection event firing)."""
+        roi = self.controller.roi_mgr.get_current_roi()
+        if roi is None:
+            self.lbl_active_roi.SetLabel(_("(none)"))
+            self.roi_color_swatch.SetBackgroundColour(wx.Colour(200, 200, 200))
+        else:
+            self.lbl_active_roi.SetLabel(roi.name)
+            r, g, b = (int(c) for c in roi.color[:3])
+            self.roi_color_swatch.SetBackgroundColour(wx.Colour(r, g, b))
+        self.roi_color_swatch.Refresh()
+
+    def _apply_visibility_changes(self, changes):
+        """Replay a {roi_id: new_visible} dict (as returned by
+        ROIManager.enter_solo()/exit_solo()/show_all()/hide_all()) onto
+        the real InVesalius "Show mask" topic, by real mask index - the
+        cache (roi.visible) was already updated by the roi_mgr call that
+        produced `changes`; this only pushes those changes to the real
+        source of truth (Mask.is_shown) that Save/Open actually
+        persists."""
+        if not changes:
+            return
+        try:
+            from invesalius.pubsub import pub as Publisher
+
+            for rid, visible in changes.items():
+                roi = self.controller.roi_mgr.get_roi(rid)
+                if roi is not None:
+                    Publisher.sendMessage("Show mask", index=roi.mask_index, value=visible)
+        except ImportError:
+            pass
+
     def _on_roi_selected(self, event):
         rid = self._selected_roi_id()
         if rid is None:
             return
         roi = self.controller.roi_mgr.get_roi(rid)
         self.controller.roi_mgr.set_current_roi(rid)
+        self._refresh_active_roi_indicator()
         try:
             from invesalius.pubsub import pub as Publisher
 
@@ -747,6 +867,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         rid = self._roi_list_ids[index]
         roi = self.controller.roi_mgr.get_roi(rid)
         roi.visible = self.roi_list.IsChecked(index)
+        # E1: a manual visibility click is an explicit user override -
+        # if Solo was active, silently leaving roi_mgr.solo_roi_id set
+        # while the checkboxes no longer reflect a real "only one ROI
+        # visible" state would desync the cache from what's on screen.
+        # Same reasoning as show_all()/hide_all() also cancelling solo.
+        if self.controller.roi_mgr.solo_roi_id is not None:
+            self.controller.roi_mgr.cancel_solo()
+            self.btn_roi_solo.SetValue(False)
         try:
             from invesalius.pubsub import pub as Publisher
 
@@ -784,6 +912,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             wx.MessageBox(_("Select a ROI first."), _("No selection"), wx.OK | wx.ICON_WARNING)
             return
         roi = self.controller.roi_mgr.get_roi(rid)
+        if roi.locked:
+            wx.MessageBox(
+                _(f"ROI '{roi.name}' is locked. Unlock it before deleting."),
+                _("ROI locked"), wx.OK | wx.ICON_WARNING,
+            )
+            return
         confirm = wx.MessageBox(
             _(f"Delete ROI '{roi.name}' and its mask? This cannot be undone."),
             _("Confirm delete"), wx.YES_NO | wx.ICON_WARNING,
@@ -799,6 +933,58 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.controller.roi_mgr.delete_roi(rid)
         self._refresh_roi_list()
         self.status_text.SetLabel(_(f"Status: Deleted '{roi.name}'"))
+
+    # ------------------------------------------------------------------
+    # E1 (Advanced ROI Manager): lock / solo / show-all / hide-all
+    # ------------------------------------------------------------------
+    def _on_roi_lock(self, event):
+        rid = self._selected_roi_id()
+        if rid is None:
+            wx.MessageBox(_("Select a ROI first."), _("No selection"), wx.OK | wx.ICON_WARNING)
+            return
+        self.controller.roi_mgr.set_locked(rid, True)
+        self._refresh_roi_list()
+        roi = self.controller.roi_mgr.get_roi(rid)
+        self.status_text.SetLabel(_(f"Status: Locked '{roi.name}'"))
+
+    def _on_roi_unlock(self, event):
+        rid = self._selected_roi_id()
+        if rid is None:
+            wx.MessageBox(_("Select a ROI first."), _("No selection"), wx.OK | wx.ICON_WARNING)
+            return
+        self.controller.roi_mgr.set_locked(rid, False)
+        self._refresh_roi_list()
+        roi = self.controller.roi_mgr.get_roi(rid)
+        self.status_text.SetLabel(_(f"Status: Unlocked '{roi.name}'"))
+
+    def _on_roi_solo_toggled(self, event):
+        if self.btn_roi_solo.GetValue():
+            rid = self._selected_roi_id()
+            if rid is None:
+                self.btn_roi_solo.SetValue(False)
+                wx.MessageBox(_("Select a ROI first."), _("No selection"), wx.OK | wx.ICON_WARNING)
+                return
+            changes = self.controller.roi_mgr.enter_solo(rid)
+            self._apply_visibility_changes(changes)
+            roi = self.controller.roi_mgr.get_roi(rid)
+            self.status_text.SetLabel(_(f"Status: Solo '{roi.name}'"))
+        else:
+            changes = self.controller.roi_mgr.exit_solo()
+            self._apply_visibility_changes(changes)
+            self.status_text.SetLabel(_("Status: Solo off"))
+        self._refresh_roi_list()
+
+    def _on_roi_show_all(self, event):
+        changes = self.controller.roi_mgr.show_all()
+        self._apply_visibility_changes(changes)
+        self._refresh_roi_list()
+        self.status_text.SetLabel(_("Status: All ROIs shown"))
+
+    def _on_roi_hide_all(self, event):
+        changes = self.controller.roi_mgr.hide_all()
+        self._apply_visibility_changes(changes)
+        self._refresh_roi_list()
+        self.status_text.SetLabel(_("Status: All ROIs hidden"))
 
     def _on_update_surface(self, event):
         """

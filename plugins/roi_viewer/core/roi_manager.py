@@ -40,17 +40,30 @@ from typing import List, Optional, Dict
 
 class ROI:
     """
-    A named, organized view over one real InVesalius mask. Every field
-    here mirrors the corresponding real Mask attribute (see the module
-    docstring) - this object holds no state of its own that isn't
-    already stored (and saved/loaded) on the real mask.
+    A named, organized view over one real InVesalius mask. `name`,
+    `mask_index`, `color`, `visible` mirror the corresponding real Mask
+    attribute (see the module docstring) - this object holds no state
+    of its own for those fields that isn't already stored (and
+    saved/loaded) on the real mask.
+
+    `locked` (E1, Advanced ROI Manager) is the one exception: it is a
+    plugin-session-only convenience flag with NO real InVesalius Mask
+    counterpart, and is deliberately NOT persisted with the project
+    (see ROIManager.rebuild_from_project_masks()'s docstring for why a
+    second, separately-serialized source of truth is exactly what this
+    module's whole design avoids). It resets to False whenever a ROI is
+    freshly discovered from a project load (a newly opened project has
+    no way to know what was locked in a previous session) - this is a
+    deliberate scope decision (documented in
+    docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md), not a bug.
     """
 
-    def __init__(self, name: str, mask_index: int, color=(255, 0, 0), visible: bool = True):
+    def __init__(self, name: str, mask_index: int, color=(255, 0, 0), visible: bool = True, locked: bool = False):
         self.name = name
         self.mask_index = mask_index
         self.color = color
         self.visible = visible
+        self.locked = locked
 
 
 class ROIManager:
@@ -65,6 +78,16 @@ class ROIManager:
         self.rois: Dict[int, ROI] = {}
         self.next_id = 0
         self.current_roi_id = None
+        # E1 (Advanced ROI Manager): at most one ROI may be "solo'd" at
+        # a time (exclusive solo, matching the common DAW/3D-tool
+        # convention this UI gesture is borrowed from - not a MITK/
+        # InVesalius concept). `_pre_solo_visibility` snapshots every
+        # ROI's real visibility right before solo is engaged, so
+        # exit_solo() can restore it exactly rather than just showing
+        # everything (which would silently discard whatever the user
+        # had hidden before soloing).
+        self.solo_roi_id: Optional[int] = None
+        self._pre_solo_visibility: Dict[int, bool] = {}
 
     def create_roi(self, name: str, mask_index: int, color=(255, 0, 0), visible: bool = True) -> int:
         """Create a new ROI and return its ID."""
@@ -96,12 +119,35 @@ class ROIManager:
         if roi_id in self.rois:
             self.current_roi_id = roi_id
 
-    def delete_roi(self, roi_id: int):
-        """Delete a ROI."""
-        if roi_id in self.rois:
-            del self.rois[roi_id]
-            if self.current_roi_id == roi_id:
-                self.current_roi_id = None
+    def delete_roi(self, roi_id: int, force: bool = False) -> bool:
+        """Delete a ROI. Returns True if it was actually removed.
+
+        E1 (Advanced ROI Manager): a locked ROI refuses deletion unless
+        `force=True` - this is enforced HERE, at the core/ layer, not
+        only in the GUI button handler, so the "locked ROIs can't be
+        deleted" invariant holds no matter what calls this (matching
+        this codebase's existing pattern of putting real safety
+        invariants in core/, e.g. Region Growing's max-fraction check -
+        see core/segmentation.py - rather than only in a wx handler).
+
+        `force=True` is for rebuild_from_project_masks()'s own cleanup
+        of ROIs whose real mask is already gone (deleted via
+        InVesalius's native Masks tab, or any other real removal) - a
+        cache entry for a mask that no longer exists must always be
+        dropped regardless of this plugin-only lock flag, or the "no
+        orphan ROI" invariant (see that method's tests) would break for
+        locked ROIs."""
+        if roi_id not in self.rois:
+            return False
+        if self.rois[roi_id].locked and not force:
+            return False
+        del self.rois[roi_id]
+        if self.current_roi_id == roi_id:
+            self.current_roi_id = None
+        if self.solo_roi_id == roi_id:
+            self.solo_roi_id = None
+            self._pre_solo_visibility = {}
+        return True
 
     def get_all_rois(self) -> List[ROI]:
         """Get all ROIs."""
@@ -112,6 +158,119 @@ class ROIManager:
         self.rois.clear()
         self.current_roi_id = None
         self.next_id = 0
+        self.solo_roi_id = None
+        self._pre_solo_visibility = {}
+
+    # ------------------------------------------------------------------
+    # E1 (Advanced ROI Manager): lock
+    # ------------------------------------------------------------------
+    def set_locked(self, roi_id: int, locked: bool) -> bool:
+        """Set a ROI's locked flag. Returns True if the ROI exists and
+        was updated, False otherwise (caller decides how to report a
+        missing ROI - this method never raises for a bad id)."""
+        roi = self.rois.get(roi_id)
+        if roi is None:
+            return False
+        roi.locked = bool(locked)
+        return True
+
+    def is_locked_for_mask_index(self, mask_index: int) -> bool:
+        """Same as is_locked(), but keyed by real mask index rather than
+        the internal roi_id - what GUI edit-guard call sites actually
+        have on hand (e.g. sl.Slice().current_mask.index). Kept as a
+        pure, wx-free method here (rather than inlined in
+        gui/segmentation_panel.py) specifically so the "is this ROI
+        locked" decision itself is unit-testable without constructing
+        any wx widget."""
+        roi = self.get_roi_by_mask_index(mask_index)
+        return roi is not None and roi.locked
+
+    def is_locked(self, roi_id: int) -> bool:
+        """False for an unknown roi_id - an already-deleted/never-existed
+        ROI cannot meaningfully be "locked", and callers (edit guards)
+        should treat "unknown" the same as "not locked" (the mask lookup
+        itself will separately fail for a genuinely missing mask)."""
+        roi = self.rois.get(roi_id)
+        return bool(roi.locked) if roi is not None else False
+
+    # ------------------------------------------------------------------
+    # E1 (Advanced ROI Manager): solo / show-all / hide-all
+    #
+    # All three return {roi_id: new_visible} for ONLY the ROIs whose
+    # visible flag actually changed (not the full set) - the real
+    # source of truth for visibility is InVesalius's own
+    # Mask.is_shown, driven by the "Show mask" pubsub topic per index
+    # (see gui/segmentation_panel.py's module docstring); this method
+    # updates the cache and hands back exactly what the GUI layer needs
+    # to replay onto that real topic, without this pure module needing
+    # to know pubsub/wx exists.
+    # ------------------------------------------------------------------
+    def enter_solo(self, roi_id: int) -> Dict[int, bool]:
+        """Hide every ROI except roi_id. No-op (returns {}) if roi_id is
+        unknown. Snapshots current visibility first so exit_solo() can
+        restore it exactly."""
+        if roi_id not in self.rois:
+            return {}
+        self._pre_solo_visibility = {rid: roi.visible for rid, roi in self.rois.items()}
+        self.solo_roi_id = roi_id
+        changes: Dict[int, bool] = {}
+        for rid, roi in self.rois.items():
+            new_visible = rid == roi_id
+            if roi.visible != new_visible:
+                changes[rid] = new_visible
+            roi.visible = new_visible
+        return changes
+
+    def cancel_solo(self) -> None:
+        """Clear solo bookkeeping WITHOUT restoring pre-solo visibility -
+        for when something else (a manual per-ROI visibility toggle,
+        show_all(), hide_all()) has already made the current visibility
+        state the new intentional one, and re-applying the stale
+        pre-solo snapshot on a later exit_solo() would be wrong. Use
+        exit_solo() instead when the user explicitly turns solo off
+        without having changed anything else in the meantime."""
+        self.solo_roi_id = None
+        self._pre_solo_visibility = {}
+
+    def exit_solo(self) -> Dict[int, bool]:
+        """Restore visibility to what it was right before enter_solo()
+        was called. No-op if solo isn't currently active."""
+        if self.solo_roi_id is None:
+            return {}
+        changes: Dict[int, bool] = {}
+        for rid, roi in self.rois.items():
+            prev = self._pre_solo_visibility.get(rid, roi.visible)
+            if roi.visible != prev:
+                changes[rid] = prev
+            roi.visible = prev
+        self.solo_roi_id = None
+        self._pre_solo_visibility = {}
+        return changes
+
+    def show_all(self) -> Dict[int, bool]:
+        """Show every ROI. Also cancels any active solo (a bare
+        "show everything" request is a clearer signal to abandon
+        whatever was hidden pre-solo than to silently keep it around)."""
+        changes: Dict[int, bool] = {}
+        for rid, roi in self.rois.items():
+            if not roi.visible:
+                changes[rid] = True
+            roi.visible = True
+        self.solo_roi_id = None
+        self._pre_solo_visibility = {}
+        return changes
+
+    def hide_all(self) -> Dict[int, bool]:
+        """Hide every ROI. Also cancels any active solo (same reasoning
+        as show_all())."""
+        changes: Dict[int, bool] = {}
+        for rid, roi in self.rois.items():
+            if roi.visible:
+                changes[rid] = False
+            roi.visible = False
+        self.solo_roi_id = None
+        self._pre_solo_visibility = {}
+        return changes
 
     def rebuild_from_project_masks(self):
         """
@@ -153,9 +312,18 @@ class ROIManager:
 
         # Drop cached ROIs for masks that no longer exist in the project
         # (deleted via this plugin or via InVesalius's native Masks tab).
+        # Note: `roi.name`/`.color`/`.visible` above are reassigned in
+        # place for ROIs that already existed, so `.locked` (E1 - see
+        # the ROI class docstring) is naturally preserved across a
+        # rebuild for any ROI this cache already knew about; only
+        # newly-discovered ROIs (create_roi() above) start unlocked.
         stale_ids = [
             roi_id for roi_id, roi in self.rois.items()
             if roi.mask_index not in seen_mask_indexes
         ]
         for roi_id in stale_ids:
-            self.delete_roi(roi_id)
+            # force=True: the real mask is already gone, so the lock
+            # flag (a plugin-only convenience over an already-deleted
+            # mask) must not keep a dangling cache entry alive - see
+            # delete_roi()'s docstring.
+            self.delete_roi(roi_id, force=True)  # also clears solo_roi_id if it was the solo target

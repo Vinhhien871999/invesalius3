@@ -76,6 +76,8 @@ Mọc vùng bán tự động: chọn 1 điểm hạt giống trên khối 3D, t
 
 ### 3.3 ROI List — quản lý segmentation tập trung
 
+> **Nhánh `enhancement/advanced-segmentation`** (KHÔNG phải bản release ổn định `thesis-ct-roi-tools`/tag `ct3d-rc1`): mục này đã đổi tên hiển thị thành **"Segmentation Set (Advanced ROI Manager)"** và có thêm các nút E1 (mục 3.3b bên dưới) — vẫn 100% dựa trên các mask InVesalius thật, KHÔNG phải "true multilabel" (xem `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`). Toàn bộ nội dung mục 3.3 gốc bên dưới vẫn đúng nguyên vẹn.
+
 Mọi mask tạo ra (từ Threshold, Region Growing, **hoặc từ tab Masks gốc của InVesalius**) đều tự động xuất hiện trong danh sách này dưới dạng `<tên> (mask #<số>)` — danh sách này **luôn đồng bộ 2 chiều thật** với dữ liệu mask thật của InVesalius (không phải bản sao riêng), kể cả khi bạn đổi tên/ẩn-hiện/xoá mask trực tiếp ở tab "Masks" gốc thay vì dùng nút dưới đây.
 
 | Nút | Chức năng thật |
@@ -83,8 +85,20 @@ Mọi mask tạo ra (từ Threshold, Region Growing, **hoặc từ tab Masks g�
 | Tick vào ô checkbox trước tên | **Ẩn/hiện** mask đó thật sự trên 2D/3D (giống nút con mắt ở tab Masks gốc) |
 | Click chọn 1 dòng | **Chọn mask đó làm mask đang thao tác** (current mask) — mọi lệnh brush/đo lường/Update Surface sau đó áp dụng lên mask này |
 | **Rename** | Đổi tên — cập nhật cả trong danh sách plugin lẫn tab "Masks" gốc của InVesalius |
-| **Delete** | Xoá hẳn mask khỏi project (có hỏi xác nhận) |
+| **Delete** | Xoá hẳn mask khỏi project (có hỏi xác nhận) — **(nhánh enhancement) bị chặn nếu ROI đang Lock, xem 3.3b** |
 | **Update 3D Surface from Selected ROI** | Dựng lại (hoặc dựng mới) mô hình 3D cho ĐÚNG mask đang chọn trong danh sách (nếu không chọn dòng nào, dùng mask hiện hành) — xem mục quan trọng bên dưới |
+
+### 3.3b (chỉ nhánh `enhancement/advanced-segmentation`) — Lock / Solo / Show All / Hide All
+
+| Nút | Chức năng thật | Ghi chú |
+|---|---|---|
+| **Lock** | Đánh dấu ROI đang chọn là "khoá" (`[LOCKED]` xuất hiện trước tên trong danh sách) | Chặn Brush, Undo, Redo, Delete trên ROI này cho đến khi Unlock. KHÔNG chặn Rename/ẩn-hiện/Update Surface (không phá huỷ dữ liệu). **Trạng thái Lock KHÔNG được lưu vào project** — đóng/mở lại project sẽ về unlocked (quyết định thiết kế có chủ đích, xem architecture doc) |
+| **Unlock** | Gỡ khoá ROI đang chọn | — |
+| **Solo** (nút bật/tắt) | Chỉ hiện ROI đang chọn, ẩn tất cả ROI khác; bấm lại để khôi phục đúng trạng thái ẩn/hiện trước đó (không phải "hiện hết") | Tự tắt nếu bạn tự tay tick/bỏ tick 1 dòng khác, hoặc bấm Show All/Hide All |
+| **Show All** | Hiện tất cả ROI | Cũng tự tắt Solo nếu đang bật |
+| **Hide All** | Ẩn tất cả ROI | Cũng tự tắt Solo nếu đang bật |
+
+Cạnh nhãn **"Active ROI:"** phía trên danh sách có 1 ô màu nhỏ hiển thị đúng màu thật của ROI đang chọn (chỉ để xem, không đổi màu được từ đây — muốn đổi màu, dùng tab "Masks" gốc của InVesalius).
 
 > **Vì sao cần bấm "Update 3D Surface" thủ công**: InVesalius gốc (kể cả không có plugin) **không tự động** cập nhật lại mô hình 3D mỗi khi mask bị sửa (vẽ brush, undo, region growing...) — đây là hành vi thật của InVesalius, không phải hạn chế riêng của plugin. Nút này đóng vòng lặp "sửa ROI → xem lại 3D" một cách chủ động, tránh việc tự động rebuild sau MỖI nét vẽ (sẽ làm treo giao diện vì dựng mô hình 3D là tác vụ nặng). **Sau khi sửa mask xong, luôn nhớ bấm nút này để thấy đúng kết quả mới nhất trên khối 3D** — nếu không bấm, khối 3D vẫn hiện hình dạng CŨ dù mask đã đổi.
 > Việc dựng lại có thể mất vài giây đến hơn chục giây tuỳ kích thước mask — quan sát dòng "Status:" phía dưới cùng panel để biết đang xử lý.
