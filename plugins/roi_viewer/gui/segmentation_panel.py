@@ -78,6 +78,16 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._preview_temp_file = None
         self._preview_seed_world = None
         self._preview_seed_voxel = None
+        # E4 (Advanced Segmentation Enhancement Track, enhancement/
+        # advanced-segmentation branch ONLY): the actual renderer-
+        # attached manager (core/preview_surface_3d.PreviewSurfaceManager3D)
+        # lives on self.controller (ROIViewerFrame), mirroring marker_3d/
+        # slice_planes_3d - this panel only owns the debounce timer and
+        # the real Mask.add_modified_callback() registration bookkeeping.
+        self.E4_DEBOUNCE_MS = 400  # within the 300-500ms range Section 19 suggested
+        self._e4_debounce_timer = wx.Timer(self)
+        self.Bind(wx.EVT_TIMER, self._on_e4_debounce_timer, self._e4_debounce_timer)
+        self._e4_callback_mask = None  # which real Mask currently has our modified-callback registered
         self._init_ui()
         self.SetupScrolling()
 
@@ -313,12 +323,58 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         smooth_row.Add(self.spin_smooth_iterations, 1, wx.ALL, 3)
         cleanup_sizer.Add(smooth_row, 0, wx.EXPAND, 3)
         self.btn_cleanup_smooth = wx.Button(self, wx.ID_ANY, _("Smooth Mask"))
+        # Real, measured warning (Section 3C re-audit) - see
+        # core/segmentation_cleanup.py's own module-level comment and
+        # docs/CT3D_ADVANCED_E3_CLEANUP_REPORT.md's "Smooth algorithm
+        # selection" section: both candidate algorithms compared
+        # completely destroyed a 1-voxel-thin synthetic phantom at
+        # iterations=1.
+        self.btn_cleanup_smooth.SetToolTip(
+            _(
+                "Binary smoothing can remove very thin structures. The synthetic E3 "
+                "audit showed a 1-voxel-thick structure can disappear entirely. "
+                "Use a low iteration count and verify the result."
+            )
+        )
         cleanup_sizer.Add(self.btn_cleanup_smooth, 0, wx.ALL | wx.EXPAND, 3)
 
         self.lbl_cleanup_status = wx.StaticText(self, wx.ID_ANY, _(""))
         cleanup_sizer.Add(self.lbl_cleanup_status, 0, wx.ALL | wx.EXPAND, 3)
 
         sizer.Add(cleanup_sizer, 0, wx.ALL | wx.EXPAND, 5)
+
+        # --- E4 (Advanced Segmentation Enhancement Track, enhancement/
+        # advanced-segmentation branch ONLY - never present on
+        # thesis-ct-roi-tools/ct3d-rc1): fast, non-authoritative live 3D
+        # preview mesh. Off by default. Source priority: E2 preview (if
+        # PREVIEW_READY) over Current ROI - see
+        # docs/CT3D_ADVANCED_E4_LIVE_3D_PREVIEW_REPORT.md.
+        box_preview3d = wx.StaticBox(self, wx.ID_ANY, _("3D Preview (E4, enhancement branch)"))
+        preview3d_sizer = wx.StaticBoxSizer(box_preview3d, wx.VERTICAL)
+
+        self.cb_enable_live_3d_preview = wx.CheckBox(self, wx.ID_ANY, _("Enable Live 3D Preview"))
+        preview3d_sizer.Add(self.cb_enable_live_3d_preview, 0, wx.ALL, 5)
+
+        self.btn_refresh_3d_preview = wx.Button(self, wx.ID_ANY, _("Refresh 3D Preview"))
+        self.btn_refresh_3d_preview.Enable(False)
+        preview3d_sizer.Add(self.btn_refresh_3d_preview, 0, wx.ALL | wx.EXPAND, 3)
+
+        e4_source_row = wx.BoxSizer(wx.HORIZONTAL)
+        e4_source_row.Add(wx.StaticText(self, wx.ID_ANY, _("Source:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.lbl_e4_source = wx.StaticText(self, wx.ID_ANY, _("-"))
+        e4_source_row.Add(self.lbl_e4_source, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        preview3d_sizer.Add(e4_source_row, 0, wx.EXPAND, 3)
+
+        e4_state_row = wx.BoxSizer(wx.HORIZONTAL)
+        e4_state_row.Add(wx.StaticText(self, wx.ID_ANY, _("State:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.lbl_e4_state = wx.StaticText(self, wx.ID_ANY, _("Idle"))
+        e4_state_row.Add(self.lbl_e4_state, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        preview3d_sizer.Add(e4_state_row, 0, wx.EXPAND, 3)
+
+        self.lbl_e4_mesh_info = wx.StaticText(self, wx.ID_ANY, _(""))
+        preview3d_sizer.Add(self.lbl_e4_mesh_info, 0, wx.ALL | wx.EXPAND, 3)
+
+        sizer.Add(preview3d_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # --- Brush tools ---
         # NOTE: this does NOT capture mouse events itself (that would
@@ -399,6 +455,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_cleanup_remove_small.Bind(wx.EVT_BUTTON, self._on_cleanup_remove_small)
         self.btn_cleanup_fill_holes.Bind(wx.EVT_BUTTON, self._on_cleanup_fill_holes)
         self.btn_cleanup_smooth.Bind(wx.EVT_BUTTON, self._on_cleanup_smooth)
+        self.cb_enable_live_3d_preview.Bind(wx.EVT_CHECKBOX, self._on_enable_live_3d_preview_toggle)
+        self.btn_refresh_3d_preview.Bind(wx.EVT_BUTTON, self._on_refresh_3d_preview)
         self.btn_roi_rename.Bind(wx.EVT_BUTTON, self._on_roi_rename)
         self.btn_roi_delete.Bind(wx.EVT_BUTTON, self._on_roi_delete)
         self.btn_roi_lock.Bind(wx.EVT_BUTTON, self._on_roi_lock)
@@ -505,6 +563,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         name = self._commit_threshold_mask(lo, hi)
         if name is not None:
             self.status_text.SetLabel(_(f"Status: Created mask '{name}'"))
+            self._mark_preview_3d_dirty("new mask created")
         else:
             wx.MessageBox(_("Segmentation not available."), _("Error"), wx.OK | wx.ICON_ERROR)
 
@@ -902,6 +961,10 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # "explicit override cancels in-progress convenience state"
             # reasoning as E1's show_all()/hide_all() cancelling solo.
             self.cancel_preview()
+            # E4: if live 3D preview was showing this (now-cancelled) E2
+            # preview, fall back to Current ROI (or hide, if none) -
+            # _select_preview_3d_source() re-evaluates priority fresh.
+            self._mark_preview_3d_dirty("E2 preview workflow disabled")
 
     def _on_preview_otsu(self, event):
         try:
@@ -955,6 +1018,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             voxel_count = int(candidate01.sum())
             self.lbl_preview_status.SetLabel(_(f"Ready: Otsu threshold ({lo}, {hi}), {voxel_count} voxels"))
             self._update_preview_buttons()
+            self._mark_preview_3d_dirty("Otsu preview ready")
         except Exception as e:
             self.lbl_preview_status.SetLabel(_("Otsu preview failed"))
             print(f"ROI Viewer: Otsu preview failed - {e}")
@@ -1073,6 +1137,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.lbl_preview_status.SetLabel(_(f"Ready: {info}"))
             self._show_preview_overlay(array)
             self._update_preview_buttons()
+            self._mark_preview_3d_dirty("Region Growing preview ready")
         except Exception as e:
             self.lbl_preview_status.SetLabel(_("Region growing preview failed"))
             print(f"ROI Viewer: applying region growing preview result failed - {e}")
@@ -1139,6 +1204,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
     def _on_preview_cancel(self, event):
         self.cancel_preview()
+        # E4: fall back to Current ROI (or hide, if none) - Section 18.
+        self._mark_preview_3d_dirty("E2 preview cancelled")
 
     # ------------------------------------------------------------------
     # Undo / Redo of the real current mask
@@ -1206,6 +1273,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.status_text.SetLabel(_("Status: Redone"))
 
     def _refresh_after_edit(self):
+        # E4: single shared real-mutation refresh point (classic region
+        # growing commit, E2 Accept, Undo, Redo, E3 cleanup all call
+        # this) - one place to mark the live 3D preview dirty (Section
+        # 16) rather than duplicating the call at every one of those
+        # sites individually.
+        self._mark_preview_3d_dirty("mask edited")
         try:
             from invesalius.pubsub import pub as Publisher
 
@@ -1301,6 +1374,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # state stuck across a close" reasoning as the brush cleanup
         # immediately below.
         self.cancel_preview()
+        # E4: stop the debounce timer and unregister the real
+        # Mask.add_modified_callback() - the renderer-attached actor
+        # itself is detached separately by
+        # roi_panel.ROIViewerFrame._on_close() (mirrors marker_3d/
+        # slice_planes_3d exactly).
+        self.cancel_live_preview_3d()
         if not self._brush_enabled():
             return
         # NOTE: deliberately not calling self._disable_brush() here - it
@@ -1409,6 +1488,10 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # __select_current_mask, subscribed to "Change mask selected".
             Publisher.sendMessage("Change mask selected", index=roi.mask_index)
             self.status_text.SetLabel(_(f"Status: Selected '{roi.name}'"))
+            # E4 (Section 27): switching ROI while live preview is
+            # enabled must rebuild for the NEW source, not leave the OLD
+            # ROI's mesh attached.
+            self._mark_preview_3d_dirty("ROI selection changed")
         except ImportError:
             pass
 
@@ -1731,3 +1814,230 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             lambda region: segmentation_cleanup.smooth_binary_mask(region, iterations=iterations),
             "Smooth Mask",
         )
+
+    # ------------------------------------------------------------------
+    # E4 (Advanced Segmentation Enhancement Track, enhancement/advanced-
+    # segmentation branch ONLY): fast, non-authoritative live 3D preview.
+    # ------------------------------------------------------------------
+    def _e4_enabled(self) -> bool:
+        return self.cb_enable_live_3d_preview.GetValue()
+
+    def _ensure_modified_callback_registered_for_current_mask(self):
+        """Real, source-proven mutation signal (Section 15/30 audit):
+        invesalius.data.mask.Mask.add_modified_callback() - a real,
+        already-existing, weakref-safe (weakref.WeakMethod) public API,
+        fired by invesalius/data/styles.py's OnBrushRelease() on native
+        Brush/Eraser mouse-release (confirmed by direct source read: the
+        ONLY 2 real call sites of Mask.modified() in the whole codebase
+        are both real edit-completion events in styles.py) - not an
+        unsafe mouse-hook interception. Re-registers on whichever real
+        Mask is current whenever this is called (idempotent - a no-op
+        if already registered on the same mask instance)."""
+        mask = self._current_mask()
+        if mask is self._e4_callback_mask:
+            return
+        if self._e4_callback_mask is not None:
+            try:
+                self._e4_callback_mask.remove_modified_callback(self._on_current_mask_modified)
+            except Exception:
+                pass
+        self._e4_callback_mask = mask
+        if mask is not None:
+            try:
+                mask.add_modified_callback(self._on_current_mask_modified)
+            except Exception as e:
+                print(f"ROI Viewer: could not register E4 mask-modified callback - {e}")
+
+    def _on_current_mask_modified(self):
+        """The real callback registered above. wx.CallAfter defers onto
+        the main thread (this can fire from whatever thread InVesalius's
+        own VTK interactor callback runs on) and is itself wrapped
+        defensively - the weakref registration protects against a fully
+        garbage-collected panel, but not against firing once more during
+        active teardown."""
+        try:
+            wx.CallAfter(self._mark_preview_3d_dirty, "brush/eraser edit")
+        except Exception:
+            pass
+
+    def _mark_preview_3d_dirty(self, reason):
+        """Single real entry point every plugin-owned mutation that
+        should refresh the live 3D preview calls (Section 16) - E3
+        cleanup, Undo, Redo, E2 preview ready/cancel/accept, new ROI
+        selection, and the real Brush/Eraser callback above. No-op if
+        the feature is disabled (Section 18). Restarts the debounce
+        timer (Section 19) - rapid successive calls coalesce into
+        exactly ONE rebuild, using whatever state is current at the
+        moment the timer actually fires (Section 20's "latest generation
+        wins" - handled by _trigger_preview_3d_rebuild() always reading
+        live state, not anything snapshotted at dirty-mark time)."""
+        if not self._e4_enabled():
+            return
+        self._ensure_modified_callback_registered_for_current_mask()
+        self._e4_debounce_timer.Stop()
+        self._e4_debounce_timer.StartOnce(self.E4_DEBOUNCE_MS)
+        self.lbl_e4_state.SetLabel(_(f"Waiting... ({reason})"))
+
+    def _on_enable_live_3d_preview_toggle(self, event):
+        enabled = self._e4_enabled()
+        self.btn_refresh_3d_preview.Enable(enabled)
+        if enabled:
+            self._ensure_modified_callback_registered_for_current_mask()
+            self._trigger_preview_3d_rebuild("enabled")
+        else:
+            self._e4_debounce_timer.Stop()
+            self.controller.preview_surface_3d.clear()
+            self.lbl_e4_state.SetLabel(_("Idle"))
+            self.lbl_e4_source.SetLabel(_("-"))
+            self.lbl_e4_mesh_info.SetLabel(_(""))
+            self.controller.request_render()
+
+    def _on_refresh_3d_preview(self, event):
+        self._trigger_preview_3d_rebuild("manual refresh")
+
+    def _on_e4_debounce_timer(self, event):
+        self._trigger_preview_3d_rebuild("debounced edit")
+
+    def _select_preview_3d_source(self):
+        """Section 12/13 real source priority: an E2 preview that is
+        currently PREVIEW_READY wins over Current ROI - read-only
+        (preview_mgr.preview_array is never copied into Project().
+        mask_dict, never Accepted/Cancelled automatically, never
+        modified - E4 only LOOKS at it). Falls back to the real current
+        mask's logical voxel region (never the padding - Section 14).
+        Returns (array, spacing, source_kind) or (None, None, None) if
+        nothing is available to preview."""
+        try:
+            from ..interface.project_interface import ProjectInterface
+
+            spacing = ProjectInterface().get_spacing()
+        except Exception:
+            spacing = (1.0, 1.0, 1.0)
+
+        if (
+            self.preview_mgr.state == segmentation_preview.PreviewState.PREVIEW_READY
+            and self.preview_mgr.preview_array is not None
+        ):
+            kind = "otsu_preview" if self.preview_mgr.preview_kind == "otsu" else "region_growing_preview"
+            return self.preview_mgr.preview_array, spacing, kind
+
+        mask = self._current_mask()
+        if mask is not None and mask.matrix is not None:
+            return mask.matrix[1:, 1:, 1:], spacing, "current_roi"
+
+        return None, None, None
+
+    def _trigger_preview_3d_rebuild(self, reason):
+        if not self._e4_enabled():
+            return
+        if not self.controller.ensure_preview_surface_attached():
+            self.lbl_e4_state.SetLabel(_("No 3D view available yet"))
+            return
+
+        array, spacing, kind = self._select_preview_3d_source()
+        if array is None:
+            self.controller.preview_surface_3d.clear()
+            self.lbl_e4_state.SetLabel(_("No foreground voxels for 3D preview."))
+            self.lbl_e4_source.SetLabel(_("-"))
+            self.lbl_e4_mesh_info.SetLabel(_(""))
+            self.controller.request_render()
+            return
+
+        try:
+            import numpy as np
+
+            # Real snapshot BEFORE handing off to the worker (Section
+            # 14/23): a plain numpy copy, never the live memmap a brush
+            # stroke could be actively mutating, and at most ONE
+            # snapshot (~28MB for a dataset-0051-sized volume) is ever
+            # strongly referenced at a time - no unbounded queue, only
+            # the latest requested generation matters.
+            snapshot = np.array(array)
+        except Exception as e:
+            self.lbl_e4_state.SetLabel(_("3D preview build failed"))
+            print(f"ROI Viewer: E4 snapshot failed - {e}")
+            return
+
+        gen = self.controller.preview_surface_3d.new_generation()
+        self.lbl_e4_source.SetLabel(_(kind))
+        self.lbl_e4_state.SetLabel(_(f"Building ({reason})..."))
+
+        # Same real background-thread + wx.CallAfter pattern already
+        # proven by Region Growing/E2 (Section 21). STRICT rule
+        # (Section 21/22): this worker only computes plain numpy/VTK
+        # data objects it constructs itself (converters.to_vtk/
+        # vtkImageFlip/vtkFlyingEdges3D - see build_preview_mesh()'s own
+        # docstring) - it NEVER touches a wx widget, the renderer, the
+        # actor, or the camera. The only cross-thread handoff is the
+        # wx.CallAfter() call itself; _on_preview_3d_built() below is
+        # the ONLY place that touches the actor/mapper/renderer.
+        import threading
+
+        def worker():
+            try:
+                import time
+                from ..core.preview_surface_3d import build_preview_mesh
+
+                t0 = time.time()
+                polydata = build_preview_mesh(snapshot, spacing)
+                elapsed = time.time() - t0
+                wx.CallAfter(self._on_preview_3d_built, gen, polydata, kind, elapsed)
+            except Exception:
+                import traceback
+
+                wx.CallAfter(self.lbl_e4_state.SetLabel, _("3D preview build failed"))
+                print("ROI Viewer: E4 preview build failed -\n" + traceback.format_exc())
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _on_preview_3d_built(self, generation_id, polydata, kind, elapsed_seconds):
+        """Runs on the main thread (wx.CallAfter). Discards a stale
+        result (Section 20) via the manager's own generation guard -
+        the SAME real async-race protection concept E2 already
+        established (core/segmentation_preview.py), reused here rather
+        than reimplemented."""
+        try:
+            mgr = self.controller.preview_surface_3d
+        except Exception:
+            return  # controller/frame already torn down
+        ok = mgr.set_polydata_if_current(generation_id, polydata, source_kind=kind)
+        if not ok:
+            print("ROI Viewer: discarded stale E4 preview mesh result")
+            return
+        try:
+            if polydata is None:
+                self.lbl_e4_state.SetLabel(_("No foreground voxels for 3D preview."))
+                self.lbl_e4_mesh_info.SetLabel(_(""))
+            else:
+                self.lbl_e4_state.SetLabel(_("Ready"))
+                self.lbl_e4_mesh_info.SetLabel(
+                    _(f"{polydata.GetNumberOfPoints()} points / {polydata.GetNumberOfCells()} cells "
+                      f"- build {elapsed_seconds:.3f}s")
+                )
+            self.controller.request_render()
+        except RuntimeError as e:
+            # Widgets destroyed mid-flight (plugin closing while a build
+            # was in progress) - the real mgr-level update above already
+            # succeeded/was rejected correctly; only this status-label
+            # cosmetic update is skipped.
+            print(f"ROI Viewer: E4 status widget update skipped (likely app shutdown) - {e}")
+
+    def cancel_live_preview_3d(self):
+        """Public lifecycle hook, mirrors cancel_preview() (E2) - called
+        from this panel's own _on_destroy() so no pending debounce timer
+        or stale worker result touches a destroyed widget. Does NOT
+        detach the renderer-attached actor itself (gui/roi_panel.py's
+        own lifecycle hooks already call self.preview_surface_3d.detach()
+        directly on project close/load/plugin close, mirroring marker_3d/
+        slice_planes_3d exactly) - this only stops OUR OWN timer/
+        callback bookkeeping."""
+        try:
+            self._e4_debounce_timer.Stop()
+        except Exception:
+            pass
+        if self._e4_callback_mask is not None:
+            try:
+                self._e4_callback_mask.remove_modified_callback(self._on_current_mask_modified)
+            except Exception:
+                pass
+            self._e4_callback_mask = None

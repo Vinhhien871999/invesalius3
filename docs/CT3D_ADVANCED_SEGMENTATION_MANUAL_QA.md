@@ -217,6 +217,100 @@ With no cleanup operations run, verify the rest of the classic workflow (Thresho
 
 ---
 
+## E4 - Fast live 3D preview
+
+### TEST E4-A — Enable live 3D preview shows Current ROI mesh
+With a real mask already segmented (Current ROI), check "Enable Live 3D Preview". Wait for the debounce window.
+**Expected**: a preview mesh appears in the 3D view tracking the Current ROI's shape; status label shows source "Current ROI".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-B — Preview follows Otsu preview (E2 source priority)
+With live 3D preview enabled, run an Otsu preview (E2). Wait for the debounce window.
+**Expected**: the preview mesh rebuilds to match the Otsu preview array, not the old Current ROI; status label shows source "Otsu preview".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-C — Preview follows Region Growing preview
+With live 3D preview enabled, run a Region Growing preview (E2).
+**Expected**: the preview mesh rebuilds to match the Region Growing preview array; status label shows source "Region Growing preview".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-D — Preview reverts to Current ROI after E2 Cancel
+From TEST E4-B or E4-C's state, click E2's Cancel.
+**Expected**: the preview mesh rebuilds back to the Current ROI (or hides if there is none); no stale preview-sourced mesh remains.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-E — Preview follows E2 Accept
+From TEST E4-B or E4-C's state, click E2's Accept.
+**Expected**: the preview mesh rebuilds from the newly-committed Current ROI mask; no crash; no duplicate actor.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-F — Preview auto-refreshes after Brush edit
+With live 3D preview enabled and a Current ROI selected, use the native Brush tool to paint on the mask, then release the mouse button.
+**Expected**: within the debounce window, the preview mesh rebuilds to reflect the brushed region, with no manual Refresh click needed.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-G — Preview auto-refreshes after Eraser edit
+Same as E4-F but using the native Eraser tool.
+**Expected**: preview mesh rebuilds automatically to reflect the erased region.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-H — Debounce coalesces rapid edits
+With live 3D preview enabled, perform several rapid Brush strokes in quick succession (faster than the debounce window).
+**Expected**: no visible flicker/freeze/stutter during the strokes; exactly one rebuild happens shortly after the last stroke, not one per stroke.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-I — Manual Refresh button forces a rebuild
+With live 3D preview enabled, click "Refresh 3D Preview" directly.
+**Expected**: an immediate rebuild using the current source, independent of the debounce timer.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-J — Preview updates after E3 cleanup
+With live 3D preview enabled, run an E3 cleanup operation (e.g. Keep Largest Component) on the Current ROI.
+**Expected**: the preview mesh rebuilds to reflect the cleaned mask.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-K — Preview geometry aligns with the real final surface
+Build the real final surface (Update 3D Surface) for the same mask the live preview is tracking, and visually compare.
+**Expected**: the two meshes occupy the same position/orientation/scale in the 3D scene (no mirroring, no offset), consistent with the automated bounds-matching test.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-L — Camera not disturbed by preview rebuilds
+Rotate/zoom/pan the 3D view to a specific framing, then trigger several preview rebuilds (edits, Refresh button).
+**Expected**: the camera framing never changes on its own during any rebuild.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-M — Preview mesh is not pickable
+With live 3D preview enabled and visible, use the plugin's point picker / Region Growing seed pick / measurement tools by clicking on the preview mesh's surface.
+**Expected**: clicks pass through to whatever is behind the preview mesh (or hit nothing) - the preview mesh itself is never selected/picked.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-N — Disabling live 3D preview hides the mesh and stops updates
+Uncheck "Enable Live 3D Preview", then perform a Brush edit.
+**Expected**: the preview mesh disappears immediately on uncheck, and does not reappear/rebuild from the subsequent edit.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-O — Project close while preview enabled
+With live 3D preview enabled and visible, close the project.
+**Expected**: no crash; the preview actor is detached/removed; no leftover mesh from the closed project is visible.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-P — Plugin close/reopen, no duplicate actor
+With live 3D preview enabled, close the ROI Viewer window and reopen it, then re-enable live 3D preview.
+**Expected**: no crash; exactly one preview mesh is ever visible at a time, no duplicate/ghost actor from the previous session.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-Q — Save/Open unaffected by live preview
+With live 3D preview enabled, save the project, close it, and reopen it.
+**Expected**: the real mask data saved/loaded is identical to a session without live preview enabled; live 3D preview defaults back to OFF on reopen; no extra `surface_dict` entry was created by the preview.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E4-R — Classic workflow unaffected with live preview OFF
+With live 3D preview left at its default (OFF), verify the rest of the classic workflow (Threshold, Otsu, Region Growing, Brush, Eraser, Undo/Redo, Update 3D Surface / D9-C7 policy, E1 Lock/Solo, E2 Preview, E3 Cleanup) all behave exactly as in prior milestones.
+**Expected**: identical behavior - E4 only adds new, opt-in UI, changes nothing else.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+---
+
 ## Summary
 
 | # | Test | PASS/FAIL |
@@ -260,9 +354,29 @@ With no cleanup operations run, verify the rest of the classic workflow (Thresho
 | E3-K | Update 3D Surface after cleanup | `NOT_RUN` |
 | E3-L | Plugin close/reopen | `NOT_RUN` |
 | E3-M | Classic workflow unchanged | `NOT_RUN` |
+| E4-A | Enable live 3D preview shows Current ROI mesh | `NOT_RUN` |
+| E4-B | Preview follows Otsu preview | `NOT_RUN` |
+| E4-C | Preview follows Region Growing preview | `NOT_RUN` |
+| E4-D | Preview reverts to Current ROI after E2 Cancel | `NOT_RUN` |
+| E4-E | Preview follows E2 Accept | `NOT_RUN` |
+| E4-F | Preview auto-refreshes after Brush edit | `NOT_RUN` |
+| E4-G | Preview auto-refreshes after Eraser edit | `NOT_RUN` |
+| E4-H | Debounce coalesces rapid edits | `NOT_RUN` |
+| E4-I | Manual Refresh button forces rebuild | `NOT_RUN` |
+| E4-J | Preview updates after E3 cleanup | `NOT_RUN` |
+| E4-K | Preview geometry aligns with real final surface | `NOT_RUN` |
+| E4-L | Camera not disturbed by preview rebuilds | `NOT_RUN` |
+| E4-M | Preview mesh is not pickable | `NOT_RUN` |
+| E4-N | Disabling preview hides mesh and stops updates | `NOT_RUN` |
+| E4-O | Project close while preview enabled | `NOT_RUN` |
+| E4-P | Plugin close/reopen, no duplicate actor | `NOT_RUN` |
+| E4-Q | Save/Open unaffected by live preview | `NOT_RUN` |
+| E4-R | Classic workflow unaffected with preview OFF | `NOT_RUN` |
 
 **E1_MANUAL_QA_COMPLETE: NOT_RUN** (0/14) — awaiting a real operator session. This does not block E1's automated `PASS` gate (see `CT3D_ADVANCED_SEGMENTATION_PROGRESS.md`), consistent with how the stable release separated automated evidence from manual GUI confirmation throughout Phase 08-14.
 
 **E2_MANUAL_QA_COMPLETE: NOT_RUN** (0/12) — same discipline, same reasoning. Does not block E2's automated `PASS` gate.
 
 **E3_MANUAL_QA_COMPLETE: NOT_RUN** (0/13) — same discipline, same reasoning. Does not block E3's automated `PASS` gate (Current ROI target).
+
+**E4_MANUAL_QA_COMPLETE: NOT_RUN** (0/18) — same discipline, same reasoning. Does not block E4's automated `PASS` gate.

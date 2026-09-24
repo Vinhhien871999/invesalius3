@@ -40,7 +40,7 @@ except ImportError:
 # Import core modules
 from ..core import (
     roi_manager, picker_3d, sync_2d3d, segmentation, mask_editor, measurement,
-    annotation, exporters, marker_3d, slice_planes_3d,
+    annotation, exporters, marker_3d, slice_planes_3d, preview_surface_3d,
 )
 
 # Import the real, wired tool panels.
@@ -88,6 +88,16 @@ class ROIViewerFrame(wx.Frame):
         # (a separate concern from whether Sync 2D->3D itself is on).
         self.slice_planes_3d = slice_planes_3d.SlicePlanes3D()
         self.show_slice_planes = True
+        # E4 (Advanced Segmentation Enhancement Track, enhancement/
+        # advanced-segmentation branch ONLY): fast, non-authoritative
+        # live 3D preview mesh - see core/preview_surface_3d.py's module
+        # docstring for the core invariant (never the final surface) and
+        # docs/CT3D_ADVANCED_E4_LIVE_3D_PREVIEW_REPORT.md for the full
+        # design. Owned here (not on SegmentationPanel) for the same
+        # reason marker_3d/slice_planes_3d are owned here - all 3
+        # renderer-attached objects share one real Volume renderer that
+        # outlives any single SegmentationPanel instance.
+        self.preview_surface_3d = preview_surface_3d.PreviewSurfaceManager3D()
         # Phase 09 (F3 fix): tracked independently of the Sync 2D->3D
         # checkbox/visual marker above - this is "the last real,
         # trustworthy world position InVesalius told us about", used
@@ -180,6 +190,11 @@ class ROIViewerFrame(wx.Frame):
             self.slice_planes_3d.detach()
         except Exception as e:
             print(f"ROI Viewer: 3D slice planes cleanup on close failed - {e}")
+        try:
+            # E4: same leak class as marker_3d/slice_planes_3d above.
+            self.preview_surface_3d.detach()
+        except Exception as e:
+            print(f"ROI Viewer: 3D preview surface cleanup on close failed - {e}")
         self.Destroy()
 
     def _init_ui(self):
@@ -235,6 +250,31 @@ class ROIViewerFrame(wx.Frame):
         self._picker_initialized = True
         return True
 
+    def ensure_preview_surface_attached(self) -> bool:
+        """E4: same real "find the volume viewer, attach to viewer.ren"
+        pattern as ensure_picker_initialized()/on_cross_focal_point_
+        changed()'s marker_3d/slice_planes_3d attach calls above - reused
+        here rather than duplicated, called from SegmentationPanel via
+        self.controller before scheduling any preview mesh build."""
+        from ..interface.view_interface import ViewInterface
+
+        viewer = ViewInterface().get_volume_viewer()
+        if viewer is None or not hasattr(viewer, "ren"):
+            return False
+        return self.preview_surface_3d.attach(viewer.ren)
+
+    def request_render(self):
+        """Shared real "please repaint the 3D view" trigger - same real
+        pubsub message marker_3d/slice_planes_3d updates already send
+        (on_cross_focal_point_changed() above), reused here so E4 has no
+        second render-request mechanism."""
+        try:
+            from invesalius.pubsub import pub as Publisher
+
+            Publisher.sendMessage("Render volume viewer")
+        except ImportError:
+            pass
+
     def on_project_load(self):
         """Handle project load event."""
         self.project_loaded = True
@@ -269,6 +309,12 @@ class ROIViewerFrame(wx.Frame):
         # open-a-different-project flow.
         if hasattr(self, "segmentation_panel"):
             self.segmentation_panel.cancel_preview()
+        # E4: same reasoning - a fast preview mesh built for the OLD
+        # project's voxel data is meaningless (wrong shape/coordinate
+        # space) once a different project is loaded. detach() (not just
+        # clear()) so a stale actor is never left attached to the wrong
+        # project's renderer session.
+        self.preview_surface_3d.detach()
 
         # NOTE: "Load project data" (which drives this call) fires
         # synchronously from *inside* invesalius.control.Controller.
@@ -309,6 +355,8 @@ class ROIViewerFrame(wx.Frame):
         # plane positioned/sized for the OLD project's bounds is
         # meaningless once a different (or no) project is loaded.
         self.slice_planes_3d.detach()
+        # E4: same reasoning as marker_3d/slice_planes_3d.detach() above.
+        self.preview_surface_3d.detach()
         self._last_cross_focal_point = None
         # NOTE: the managers above were already cleared before this
         # round, but the widgets that display them were not - closing

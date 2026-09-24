@@ -75,7 +75,23 @@
 
 ## E4 — Fast live 3D preview
 
-`PLANNED`. Not started. Will require a separate `PreviewSurfaceManager` (dirty→debounce→fast low-quality rebuild→actor swap), explicitly never replacing the authoritative D9/C7 "Update 3D Surface" pipeline, measured (not assumed) interactive-editing performance.
+| ID | Feature | Backend | UI | Tests | Manual | Status |
+|---|---|---|---|---|---|---|
+| E4.1 | Mesh generation (real geometry alignment) | `core/preview_surface_3d.build_preview_mesh()` (new, pure-ish - real VTK objects, no wx) - reuses the EXACT real `converters.to_vtk()` + `vtkImageFlip` steps the final surface pipeline uses, `vtkFlyingEdges3D` (measured identical geometry to `vtkMarchingCubes`, ~2.2x faster) | — | 10 unit-ish (real VTK) tests PASS, including a direct bounds comparison against `vtkContourFilter` (the literal real final-pipeline class) | `NOT_RUN` | **WORKING** |
+| E4.2 | Actor lifecycle (`PreviewSurfaceManager3D`) | `core/preview_surface_3d.PreviewSurfaceManager3D` (new) - mirrors `core/marker_3d.CrosshairMarker3D`'s attach()/detach() pattern exactly | — | 15 integration tests PASS | `NOT_RUN` | **WORKING** |
+| E4.3 | Source priority (E2 preview > Current ROI) | `SegmentationPanel._select_preview_3d_source()` (new) | Status "Source:" label | 14 integration tests PASS (real Mask/Project/preview_mgr) | `NOT_RUN` | **WORKING** |
+| E4.4 | Debounce + async generation guard | `_mark_preview_3d_dirty()` (400ms `wx.Timer`) + `PreviewSurfaceManager3D.generation_id` (same proven concept as E2's `SegmentationPreviewManager`) | — | 5 unit tests PASS (coalescing, latest-wins, no unbounded queue) | `NOT_RUN` | **WORKING** |
+| E4.5 | Real Brush/Eraser auto-refresh | `invesalius.data.mask.Mask.add_modified_callback()` (real, pre-existing, weakref-safe public API - confirmed the ONLY 2 real call sites of `Mask.modified()` in the whole codebase are both real edit-completion events in `invesalius/data/styles.py`) | — | Source-verified real signal (not a fabricated/mocked one) | `NOT_RUN` | **WORKING** (not `PARTIAL` - a real, reliable native mutation event was found, not just the manual-Refresh fallback originally anticipated) |
+| E4.6 | Final-surface isolation | Never sends `"Create surface from index"`, never touches `Project().surface_dict` | — | `test_e4_never_creates_project_surface`, `test_e4_never_calls_create_surface_from_index`, `test_final_surface_untouched` PASS (real pubsub spy + real `surface_dict` identity check) | `NOT_RUN` | **WORKING** |
+| E4.7 | Picker/camera safety | `actor.SetPickable(False)`; module contains zero camera-related VTK calls (source-verified) | — | `test_actor_non_pickable`, `test_camera_never_touched_by_manager_api`, `test_gui_layer_never_touches_camera` PASS | `NOT_RUN` | **WORKING** |
+| E4.8 | Lifecycle (project close/load, plugin close/destroy) | `roi_panel.py`'s `on_project_close()`/`on_project_load()`/`_on_close()` call `preview_surface_3d.detach()` (mirrors `marker_3d`/`slice_planes_3d`); `segmentation_panel.py`'s `cancel_live_preview_3d()` stops the debounce timer + unregisters the modified-callback | — | Manager-level: `test_project_close_invalidates`, `test_plugin_close_invalidates` PASS; full wx-widget teardown path deferred to manual QA (same pattern as E2/E3) | `NOT_RUN` | **WORKING** (manager-level); manual GUI confirmation pending |
+| E4.9 | No downsampling (evidence-based decision) | — | — | — | — | **N/A this milestone** - full resolution measured comfortably fast (0.068s on a representative dataset-0051-shaped array), so downsampling code was deliberately not built (Section 7: "If full-resolution raw preview is fast enough: prefer it") |
+
+**E4 automated regression this run**: `tests/ct3d -q` = **318 passed, 1 skipped** (was 274/1 after E3 - 44 new tests: 15 manager lifecycle + 10 mesh generation + 14 integration + 5 debounce/camera, 0 removed, 0 failed), verified identical across 3 consecutive runs. Upstream `tests --ignore=tests/ct3d -q` = **94 passed**, unchanged. `pyflakes plugins/roi_viewer` = exit 0. `compileall plugins/roi_viewer` = exit 0.
+
+**E4 manual GUI QA**: see `docs/CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md`'s E4 section - all items `NOT_RUN`.
+
+**E4_GATE: PASS** (automated). See `docs/CT3D_ADVANCED_E4_LIVE_3D_PREVIEW_REPORT.md` for the full design/audit writeup, including the real VTK filter benchmark, the real coordinate-alignment proof against the literal final-surface pipeline, and why Brush/Eraser auto-refresh could be shipped as `WORKING` rather than the anticipated `PARTIAL`.
 
 ## E5 — Advanced 3D visualization
 

@@ -9,9 +9,9 @@
 | Stage | Name | Priority | Status |
 |---|---|---|---|
 | E1 | Advanced ROI Management / Segmentation Set | P1 | **WORKING** |
-| E2 | Preview / Confirm segmentation workflow | P1 | **WORKING** (this run) |
+| E2 | Preview / Confirm segmentation workflow | P1 | **WORKING** |
 | E3 | Segmentation cleanup tools | P1 | **WORKING** (Current ROI target; Active Preview target deferred — see below) |
-| E4 | Fast live 3D preview | P1 | PLANNED |
+| E4 | Fast live 3D preview | P1 | **WORKING** |
 | E5 | Advanced 3D visualization (textured planes, clipping) | P2 | PLANNED |
 | E6 | AI segmentation architecture | P2/Experimental | PLANNED |
 | E6b | TotalSegmentator integration | P3/Experimental | PLANNED |
@@ -56,3 +56,7 @@ E2 implemented Preview/Confirm for Otsu and Region Growing, per that run's expli
 ## E3 scope note (this run)
 
 This run implements **E3** (Segmentation cleanup tools: Keep Largest Component, Remove Small Islands, Fill Holes, Smooth Mask) for the **Current ROI** target only. **Active Preview cleanup is deferred**, not implemented this milestone - the source audit found that E2's Otsu Accept path recreates its mask from the recorded threshold (not from an array), so cleaning the preview array and then Accepting would silently discard the cleanup for Otsu specifically; rather than ship an inconsistent (works-for-Region-Growing-only) or unsafe feature, this was deferred wholesale, with the exact reasoning documented in `docs/CT3D_ADVANCED_E3_CLEANUP_REPORT.md`'s "Cleanup targets" section. E4-E6 remain planned only - no E4-E6 code exists yet. See `docs/CT3D_ADVANCED_SEGMENTATION_PROGRESS.md` for the live status table.
+
+## E4 scope note (this run)
+
+This run implements **E4** (Fast live 3D preview: a non-authoritative preview mesh built with `vtkFlyingEdges3D`, tracking either the E2 preview array or the Current ROI, debounced 400ms with a generation-id async-race guard). The mesh is never written to `Project().surface_dict`, never serialized, and never replaces the real "Update 3D Surface" (D9/C7) pipeline - it is a separate, non-pickable actor the user can toggle on/off. A real source audit found `invesalius.data.mask.Mask.add_modified_callback()`, giving genuine (not `PARTIAL`/manual-only) Brush/Eraser auto-refresh support. See `docs/CT3D_ADVANCED_E4_LIVE_3D_PREVIEW_REPORT.md` for the full design/audit/benchmark writeup. E5-E6 remain planned only - no E5-E6 code exists yet.

@@ -114,7 +114,9 @@ Cạnh nhãn **"Active ROI:"** phía trên danh sách có 1 ô màu nhỏ hiển
 2. **Otsu**: bấm **"Preview Otsu"** (nút mới trong khung Threshold) → xem overlay màu cam bán trong suốt trên cả 3 khung 2D (Axial/Coronal/Sagittal), khác hẳn màu mask thật. Overlay này **CHƯA phải mask thật** — chưa lưu vào project, chưa có trong tab Masks gốc.
 3. **Region Growing**: bấm **"Pick Seed Point (3D)"** như bình thường, click 1 điểm trên khối 3D — khi Preview Workflow đang bật, thao tác này **chỉ ghi nhớ điểm hạt giống**, KHÔNG tự mọc vùng ngay (khác bản classic). Chỉnh Tolerance nếu muốn, rồi bấm **"Preview Region Growing"** (nút mới trong khung Region Growing) để tính và xem overlay.
 4. Xem dòng **"Preview status:"** để biết số voxel/% thể tích (và cảnh báo nếu vùng quá lớn).
-5. Bấm **"Accept Preview"** để biến overlay thành mask thật (dùng ĐÚNG threshold/kết quả đã xem, không tính lại) — hoặc **"Cancel Preview"** để huỷ, không tạo gì cả.
+5. Bấm **"Accept Preview"** để tạo mask thật — hoặc **"Cancel Preview"** để huỷ, không tạo gì cả.
+
+> **Chính xác Accept làm gì (Otsu)**: Accept dùng ĐÚNG threshold mà preview đã hiển thị, và mask cuối cùng được tạo qua **pipeline threshold gốc thật của InVesalius** dùng đúng threshold đó — **KHÔNG** phải "giữ nguyên không tính lại": pipeline gốc TÍNH LẠI voxel từ ảnh gốc theo threshold này (giống hệt cách nút "Create Mask from Threshold" cổ điển hoạt động). Với Region Growing, Accept commit ĐÚNG kết quả mảng dữ liệu preview đã hiển thị (không tính lại).
 
 **Lưu ý quan trọng**:
 - Preview KHÔNG bao giờ tạo mask thật, KHÔNG lưu vào Save/Open, KHÔNG ảnh hưởng ROI đang Lock (E1) hay trạng thái Solo (E1) của ROI khác.
@@ -132,11 +134,30 @@ Cạnh nhãn **"Active ROI:"** phía trên danh sách có 1 ô màu nhỏ hiển
 | **Fill Holes** | Lấp đầy khoang rỗng bị bao kín hoàn toàn bên trong mask (không đụng tới nền bên ngoài) |
 | **Smooth iterations** + **Smooth Mask** | Làm mượt biên mask (đóng rồi mở hình thái học — thuật toán chọn qua so sánh thật, xem architecture doc), tối đa 5 lần lặp |
 
+> ⚠️ **Cảnh báo thật (Smooth Mask)**: làm mượt nhị phân (binary smoothing) có thể **XOÁ HOÀN TOÀN cấu trúc rất mỏng**. Khảo sát tổng hợp thật ở E3 (`CT3D_ADVANCED_E3_CLEANUP_REPORT.md` mục "Smooth algorithm selection") cho thấy: một cấu trúc dày chỉ 1 voxel biến mất hoàn toàn ngay ở lần lặp đầu tiên (iterations=1), với CẢ 2 thuật toán từng so sánh. Dùng số lần lặp thấp và **luôn kiểm tra lại kết quả** trước khi tin tưởng — đặc biệt với ROI có cấu trúc mảnh (mạch máu nhỏ, thành mỏng...).
+
 **Hành vi quan trọng, giống hệt Brush/Undo/Redo đã có**:
 - Bị **chặn nếu ROI đang Lock (E1)** — hiện cảnh báo, không đổi gì.
 - Mỗi thao tác dọn dẹp thật sự thay đổi mask sẽ tự **lưu 1 checkpoint Undo** (dùng đúng cơ chế Undo/Redo đã có ở mục 3.5 bên dưới) — **Undo/Redo hoạt động bình thường** sau khi dọn dẹp.
 - Nếu kết quả dọn dẹp giống hệt trước đó (không có gì để dọn): KHÔNG lưu checkpoint, KHÔNG đổi gì, trạng thái hiện "No changes were necessary."
 - **KHÔNG tự dựng lại surface 3D** — giống Brush/Region Growing, phải tự bấm "Update 3D Surface from Selected ROI" (mục 3.3) để thấy kết quả mới trên khối 3D.
+
+### 3.3e (chỉ nhánh `enhancement/advanced-segmentation`) — Live 3D Preview nhanh (E4)
+
+> **Chỉ có trên nhánh `enhancement/advanced-segmentation`.** Mặc định TẮT. Đây là một **mesh xem trước, KHÔNG PHẢI surface 3D cuối cùng** — không lưu vào `Project`, không thay thế "Update 3D Surface from Selected ROI" (mục 3.3), không ảnh hưởng dữ liệu Save/Open.
+
+**Cách dùng**:
+1. Tick **"Enable Live 3D Preview"** trong khung "3D Preview (E4, enhancement branch)".
+2. Plugin tự dựng một mesh xem trước (không cần bấm gì thêm) theo nguồn dữ liệu ưu tiên: nếu đang có Preview Segmentation (E2) sẵn sàng thì dùng preview đó; nếu không thì dùng ROI hiện hành (Current ROI).
+3. Mesh xem trước **tự cập nhật** (có độ trễ debounce ~400ms) khi: vẽ/xoá bằng Brush/Eraser gốc, chạy Preview Otsu/Region Growing (E2), Accept/Cancel Preview, chạy các nút Cleanup (E3), Undo/Redo, hoặc chuyển ROI hiện hành.
+4. Có thể bấm **"Refresh 3D Preview"** để cập nhật ngay lập tức, không cần chờ debounce.
+5. Bỏ tick để tắt — mesh xem trước biến mất ngay, không còn tự cập nhật.
+
+**Lưu ý quan trọng**:
+- Mesh xem trước **không thể click/pick được** (không ảnh hưởng đến chọn điểm 3D cho Region Growing, đo lường, hay các thao tác pick khác).
+- Không bao giờ tự động di chuyển camera.
+- Đóng project hoặc đóng cửa sổ plugin trong khi đang bật sẽ tự dọn dẹp mesh an toàn (không crash, không để lại mesh "ma").
+- Tắt tính năng này hoàn toàn không ảnh hưởng workflow cổ điển (Threshold/Otsu/Region Growing/Brush/Eraser/Undo/Redo/Update 3D Surface vẫn y hệt bản ổn định).
 
 ### 3.4 Brush Tools (real 2D editor)
 - **Draw / Erase**: chọn chế độ vẽ hay xoá.

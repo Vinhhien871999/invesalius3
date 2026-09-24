@@ -233,3 +233,115 @@ All four operations allocate at most a small constant number of same-shape inter
 ## Known test-infrastructure issue found and fixed this milestone
 
 Adding this milestone's real-`Mask()`/`Slice()`/`Project()` integration test file (a THIRD file using the "one real Slice()/Project() pair, reused across a module's tests" pattern E2 already established) caused real, deterministic (non-flaky, reproduced identically across 5 consecutive full-suite runs) failures in E2's own previously-passing tests (`test_otsu_accept_creates_one_real_mask` and others in `test_segmentation_preview_commit.py`). Root cause: `reset_invesalius_singletons` (the suite's autouse per-test isolation fixture) only un-points `Slice.instance`/`Project.instance`, it does not unsubscribe a `Slice()` instance's real pypubsub bindings (made once, in `__init__`) - and pytest sets up a newly-needed MODULE-scoped fixture before the FUNCTION-scoped autouse reset runs for the first test in that module, so each of the 3 files' own private "construct once per module" fixture ended up creating its own real, still-subscribed `Slice()` instance, and pypubsub invoked ALL of their handlers (not just the current one) whenever any test sent the real `"Create new mask"` message. Fixed by hoisting a single `real_slice_and_project_singleton` fixture into `tests/ct3d/conftest.py`, session-scoped, shared by all three files - exactly one real `Slice()`/`Project()` pair now exists for the whole session, eliminating the accumulation. See that fixture's own docstring for the full explanation.
+
+---
+
+# E4 Fast Live 3D Preview Architecture
+
+## Source-first surface audit
+
+Read directly (not assumed): `invesalius/data/surface_process.py.create_surface_piece()` (the real per-piece contour worker the authoritative final surface pipeline runs, in its own OS process - see `invesalius/data/surface.py`'s multiprocessing dispatch), `invesalius/data/converters.py.to_vtk()`/`to_vtk_mask()`, `invesalius/data/viewer_volume.py` (for the real `viewer.ren` attach pattern already established by `marker_3d`/`slice_planes_3d`), `invesalius/data/mask.py` (for `Mask.modified()`/`add_modified_callback()`), `invesalius/data/styles.py` (for the real Brush/Eraser edit-completion event).
+
+**Critical real finding**: `create_surface_piece()`'s `from_binary=True` branch applies a `vtkImageFlip(FilteredAxis=1, FlipAboutOriginOn)` step AFTER `converters.to_vtk()` and BEFORE contouring, and contours a binary mask at isovalue 127. This is not optional cosmetic detail - a preview mesh that skipped this flip would be Y-mirrored relative to the real final surface and every other 3D scene element (C8 marker, slice planes). E4 reuses these exact real steps (see "Coordinate convention" below) rather than deriving an independent transform.
+
+## VTK version / available algorithms
+
+VTK **9.3.0** (verified via `vtk.vtkVersion.GetVTKVersion()`, not assumed). Available and benchmarked: `vtkMarchingCubes`, `vtkFlyingEdges3D`, `vtkSurfaceNets3D` (all in `vtkmodules.vtkFiltersCore`), `vtkDiscreteMarchingCubes`, `vtkDiscreteFlyingEdges3D` (both in `vtkmodules.vtkFiltersGeneral`). The real final-surface pipeline itself uses `vtkContourFilter` (a generic dispatcher, not the same class as any of the above).
+
+## Preview mesh benchmark
+
+Real measurements on a representative dataset-`0051`-shaped array (108×512×512, 3,750,263 real foreground voxels, isovalue 127):
+
+| Algorithm | Runtime | Points | Cells | Notes |
+|---|---|---|---|---|
+| `vtkFlyingEdges3D` | **0.068s** | 186,569 | 372,072 | Identical geometry to MarchingCubes |
+| `vtkMarchingCubes` | 0.150s | 186,569 | 372,072 | Same real algorithm family as `vtkContourFilter`'s effective behavior here |
+| `vtkSurfaceNets3D` | 0.043s | **0** | **0** | Wrong usage contract for isovalue 127 - expects discrete label values, not a continuous-field threshold; produced empty output |
+| `vtkDiscreteMarchingCubes` | 0.096s | 0 | 0 | Same wrong-contract issue |
+| `vtkDiscreteFlyingEdges3D` | 0.025s | 0 | 0 | Same wrong-contract issue |
+
+Downsampled ×2 (simple stride) for reference: `vtkFlyingEdges3D` 0.009s, 46,439 points - confirming downsampling is available if ever needed, but see "Downsampling decision" below for why it wasn't built this milestone.
+
+## Selected algorithm
+
+**`vtkFlyingEdges3D`**, isovalue 127. Chosen because it measurably produces IDENTICAL output geometry (same point count, cell count, bounds - not just "close") to `vtkMarchingCubes` at ~2.2x the speed, making it a safe same-algorithm-family substitution for a non-authoritative preview, not a different technique that could diverge. The 3 discrete/label-based filters were ruled out by their real, measured, wrong behavior for this exact usage (empty output), not by assumption.
+
+## Downsampling decision
+
+**Not implemented this milestone.** Full resolution already measured comfortably fast (0.068s, well within an interactive/debounced budget). Section 7's own guidance ("If full-resolution raw preview is fast enough: prefer it") was followed directly from the benchmark evidence above - adding binary-safe downsampling (block-max pooling, spacing-scaling, alignment tests) would have added real complexity and alignment risk without a measured performance need to justify it. `build_preview_mesh()` always operates at native resolution; `test_downsample_bounds_aligned_if_used` documents this as the current, deliberate contract rather than leaving the requirement silently unaddressed.
+
+## Coordinate convention
+
+`build_preview_mesh()` reuses the EXACT real conversion (`invesalius.data.converters.to_vtk(array, spacing, 0, "AXIAL")`) and the EXACT real pre-contour `vtkImageFlip` step the authoritative final-surface pipeline uses - not an independently-derived transform. Verified for real, not just by construction: `test_matches_real_final_surface_pipeline_bounds` re-runs the literal real pipeline steps (`to_vtk` + `vtkImageFlip` + `vtkContourFilter` at isovalue 127) inline in the test and asserts the bounds match the preview mesh's own bounds to within `1e-6` on a representative anisotropic-spacing (real dataset `0051` spacing convention) mask. `test_axis_order_correct`/`test_spacing_correct` additionally pin the exact per-axis mapping using a deliberately non-cubic, non-isotropic test case (so a silent axis swap or spacing-collapse would be caught, not hidden by symmetry).
+
+## PreviewSurfaceManager3D
+
+`core/preview_surface_3d.PreviewSurfaceManager3D` mirrors `core/marker_3d.CrosshairMarker3D`'s `attach()`/`detach()` lifecycle exactly (same reason: the real 3D renderer is a singleton that outlives any single `ROIViewerFrame`). Owns exactly one `vtkActor`/`vtkPolyDataMapper` pair; `set_polydata_if_current()` swaps the mapper's input polydata in place - never creates a second actor.
+
+## Actor lifecycle
+
+Created once in `attach()`; `set_polydata_if_current()` updates the SAME actor's mapper (`SetInputData()` + `Modified()`); `clear()` hides without detaching (actor/mapper stay ready for the next update); `detach()` removes from the renderer entirely and bumps `generation_id`. Real tests: `test_attach_once`, `test_attach_twice_no_duplicate`, `test_attach_to_new_renderer_moves_not_duplicates`, `test_plugin_reopen_no_duplicate_actor`.
+
+## Source priority
+
+`SegmentationPanel._select_preview_3d_source()`: if `preview_mgr.state == PREVIEW_READY` and `preview_array` is not `None`, use the E2 preview (read-only - never copied into `Project().mask_dict`, never Accepted/Cancelled automatically, never modified). Otherwise fall back to the real current mask's logical voxel region (`mask.matrix[1:, 1:, 1:]` - never the padding, per Section 14's re-audit). Real tests: `test_e4_current_roi_source`, `test_e4_e2_otsu_preview_source`, `test_e4_e2_region_preview_source`, `test_e2_cancel_clears_or_falls_back`.
+
+## E2 integration
+
+Otsu/Region Growing preview-ready events, and Cancel/Accept, all call the shared `_mark_preview_3d_dirty()` (Otsu/Region-Growing-ready call it directly; Cancel calls it after `cancel_preview()`; Accept reaches it indirectly via `_refresh_after_edit()`, which now calls it unconditionally - see "Internal dirty notification" below). E4 never mutates `preview_mgr`'s own state, never Accepts/Cancels on its own initiative. `test_e2_accept_does_not_duplicate_e4_actor` confirms the manager still owns exactly one actor across a full preview-ready → E4-build → Accept → E4-rebuild-from-new-Current-ROI sequence.
+
+## E3 integration
+
+`_run_cleanup()`'s real (non-no-op) mutation path ends in `_refresh_after_edit()`, which now unconditionally calls `_mark_preview_3d_dirty("mask edited")` - the SAME single shared entry point Undo/Redo/classic-mask-creation paths use, per Section 16's explicit "call one common `mark_preview_3d_dirty`, do not duplicate rebuild logic in each handler" instruction. A true no-op cleanup returns before ever reaching `_refresh_after_edit()`, so it correctly does NOT mark E4 dirty either.
+
+## Internal dirty notification
+
+`_mark_preview_3d_dirty(reason)` is the ONE real entry point (Section 16), called from: `_refresh_after_edit()` (covers classic Region Growing commit, E2 Accept, Undo, Redo, E3 cleanup - 5 real call sites via 1 shared helper), `_on_apply_threshold()`'s success path (classic mask creation), `_on_preview_otsu()`/`_on_region_grown_preview()`'s success paths (E2 preview ready), `_on_preview_cancel()` and `_on_enable_preview_toggle()`'s disable branch (E2 preview cancelled/disabled), `_on_roi_selected()` (ROI switch), and `_on_current_mask_modified()` (the real Brush/Eraser signal below).
+
+## Brush mutation-event audit
+
+Real, source-verified (Section 15/30), not assumed or faked: `invesalius.data.mask.Mask.add_modified_callback(callback)` is a real, pre-existing, public API (`weakref.WeakMethod`-based, safe to register a bound method against). Direct source read of the ENTIRE codebase found exactly 2 real call sites of `Mask.modified()`, both in `invesalius/data/styles.py` - `OnBrushRelease()` (the real `SLICE_STATE_EDITOR` style both Brush and Eraser share, fired on `"LeftButtonReleaseEvent"`) and one other real edit-completion handler. `_ensure_modified_callback_registered_for_current_mask()` registers `_on_current_mask_modified` on whichever mask is current, re-registering (idempotently) whenever `_mark_preview_3d_dirty()` runs or the checkbox is enabled. **Result: `BrushAutoRefresh = WORKING`, not the `PARTIAL` the task's own instructions anticipated as the likely outcome** - a real, reliable native signal was found, not an unsafe mouse-hook interception and not merely a manual-Refresh-only fallback.
+
+## Debounce
+
+`wx.Timer`, 400ms (within the suggested 300-500ms range), restarted (`Stop()` + `StartOnce()`) on every `_mark_preview_3d_dirty()` call - rapid successive dirty-marks coalesce into exactly one rebuild, using whatever state is current when the timer actually fires (not anything snapshotted at dirty-mark time). Real tests (`test_dirty_coalescing`, `test_latest_generation_wins`, `test_no_unbounded_queue`) verify the coalescing CONTRACT (via `PreviewSurfaceManager3D.generation_id`) without relying on real wall-clock sleeps or a running wx event loop - matching how E2's own async contract is tested elsewhere in this suite.
+
+## Async generation guard
+
+`PreviewSurfaceManager3D.generation_id`, bumped by `new_generation()` (before a build starts) and by `clear()`/`detach()` (so a superseded/hidden/disabled preview's in-flight worker result, if any, is automatically rejected on arrival) - the SAME proven concept E2's `SegmentationPreviewManager` already established, reused (not reimplemented) here.
+
+## VTK thread-safety decision
+
+The worker thread (`threading.Thread`, daemon) constructs its OWN fresh, thread-local VTK pipeline objects (`vtkImageData` via `converters.to_vtk()`, `vtkImageFlip`, `vtkFlyingEdges3D`) from a plain numpy snapshot taken before the thread starts - it never touches the renderer, the actor, the mapper, the camera, or any object the main thread might concurrently access. This avoids the real concurrent-shared-VTK-object hazard the strict rule (Section 21/22) warns about; the result (a `vtkPolyData`) is handed back via `wx.CallAfter`, and `_on_preview_3d_built()` is the ONLY code that touches the actor/mapper/renderer, always on the main thread. This differs from the real final-surface pipeline's own approach (full OS-process isolation via `multiprocessing`) - a heavier mechanism appropriate for a slow, authoritative, full-quality build, not proportionate for a fast, best-effort preview.
+
+## Memory
+
+At most one real numpy snapshot (`np.array(source)`) strongly referenced per rebuild (~28MB for a dataset-`0051`-sized volume, same order of magnitude as one Undo/Redo checkpoint) - `generation_id` means an OLD snapshot's worker, once superseded, has nothing further to do with its reference once the callback rejects it; no queue of multiple snapshots is ever held.
+
+## Geometry-alignment validation
+
+Mandatory per Section 24 - satisfied by 3 independent real checks: (1) a known cuboid at known voxel indices, asserting real-world bounds span (`test_bounds_correct`); (2) anisotropic spacing applied correctly per axis, not collapsed/swapped (`test_spacing_correct`, `test_axis_order_correct`, using a deliberately non-cubic shape); (3) a direct bounds comparison against the literal real final-surface pipeline's own classes re-run inline (`test_matches_real_final_surface_pipeline_bounds`) - not a separately-derived approximation.
+
+## Picker safety
+
+`actor.SetPickable(False)` at construction - a real VTK mechanism (`vtkProp.SetPickable`), not a convention this plugin has to separately enforce in `core/picker_3d.py` or anywhere else; any real VTK picker (the plugin's own `PointPicker3D`, Region Growing's seed pick, 3D distance measurement) skips this actor by construction.
+
+## Camera preservation
+
+Verified by real source inspection, not just by omission: `test_camera_never_touched_by_manager_api`/`test_gui_layer_never_touches_camera` assert that neither `core/preview_surface_3d.py` nor any of `segmentation_panel.py`'s E4 methods contain any camera-related VTK call (`GetActiveCamera`, `ResetCamera`, `SetPosition`, `SetFocalPoint`, `SetViewUp`) at all.
+
+## Final-surface isolation
+
+E4 never sends `"Create surface from index"` (grep-confirmed, and verified for real with a live pubsub spy in `test_e4_never_calls_create_surface_from_index`), never creates or reads a `Project().surface_dict` entry (`test_e4_never_creates_project_surface`), and a real pre-existing `surface_dict` entry's identity/count is provably unchanged across multiple E4 rebuilds (`test_final_surface_untouched`).
+
+## Save/Open
+
+`PreviewSurfaceManager3D` has no serialization method and is never referenced by `invesalius/project.py`. A preview mesh is pure runtime VTK state - saving a project while live preview is on saves the real masks exactly as before; on open, the checkbox defaults OFF and the manager starts with zero actors (fresh `SegmentationPanel`/`ROIViewerFrame` construction).
+
+## Lifecycle
+
+`roi_panel.py`'s `on_project_close()`, `on_project_load()`, and `_on_close()` all call `self.preview_surface_3d.detach()` - the SAME real pattern already established for `marker_3d`/`slice_planes_3d`, added at all 3 real hook points (not just close) since a preview mesh built for the OLD project's voxel data is meaningless once a different project loads. `segmentation_panel.py`'s `cancel_live_preview_3d()` (called from its own `_on_destroy()`) stops the debounce timer and unregisters the real `Mask.add_modified_callback()` registration.
+
+## Performance
+
+See "Preview mesh benchmark" above - full-resolution `vtkFlyingEdges3D` build: 0.068s on a representative dataset-`0051`-shaped array. Combined with the 400ms debounce, real end-to-end latency after the LAST edit in a rapid sequence is dominated by the debounce window, not the build itself. No `FAST_PREVIEW_INTERACTIVE_LIMITATION` was hit - the feature ships enabled-by-default-OFF but fully functional, not gated behind a "too slow, manual Refresh only" fallback.
