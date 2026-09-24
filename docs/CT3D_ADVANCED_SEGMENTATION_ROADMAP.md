@@ -8,8 +8,8 @@
 
 | Stage | Name | Priority | Status |
 |---|---|---|---|
-| E1 | Multi-label / Advanced ROI Management | P1 | **WORKING** (this run) |
-| E2 | Preview / Confirm segmentation workflow | P1 | PLANNED |
+| E1 | Advanced ROI Management / Segmentation Set | P1 | **WORKING** |
+| E2 | Preview / Confirm segmentation workflow | P1 | **WORKING** (this run) |
 | E3 | Segmentation cleanup tools | P1 | PLANNED |
 | E4 | Fast live 3D preview | P1 | PLANNED |
 | E5 | Advanced 3D visualization (textured planes, clipping) | P2 | PLANNED |
@@ -43,6 +43,12 @@ wrong branch; a dirty worktree with unexplained user changes; a regression in th
 - Push to `origin/enhancement/advanced-segmentation` after each milestone's gate is `PASS`.
 - Never merge into `thesis-ct-roi-tools`, never force-push, never amend a historical release commit, never touch the `ct3d-rc1` tag.
 
-## E1 scope note (this run)
+## E1 scope note
 
-This run implements **only E1** (Advanced ROI Manager), per the explicit first-execution scope: audit → design → implement → test → regress → document → commit → push, then stop. E2-E6 are documented here as planned milestones only - no E2-E6 code exists yet. See `docs/CT3D_ADVANCED_SEGMENTATION_PROGRESS.md` for the live status table.
+E1 implemented the Advanced ROI Manager, per that run's explicit first-execution scope: audit → design → implement → test → regress → document → commit → push, then stop.
+
+**Naming correction (E2 run)**: the milestone table above originally titled E1 "Multi-label / Advanced ROI Management." The source-first audit performed for E1 (and repeated again for E2) confirmed the real backend is independent InVesalius masks (`Project().mask_dict`), not a shared multi-label voxel volume - "multilabel" was never an accurate claim about the data model. Corrected to "Advanced ROI Management / Segmentation Set," matching the UI's own box title and `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`'s "Naming" section. No historical stable-release report is altered by this correction - it only fixes wording in this enhancement-track-only planning document.
+
+## E2 scope note (this run)
+
+This run implements **E2** (Preview / Confirm segmentation workflow) for Otsu and Region Growing, per the explicit scope for this milestone. E3-E6 remain planned only - no E3-E6 code exists yet. See `docs/CT3D_ADVANCED_SEGMENTATION_PROGRESS.md` for the live status table and `docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md` for the full design/audit writeup.

@@ -78,6 +78,74 @@ With no ROI locked and Solo off, run through the classic workflow exactly as in 
 
 ---
 
+## E2 — Preview / Confirm Segmentation Workflow
+
+**Additional precondition for this section**: at least 1 mask already exists and is the real current mask (any mask - Preview's 2D overlay only renders once `Slice().current_mask` is set, a real, pre-existing native constraint shared with InVesalius's own Watershed tool - see `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`'s "E2 Preview Architecture" section).
+
+### TEST E2-A — Enable/disable Preview Workflow
+Tick **"Enable Preview Workflow"** in the new "Preview Segmentation (E2, enhancement branch)" box.
+**Expected**: "Preview Otsu" button becomes enabled; "Preview Region Growing" stays disabled until a seed is picked. Untick it again.
+**Expected**: both buttons disable again; any active preview/overlay clears; status returns to "Idle".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-B — Otsu preview visible in all 3 views
+With Preview Workflow ON, click **"Preview Otsu"**.
+**Expected**: an orange, translucent overlay appears on the Axial, Coronal, AND Sagital 2D views, showing the candidate Otsu segmentation - visually distinct from any real (final) mask's own colour. Preview status shows the threshold and voxel count.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-C — Otsu Cancel
+With the Otsu preview showing, click **"Cancel Preview"**.
+**Expected**: the orange overlay disappears from all 3 views; status returns to "Idle"; NO new mask appears in the Segmentation Set list or the native Masks tab.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-D — Otsu Accept
+Click **"Preview Otsu"** again, then click **"Accept Preview"**.
+**Expected**: the overlay disappears; a new real mask (visible in the Segmentation Set list AND the native Masks tab) is created, using the SAME threshold the preview showed; status shows "Idle (accepted '...')"".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-E — Region Growing preview
+With Preview Workflow ON, click **"Pick Seed Point (3D)"**, click a point in the 3D view.
+**Expected**: status shows "Seed picked..." and does NOT immediately grow a region (unlike classic mode). Click **"Preview Region Growing"**.
+**Expected**: after a short compute, an orange overlay appears showing the grown region in all 3 views; status shows voxel count/percentage (and a warning if it exceeds the safety threshold).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-F — Region Growing Cancel
+With the region growing preview showing, click **"Cancel Preview"**.
+**Expected**: overlay disappears; no new mask created.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-G — Region Growing Accept
+Repeat the preview, then click **"Accept Preview"**.
+**Expected**: overlay disappears; a new real "Region Growing ..." mask appears in the Segmentation Set list; if the region was oversized, a confirmation dialog appeared before the mask was actually created (same as classic mode's own oversized-region dialog).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-H — Second preview replaces first
+With an Otsu preview showing, click **"Preview Otsu"** again (or switch to Region Growing preview).
+**Expected**: the first overlay is replaced by the second - never both shown at once, never a stacked/accumulated appearance.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-I — Project close while preview visible
+With a preview showing, close the project (File → Close, or open a different project).
+**Expected**: no crash; the overlay does not appear in the newly-loaded (or absent) project; preview status resets to "Idle".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-J — Plugin close/reopen with preview active
+With a preview showing, close the ROI Viewer window, reopen it.
+**Expected**: no crash; no leftover overlay; Preview Workflow checkbox is back to unticked (fresh panel instance).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-K — Classic workflow with Preview mode OFF
+With "Enable Preview Workflow" unticked, use Threshold/Otsu-checkbox/"Create Mask from Threshold" and Region Growing (seed-pick) exactly as in the stable release.
+**Expected**: identical behavior to `ct3d-rc1`/E1 - masks are created immediately on click/seed-pick, no preview step, no behavior difference at all.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E2-L — E1 Lock/Solo interaction with preview
+Lock the current ROI, then try Preview Otsu/Region Growing (should still work - preview never touches the locked mask, it only reads the volume). Enable Solo on some other ROI, then run a preview.
+**Expected**: preview overlay still renders normally regardless of Solo state on other ROIs (they are independent real mechanisms - see architecture doc); Accept still creates a normal new (unlocked) mask.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+---
+
 ## Summary
 
 | # | Test | PASS/FAIL |
@@ -96,5 +164,19 @@ With no ROI locked and Solo off, run through the classic workflow exactly as in 
 | E1-L | Project close/reopen resets lock | `NOT_RUN` |
 | E1-M | Reopen plugin, no duplicate/leak | `NOT_RUN` |
 | E1-N | Classic workflow unaffected | `NOT_RUN` |
+| E2-A | Enable/disable Preview Workflow | `NOT_RUN` |
+| E2-B | Otsu preview visible in all 3 views | `NOT_RUN` |
+| E2-C | Otsu Cancel | `NOT_RUN` |
+| E2-D | Otsu Accept | `NOT_RUN` |
+| E2-E | Region Growing preview | `NOT_RUN` |
+| E2-F | Region Growing Cancel | `NOT_RUN` |
+| E2-G | Region Growing Accept | `NOT_RUN` |
+| E2-H | Second preview replaces first | `NOT_RUN` |
+| E2-I | Project close while preview visible | `NOT_RUN` |
+| E2-J | Plugin close/reopen with preview active | `NOT_RUN` |
+| E2-K | Classic workflow with Preview mode OFF | `NOT_RUN` |
+| E2-L | E1 Lock/Solo interaction with preview | `NOT_RUN` |
 
 **E1_MANUAL_QA_COMPLETE: NOT_RUN** (0/14) — awaiting a real operator session. This does not block E1's automated `PASS` gate (see `CT3D_ADVANCED_SEGMENTATION_PROGRESS.md`), consistent with how the stable release separated automated evidence from manual GUI confirmation throughout Phase 08-14.
+
+**E2_MANUAL_QA_COMPLETE: NOT_RUN** (0/12) — same discipline, same reasoning. Does not block E2's automated `PASS` gate.

@@ -6,14 +6,27 @@
 #              panel uses - not a disconnected local copy of the volume.
 # --------------------------------------------------------------------------
 
+from typing import Optional
+
 import wx
 import wx.lib.scrolledpanel as scrolled
+
+from ..core import segmentation_preview
 
 try:
     from invesalius.i18n import tr as _
 except ImportError:
     def _(s):
         return s
+
+# E2 (Advanced Segmentation Enhancement Track, enhancement/advanced-
+# segmentation branch only): the real Slice().aux_matrices/to_show_aux key
+# this plugin's preview overlay uses. A plain string constant (not a
+# per-instance attribute) since it must stay identical between the code
+# that writes it (see _show_preview_overlay()) and the code that clears it
+# (_clear_preview_overlay()) regardless of which SegmentationPanel/
+# controller instance is involved.
+PREVIEW_AUX_KEY = "roi_viewer_preview"
 
 
 def choose_surface_algorithm(mask) -> str:
@@ -52,6 +65,19 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         scrolled.ScrolledPanel.__init__(self, parent)
         self.controller = controller
         self._roi_list_ids = []
+        # E2: preview state lives on this panel instance (like mask_mgr/
+        # roi_mgr live on `controller`) - pure bookkeeping, see
+        # core/segmentation_preview.py's module docstring. `_preview_temp_file`
+        # is the real temp-file path backing the memmap array (mirrors
+        # invesalius/data/styles.py's Watershed _remove_mask() pattern -
+        # see _clear_preview_overlay() below). `_preview_seed_world`/
+        # `_preview_seed_voxel` hold the last seed picked while Preview
+        # Workflow is enabled, waiting for an explicit "Preview Region
+        # Growing" click (see _on_seed_picked()'s branch below).
+        self.preview_mgr = segmentation_preview.SegmentationPreviewManager()
+        self._preview_temp_file = None
+        self._preview_seed_world = None
+        self._preview_seed_voxel = None
         self._init_ui()
         self.SetupScrolling()
 
@@ -84,6 +110,13 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_apply_thresh = wx.Button(self, wx.ID_ANY, _("Create Mask from Threshold"))
         thresh_sizer.Add(self.btn_apply_thresh, 0, wx.ALL | wx.EXPAND, 5)
 
+        # E2 (enhancement/advanced-segmentation branch only): disabled
+        # unless "Enable Preview Workflow" (below) is checked - see
+        # _on_enable_preview_toggle().
+        self.btn_preview_otsu = wx.Button(self, wx.ID_ANY, _("Preview Otsu"))
+        self.btn_preview_otsu.Enable(False)
+        thresh_sizer.Add(self.btn_preview_otsu, 0, wx.ALL | wx.EXPAND, 5)
+
         sizer.Add(thresh_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # --- Region growing (semi-automatic seed-based segmentation) ---
@@ -114,7 +147,49 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.rg_status = wx.StaticText(self, wx.ID_ANY, _(""))
         rg_sizer.Add(self.rg_status, 0, wx.ALL | wx.EXPAND, 5)
 
+        # E2: disabled unless Preview Workflow is enabled AND a seed has
+        # already been picked while in that mode (see _on_seed_picked()'s
+        # preview branch) - see _on_enable_preview_toggle() and
+        # _on_preview_region_growing()'s own guard.
+        self.btn_preview_region_growing = wx.Button(self, wx.ID_ANY, _("Preview Region Growing"))
+        self.btn_preview_region_growing.Enable(False)
+        rg_sizer.Add(self.btn_preview_region_growing, 0, wx.ALL | wx.EXPAND, 5)
+
         sizer.Add(rg_sizer, 0, wx.ALL | wx.EXPAND, 5)
+
+        # --- E2 (Advanced Segmentation Enhancement Track, enhancement/
+        # advanced-segmentation branch ONLY - never present on
+        # thesis-ct-roi-tools/ct3d-rc1): Preview -> Accept/Cancel
+        # workflow. Off by default (ENABLE_PREVIEW_SEGMENTATION default
+        # OFF) - with the checkbox unchecked, "Preview Otsu"/"Preview
+        # Region Growing" above stay disabled and the classic
+        # immediate-commit behavior (Create Mask from Threshold /
+        # seed-pick auto-grows-and-creates-a-mask) is 100% unchanged.
+        # See docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md and
+        # docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md's "E2 Preview
+        # Architecture" section for the full design.
+        box_preview = wx.StaticBox(self, wx.ID_ANY, _("Preview Segmentation (E2, enhancement branch)"))
+        preview_sizer = wx.StaticBoxSizer(box_preview, wx.VERTICAL)
+
+        self.cb_enable_preview = wx.CheckBox(self, wx.ID_ANY, _("Enable Preview Workflow"))
+        preview_sizer.Add(self.cb_enable_preview, 0, wx.ALL, 5)
+
+        preview_status_row = wx.BoxSizer(wx.HORIZONTAL)
+        preview_status_row.Add(wx.StaticText(self, wx.ID_ANY, _("Preview status:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        self.lbl_preview_status = wx.StaticText(self, wx.ID_ANY, _("Idle"))
+        preview_status_row.Add(self.lbl_preview_status, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        preview_sizer.Add(preview_status_row, 0, wx.EXPAND, 3)
+
+        preview_btn_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.btn_preview_accept = wx.Button(self, wx.ID_ANY, _("Accept Preview"))
+        self.btn_preview_accept.Enable(False)
+        preview_btn_row.Add(self.btn_preview_accept, 1, wx.ALL, 2)
+        self.btn_preview_cancel = wx.Button(self, wx.ID_ANY, _("Cancel Preview"))
+        self.btn_preview_cancel.Enable(False)
+        preview_btn_row.Add(self.btn_preview_cancel, 1, wx.ALL, 2)
+        preview_sizer.Add(preview_btn_row, 0, wx.EXPAND, 3)
+
+        sizer.Add(preview_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
         # --- ROI management (core/roi_manager.ROIManager) ---
         # NOTE: this is the "quản lý segmentation" piece - a named,
@@ -266,7 +341,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         self.cb_auto_thresh.Bind(wx.EVT_CHECKBOX, self._on_auto_thresh_toggle)
         self.btn_apply_thresh.Bind(wx.EVT_BUTTON, self._on_apply_threshold)
+        self.btn_preview_otsu.Bind(wx.EVT_BUTTON, self._on_preview_otsu)
         self.btn_pick_seed.Bind(wx.EVT_TOGGLEBUTTON, self._on_toggle_pick_seed)
+        self.btn_preview_region_growing.Bind(wx.EVT_BUTTON, self._on_preview_region_growing)
+        self.cb_enable_preview.Bind(wx.EVT_CHECKBOX, self._on_enable_preview_toggle)
+        self.btn_preview_accept.Bind(wx.EVT_BUTTON, self._on_preview_accept)
+        self.btn_preview_cancel.Bind(wx.EVT_BUTTON, self._on_preview_cancel)
         self.btn_roi_rename.Bind(wx.EVT_BUTTON, self._on_roi_rename)
         self.btn_roi_delete.Bind(wx.EVT_BUTTON, self._on_roi_delete)
         self.btn_roi_lock.Bind(wx.EVT_BUTTON, self._on_roi_lock)
@@ -316,18 +396,15 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.status_text.SetLabel(_("Status: Auto threshold failed"))
             print(f"ROI Viewer: auto threshold failed - {e}")
 
-    def _on_apply_threshold(self, event):
-        lo = self.spin_min.GetValue()
-        hi = self.spin_max.GetValue()
-
-        if lo > hi:
-            wx.MessageBox(
-                _("Min threshold must be <= Max threshold."), _("Error"), wx.OK | wx.ICON_ERROR
-            )
-            return
-
-        self.controller.seg_mgr.set_threshold(lo, hi)
-
+    def _commit_threshold_mask(self, lo, hi) -> Optional[str]:
+        """The real "Create Mask from Threshold" commit, extracted so E2's
+        Accept-Otsu-preview path (see _on_preview_accept()) can reuse the
+        EXACT same real mask-creation call with the EXACT threshold the
+        preview showed, instead of a second, divergence-prone
+        implementation (instruction: "Accept Otsu -> call existing tested
+        'Create Mask from Threshold' logic"). Returns the new mask's name
+        on success, None on failure - callers decide how to report that.
+        """
         try:
             from invesalius.pubsub import pub as Publisher
             import invesalius.constants as const
@@ -356,10 +433,28 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             Publisher.sendMessage(
                 "Create new mask", mask_name=name, thresh=(lo, hi), colour=colour
             )
-            self.status_text.SetLabel(_(f"Status: Created mask '{name}'"))
+            return name
         except ImportError as e:
-            wx.MessageBox(_("Segmentation not available."), _("Error"), wx.OK | wx.ICON_ERROR)
             print(f"ROI Viewer: could not create mask - {e}")
+            return None
+
+    def _on_apply_threshold(self, event):
+        lo = self.spin_min.GetValue()
+        hi = self.spin_max.GetValue()
+
+        if lo > hi:
+            wx.MessageBox(
+                _("Min threshold must be <= Max threshold."), _("Error"), wx.OK | wx.ICON_ERROR
+            )
+            return
+
+        self.controller.seg_mgr.set_threshold(lo, hi)
+
+        name = self._commit_threshold_mask(lo, hi)
+        if name is not None:
+            self.status_text.SetLabel(_(f"Status: Created mask '{name}'"))
+        else:
+            wx.MessageBox(_("Segmentation not available."), _("Error"), wx.OK | wx.ICON_ERROR)
 
     # ------------------------------------------------------------------
     # Region growing (semi-automatic, seed-based)
@@ -420,6 +515,24 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 self.rg_status.SetLabel(_(f"Region growing: {seed_error}"))
                 return
 
+            # E2 (enhancement/advanced-segmentation branch only): with
+            # Preview Workflow enabled, a seed pick only RECORDS the seed
+            # - it does NOT start growing. The (possibly slow) computation
+            # is deferred to an explicit "Preview Region Growing" click,
+            # so the user can still adjust Tolerance after picking before
+            # spending the compute. Classic mode (checkbox unchecked) is
+            # completely unchanged below this point - growing starts
+            # immediately, exactly as before this milestone.
+            if self.cb_enable_preview.GetValue():
+                self._preview_seed_world = tuple(world_point)
+                self._preview_seed_voxel = seed
+                wx.CallAfter(self.btn_preview_region_growing.Enable, True)
+                wx.CallAfter(
+                    self.rg_status.SetLabel,
+                    _(f"Seed picked at voxel {seed} - click 'Preview Region Growing'"),
+                )
+                return
+
             wx.CallAfter(self.rg_status.SetLabel, _(f"Growing from voxel {seed}..."))
             # scipy/numpy BFS over a full CT volume can take real time
             # (see the performance note on SegmentationManager.
@@ -460,14 +573,103 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.rg_status.SetLabel(_("Region growing failed"))
             print(f"ROI Viewer: region growing setup failed - {e}")
 
+    def _commit_region_growing_result(self, result_mask, seed, tolerance) -> Optional[str]:
+        """
+        Creates a real InVesalius mask sized to match the volume, then
+        overwrites its voxel data with the region-growing result - the
+        same direct matrix-write technique already verified for
+        Undo/Redo (mask.matrix[:] = ...), so this is real, first-class
+        mask data, not a disconnected copy. Extracted from
+        _on_region_grown() (E2, Advanced Segmentation Enhancement Track)
+        so the Accept-region-growing-preview path (_on_preview_accept())
+        can reuse this EXACT real commit instead of a second,
+        divergence-prone implementation. Returns the new mask's name on
+        success, None on failure (reason printed to console; callers
+        decide how to surface that in the UI).
+        """
+        try:
+            import numpy as np
+            import invesalius.data.slice_ as sl
+            import invesalius.constants as const
+            from invesalius.pubsub import pub as Publisher
+            from ..interface.project_interface import ProjectInterface
+
+            mask_count = len(ProjectInterface().get_mask_dict())
+            colour = const.MASK_COLOUR[mask_count % len(const.MASK_COLOUR)]
+            name = f"Region Growing {mask_count + 1}"
+
+            # Create an empty real mask of the right shape/threshold
+            # bookkeeping via the standard path (this also triggers
+            # ROIManager.rebuild_from_project_masks() via main.py's
+            # "Create new mask" subscriber - see core/roi_manager.py's
+            # module docstring), then overwrite its voxel data with the
+            # actual region-growing result.
+            Publisher.sendMessage(
+                "Create new mask", mask_name=name, thresh=(1, 1), colour=colour
+            )
+            new_mask = sl.Slice().current_mask
+            if new_mask is None or new_mask.matrix is None:
+                print("ROI Viewer: region growing commit failed - mask creation returned no current mask")
+                return None
+
+            # InVesalius mask matrices carry a 1-voxel padding border
+            # (see interface/project_interface.py notes elsewhere on
+            # mask padding); result_mask matches the unpadded volume
+            # shape, so write into the interior.
+            target = new_mask.matrix[1:, 1:, 1:]
+            if target.shape != result_mask.shape:
+                # Shapes should match ProjectInterface().get_shape(), but
+                # guard defensively rather than raising into a
+                # background-thread-originated callback.
+                print(f"ROI Viewer: region growing commit failed - shape mismatch {target.shape} vs {result_mask.shape}")
+                return None
+
+            target[:] = np.where(result_mask > 0, 255, target)
+            # Round-2 audit, section B: a mask created via the
+            # thresh=(1,1) bookkeeping placeholder above starts with
+            # every slice's "already thresholded" sentinel
+            # (Slice.do_threshold_to_all_slices()'s
+            # mask.matrix[n, 0, 0] check) at 0 - i.e. "never
+            # visited". invesalius/data/slice_.py's
+            # do_threshold_to_all_slices() runs automatically the
+            # FIRST time ANY surface is built for this mask
+            # (CreateSurfaceFromIndex calls it before "Create
+            # surface"), and for every slice whose sentinel is
+            # still 0 it OVERWRITES that slice's voxels by
+            # re-deriving them from thresh=(1,1) against the real
+            # image - discarding this hand-written region-growing
+            # result completely and silently, with no exception.
+            # Verified for real (test_surface_update_small_roi.py's
+            # own mask-write, which hit exactly this): the
+            # resulting surface reflected wherever the real CT
+            # image happened to equal exactly 1, not the actual
+            # grown/edited region. Marking every slice's sentinel
+            # as already-visited here - the exact same real
+            # mechanism InVesalius's own do_threshold_to_all_slices
+            # uses to protect a slice it already computed - tells
+            # it to leave this hand-written data alone.
+            new_mask.matrix[1:, 0, 0] = 1
+            new_mask.matrix.flush()
+            # Phase 08 fix: this mask's voxel data is 100% hand-
+            # written (region growing result), not derived from
+            # mask.threshold_range - _on_update_surface() needs
+            # was_edited=True to know it must use a mask-driven
+            # algorithm ("Binary") instead of "Default" (which
+            # would silently ignore this data entirely and
+            # re-contour the raw image instead - see that
+            # method's own NOTE for the full root-cause).
+            new_mask.was_edited = True
+            return name
+        except Exception as e:
+            print(f"ROI Viewer: committing region growing result failed - {e}")
+            return None
+
     def _on_region_grown(self, result_mask, seed, tolerance):
         """
-        Runs on the main thread (via wx.CallAfter). Creates a real
-        InVesalius mask sized to match the volume, then overwrites its
-        voxel data with the region-growing result - the same direct
-        matrix-write technique already verified for Undo/Redo (mask.
-        matrix[:] = ...), so this is real, first-class mask data, not a
-        disconnected copy.
+        Runs on the main thread (via wx.CallAfter). Classic (non-preview)
+        commit path - unchanged behavior from before E2, now delegating
+        the actual mask creation/voxel-write to
+        _commit_region_growing_result() (shared with E2's Accept path).
 
         Round-2 audit, section C: before committing anything, computes
         how much of the volume the result actually covers
@@ -479,10 +681,6 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         in the first place.
         """
         try:
-            import numpy as np
-            import invesalius.data.slice_ as sl
-            import invesalius.constants as const
-            from invesalius.pubsub import pub as Publisher
             from ..interface.project_interface import ProjectInterface
 
             pi = ProjectInterface()
@@ -519,72 +717,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     self.rg_status.SetLabel(_(f"Region growing cancelled ({info})"))
                     return
 
-            mask_count = len(ProjectInterface().get_mask_dict())
-            colour = const.MASK_COLOUR[mask_count % len(const.MASK_COLOUR)]
-            name = f"Region Growing {mask_count + 1}"
-
-            # Create an empty real mask of the right shape/threshold
-            # bookkeeping via the standard path (this also triggers
-            # ROIManager.rebuild_from_project_masks() via main.py's
-            # "Create new mask" subscriber - see core/roi_manager.py's
-            # module docstring), then overwrite its voxel data with the
-            # actual region-growing result.
-            Publisher.sendMessage(
-                "Create new mask", mask_name=name, thresh=(1, 1), colour=colour
-            )
-            new_mask = sl.Slice().current_mask
-            if new_mask is None or new_mask.matrix is None:
-                self.rg_status.SetLabel(_("Region growing: failed to create mask"))
-                return
-
-            # InVesalius mask matrices carry a 1-voxel padding border
-            # (see interface/project_interface.py notes elsewhere on
-            # mask padding); result_mask matches the unpadded volume
-            # shape, so write into the interior.
-            target = new_mask.matrix[1:, 1:, 1:]
-            if target.shape == result_mask.shape:
-                target[:] = np.where(result_mask > 0, 255, target)
-                # Round-2 audit, section B: a mask created via the
-                # thresh=(1,1) bookkeeping placeholder above starts with
-                # every slice's "already thresholded" sentinel
-                # (Slice.do_threshold_to_all_slices()'s
-                # mask.matrix[n, 0, 0] check) at 0 - i.e. "never
-                # visited". invesalius/data/slice_.py's
-                # do_threshold_to_all_slices() runs automatically the
-                # FIRST time ANY surface is built for this mask
-                # (CreateSurfaceFromIndex calls it before "Create
-                # surface"), and for every slice whose sentinel is
-                # still 0 it OVERWRITES that slice's voxels by
-                # re-deriving them from thresh=(1,1) against the real
-                # image - discarding this hand-written region-growing
-                # result completely and silently, with no exception.
-                # Verified for real (test_surface_update_small_roi.py's
-                # own mask-write, which hit exactly this): the
-                # resulting surface reflected wherever the real CT
-                # image happened to equal exactly 1, not the actual
-                # grown/edited region. Marking every slice's sentinel
-                # as already-visited here - the exact same real
-                # mechanism InVesalius's own do_threshold_to_all_slices
-                # uses to protect a slice it already computed - tells
-                # it to leave this hand-written data alone.
-                new_mask.matrix[1:, 0, 0] = 1
-                new_mask.matrix.flush()
-                # Phase 08 fix: this mask's voxel data is 100% hand-
-                # written (region growing result), not derived from
-                # mask.threshold_range - _on_update_surface() needs
-                # was_edited=True to know it must use a mask-driven
-                # algorithm ("Binary") instead of "Default" (which
-                # would silently ignore this data entirely and
-                # re-contour the raw image instead - see that
-                # method's own NOTE for the full root-cause).
-                new_mask.was_edited = True
-            else:
-                # Shapes should match ProjectInterface().get_shape(),
-                # but guard defensively rather than raising into a
-                # background-thread-originated callback.
-                self.rg_status.SetLabel(
-                    _(f"Region growing: shape mismatch {target.shape} vs {result_mask.shape}")
-                )
+            name = self._commit_region_growing_result(result_mask, seed, tolerance)
+            if name is None:
+                self.rg_status.SetLabel(_("Region growing: failed to create/apply mask"))
                 return
 
             self._refresh_after_edit()
@@ -592,6 +727,366 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         except Exception as e:
             self.rg_status.SetLabel(_("Region growing: failed to apply result"))
             print(f"ROI Viewer: applying region growing result failed - {e}")
+
+    # ------------------------------------------------------------------
+    # E2 (Advanced Segmentation Enhancement Track, enhancement/advanced-
+    # segmentation branch ONLY): Preview -> Accept/Cancel workflow.
+    # ------------------------------------------------------------------
+    def _preview_ready(self) -> bool:
+        return self.preview_mgr.state == segmentation_preview.PreviewState.PREVIEW_READY
+
+    def _update_preview_buttons(self):
+        self.btn_preview_accept.Enable(self._preview_ready())
+        self.btn_preview_cancel.Enable(self.preview_mgr.state != segmentation_preview.PreviewState.IDLE)
+
+    def _show_preview_overlay(self, array):
+        """
+        Render `array` (real 0/255 data, real unpadded volume shape - see
+        core/segmentation_preview.py's module docstring) as a translucent
+        overlay on the 2D slice views, via InVesalius's own real
+        Slice().aux_matrices/to_show_aux mechanism - the SAME real,
+        already-proven native path its own Watershed tool uses for its
+        live preview (see invesalius/data/styles.py's
+        WatershedInteractorStyle.SetUp()/CleanUp(), the reference pattern
+        this mirrors). This NEVER touches Project().mask_dict - see
+        docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md's "E2 Preview
+        Architecture" section for the full source-audit trail behind
+        this choice.
+
+        NOTE (real, PRE-EXISTING native constraint, not introduced by
+        this plugin): confirmed by reading invesalius/data/slice_.py's
+        slice-rendering method directly - the generic to_show_aux blend
+        only runs when self.current_mask is not None (the exact same
+        real constraint Watershed's own overlay has). Callers
+        (_on_preview_otsu()/_on_preview_region_growing()) already
+        guarantee a current mask exists before a computation is even
+        started.
+        """
+        try:
+            import invesalius.data.slice_ as sl
+            from invesalius.pubsub import pub as Publisher
+
+            s = sl.Slice()
+            s.aux_matrices[PREVIEW_AUX_KEY] = array
+            # Orange, 50% alpha - deliberately distinct from a real
+            # mask's own (usually red-family) blend colour, so a preview
+            # can never be visually mistaken for an already-committed
+            # mask (instruction: "Use a clearly distinct preview
+            # appearance").
+            s.aux_matrices_colours[PREVIEW_AUX_KEY] = {
+                0: (0.0, 0.0, 0.0, 0.0),
+                255: (1.0, 0.65, 0.0, 0.5),
+            }
+            s.to_show_aux = PREVIEW_AUX_KEY
+            Publisher.sendMessage("Reload actual slice")
+        except Exception as e:
+            print(f"ROI Viewer: could not show preview overlay - {e}")
+
+    def _clear_preview_overlay(self):
+        """
+        Undo _show_preview_overlay() and release the temp-file-backed
+        array - mirrors invesalius/data/styles.py's Watershed
+        _remove_mask()/CleanUp() cleanup pattern exactly. Safe to call
+        when no overlay is currently shown (Cancel with nothing computed
+        yet, repeated calls from multiple lifecycle hooks, etc.) - never
+        raises.
+        """
+        import os
+
+        try:
+            import invesalius.data.slice_ as sl
+            from invesalius.pubsub import pub as Publisher
+
+            s = sl.Slice()
+            if s.to_show_aux == PREVIEW_AUX_KEY:
+                s.to_show_aux = ""
+            s.aux_matrices.pop(PREVIEW_AUX_KEY, None)
+            s.aux_matrices_colours.pop(PREVIEW_AUX_KEY, None)
+            Publisher.sendMessage("Reload actual slice")
+        except Exception as e:
+            print(f"ROI Viewer: preview overlay cleanup failed (likely no project loaded) - {e}")
+        finally:
+            if self._preview_temp_file:
+                try:
+                    os.remove(self._preview_temp_file)
+                except OSError:
+                    pass
+                self._preview_temp_file = None
+
+    def cancel_preview(self):
+        """Public lifecycle hook - called from gui/roi_panel.py's
+        on_project_close()/on_project_load() and from this panel's own
+        _on_destroy(), so a preview never survives a project swap or the
+        plugin closing (instruction: preview must be cleared on project
+        close, project load/reload, plugin close, plugin destroy)."""
+        self._clear_preview_overlay()
+        self.preview_mgr.cancel()
+        self._preview_seed_world = None
+        self._preview_seed_voxel = None
+        # Widget updates are best-effort and wrapped separately from the
+        # real-data cleanup above: during whole-app/plugin-window
+        # teardown these wx widgets can already be mid-destruction (same
+        # real crash class already guarded against for the brush toggle
+        # in _on_destroy() below - "wrapped C/C++ object ... has been
+        # deleted"). The data-level cleanup above must still always run.
+        try:
+            if hasattr(self, "btn_preview_region_growing"):
+                self.btn_preview_region_growing.Enable(False)
+                self.lbl_preview_status.SetLabel(_("Idle"))
+                self._update_preview_buttons()
+        except RuntimeError as e:
+            print(f"ROI Viewer: preview widget cleanup skipped (likely app shutdown) - {e}")
+
+    def _on_enable_preview_toggle(self, event):
+        enabled = self.cb_enable_preview.GetValue()
+        self.btn_preview_otsu.Enable(enabled)
+        # Preview Region Growing only enables once BOTH preview mode is
+        # on AND a seed has already been recorded - see
+        # _on_seed_picked()'s preview branch above.
+        self.btn_preview_region_growing.Enable(enabled and self._preview_seed_voxel is not None)
+        if not enabled:
+            # Turning preview mode OFF while a preview is active/pending
+            # must not leave a dangling overlay or a stuck state - same
+            # "explicit override cancels in-progress convenience state"
+            # reasoning as E1's show_all()/hide_all() cancelling solo.
+            self.cancel_preview()
+
+    def _on_preview_otsu(self, event):
+        try:
+            import os
+            import invesalius.data.slice_ as sl
+            from ..interface.project_interface import ProjectInterface
+
+            # Real, pre-existing native constraint - see
+            # _show_preview_overlay()'s docstring. Same guard pattern
+            # (and same user-facing wording style) as _on_toggle_brush()'s
+            # existing "no mask selected" check.
+            if sl.Slice().current_mask is None:
+                wx.MessageBox(
+                    _("Create or select a mask first (see Threshold above) so the preview can be shown."),
+                    _("No mask selected"), wx.OK | wx.ICON_WARNING,
+                )
+                return
+
+            pi = ProjectInterface()
+            volume = pi.get_volume_data()
+            if volume is None:
+                self.lbl_preview_status.SetLabel(_("No project loaded"))
+                return
+
+            lo, hi = self.controller.seg_mgr.auto_threshold_otsu(volume)
+            self.controller.seg_mgr.set_threshold(lo, hi)
+            # Same real inclusive-both-ends comparison
+            # SetMaskThreshold()/do_threshold_to_all_slices() use for the
+            # actual committed mask (instruction: "derive candidate mask
+            # using the SAME threshold semantics that final creation
+            # would use") - see _commit_threshold_mask()'s NOTE.
+            candidate01 = self.controller.seg_mgr.apply_threshold(volume)
+
+            gen = self.preview_mgr.new_generation()
+            temp_file, array = sl.Slice().create_temp_mask()
+            array[:] = candidate01 * 255
+
+            ok = self.preview_mgr.set_otsu_preview(gen, array, threshold=(lo, hi), name="Otsu Preview")
+            if not ok:
+                # Superseded before this synchronous computation even
+                # finished (shouldn't happen for a same-thread, non-async
+                # path, but never assume) - release rather than leak.
+                try:
+                    os.remove(temp_file)
+                except OSError:
+                    pass
+                return
+
+            self._preview_temp_file = temp_file
+            self._show_preview_overlay(array)
+            voxel_count = int(candidate01.sum())
+            self.lbl_preview_status.SetLabel(_(f"Ready: Otsu threshold ({lo}, {hi}), {voxel_count} voxels"))
+            self._update_preview_buttons()
+        except Exception as e:
+            self.lbl_preview_status.SetLabel(_("Otsu preview failed"))
+            print(f"ROI Viewer: Otsu preview failed - {e}")
+
+    def _on_preview_region_growing(self, event):
+        if self._preview_seed_voxel is None:
+            wx.MessageBox(_("Pick a seed point first."), _("No seed"), wx.OK | wx.ICON_WARNING)
+            return
+        try:
+            import invesalius.data.slice_ as sl
+            from ..interface.project_interface import ProjectInterface
+
+            if sl.Slice().current_mask is None:
+                wx.MessageBox(
+                    _("Create or select a mask first (see Threshold above) so the preview can be shown."),
+                    _("No mask selected"), wx.OK | wx.ICON_WARNING,
+                )
+                return
+
+            pi = ProjectInterface()
+            volume = pi.get_volume_data()
+            if volume is None:
+                self.lbl_preview_status.SetLabel(_("No project loaded"))
+                return
+
+            seed = self._preview_seed_voxel
+            seed_world = self._preview_seed_world
+            tolerance = self.spin_rg_tolerance.GetValue()
+            gen = self.preview_mgr.new_generation()
+            self.lbl_preview_status.SetLabel(_(f"Computing (voxel {seed}, tolerance {tolerance})..."))
+            self.btn_preview_region_growing.Enable(False)
+
+            # Same real background-thread + wx.CallAfter pattern as the
+            # classic path in _on_seed_picked() above - see that
+            # method's own thread-safety note (applies identically here:
+            # worker() only touches `volume` read-only and the pure
+            # SegmentationManager.region_growing(), never a wx/VTK
+            # object directly).
+            import threading
+
+            def worker():
+                try:
+                    result_mask = self.controller.seg_mgr.region_growing(volume, seed, tolerance)
+                    wx.CallAfter(
+                        self._on_region_grown_preview, result_mask, seed_world, seed, tolerance, gen
+                    )
+                except Exception:
+                    import traceback
+
+                    wx.CallAfter(self.lbl_preview_status.SetLabel, _("Region growing preview failed"))
+                    wx.CallAfter(self.btn_preview_region_growing.Enable, True)
+                    print("ROI Viewer: region growing preview failed -\n" + traceback.format_exc())
+
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as e:
+            self.lbl_preview_status.SetLabel(_("Region growing preview failed"))
+            print(f"ROI Viewer: region growing preview setup failed - {e}")
+
+    def _on_region_grown_preview(self, result_mask, seed_world, seed_voxel, tolerance, generation_id):
+        """Runs on the main thread (via wx.CallAfter) - the preview-mode
+        counterpart of _on_region_grown(). Never creates a real mask;
+        only populates preview_mgr + the 2D overlay."""
+        self.btn_preview_region_growing.Enable(True)
+        if self.preview_mgr.is_stale(generation_id):
+            # A newer preview (or a Cancel, or disabling Preview
+            # Workflow) already superseded this request - discard
+            # silently. This is the real async-race guard (instruction
+            # section 6/21's generation_id requirement;
+            # core/segmentation_preview.py's class docstring has the
+            # full "request 1 finishes late" scenario this covers).
+            print("ROI Viewer: discarded stale region growing preview result")
+            return
+        try:
+            import os
+            import numpy as np
+            import invesalius.data.slice_ as sl
+            from ..interface.project_interface import ProjectInterface
+
+            pi = ProjectInterface()
+            stats = self.controller.seg_mgr.region_stats(result_mask, pi.get_spacing())
+            voxel_count = stats["voxel_count"]
+
+            if voxel_count == 0:
+                self.preview_mgr.cancel()
+                self.lbl_preview_status.SetLabel(
+                    _(f"No region found from seed {seed_voxel} (tolerance {tolerance}) - try a higher tolerance")
+                )
+                self._update_preview_buttons()
+                return
+
+            temp_file, array = sl.Slice().create_temp_mask()
+            array[:] = np.where(result_mask > 0, 255, 0)
+
+            ok = self.preview_mgr.set_region_growing_preview(
+                generation_id, array, seed_world, seed_voxel, tolerance, stats, name="Region Growing Preview"
+            )
+            if not ok:
+                try:
+                    os.remove(temp_file)
+                except OSError:
+                    pass
+                return
+            self._preview_temp_file = temp_file
+
+            info = f"{voxel_count} voxels ({stats['fraction'] * 100:.1f}% of volume)"
+            if "volume_mm3" in stats:
+                info += f", {stats['volume_mm3']:.1f} mm3"
+            if stats["exceeds_limit"]:
+                limit_pct = self.controller.seg_mgr.max_region_fraction * 100
+                # Informational only, non-blocking (instruction section
+                # 12: "show warning/statistics BEFORE Accept... the user
+                # may still inspect the candidate preview") - the actual
+                # blocking confirmation happens in _on_preview_accept()
+                # at commit time, same as the classic path.
+                info += f" - WARNING: exceeds {limit_pct:.0f}% safety threshold, confirmation required on Accept"
+            self.lbl_preview_status.SetLabel(_(f"Ready: {info}"))
+            self._show_preview_overlay(array)
+            self._update_preview_buttons()
+        except Exception as e:
+            self.lbl_preview_status.SetLabel(_("Region growing preview failed"))
+            print(f"ROI Viewer: applying region growing preview result failed - {e}")
+
+    def _on_preview_accept(self, event):
+        if not self.preview_mgr.begin_accept():
+            return  # not PREVIEW_READY (nothing to accept, or already accepting) - no-op
+        self.btn_preview_accept.Enable(False)
+        self.btn_preview_cancel.Enable(False)
+        try:
+            kind = self.preview_mgr.preview_kind
+            name = None
+            if kind == "otsu":
+                lo, hi = self.preview_mgr.source_threshold
+                # Reuses the EXACT same real commit as the classic
+                # "Create Mask from Threshold" button - see
+                # _commit_threshold_mask()'s docstring.
+                name = self._commit_threshold_mask(lo, hi)
+            elif kind == "region_growing":
+                stats = self.preview_mgr.stats or {}
+                if stats.get("exceeds_limit"):
+                    limit_pct = self.controller.seg_mgr.max_region_fraction * 100
+                    proceed = wx.MessageBox(
+                        _(
+                            f"This region covers {stats.get('fraction', 0) * 100:.1f}% of the volume "
+                            f"- larger than the {limit_pct:.0f}% safety threshold and likely not a "
+                            f"meaningful region of interest.\n\nCreate it anyway?"
+                        ),
+                        _("Region growing: large region"), wx.YES_NO | wx.ICON_WARNING,
+                    )
+                    if proceed != wx.YES:
+                        self.preview_mgr.revert_accept()
+                        self.lbl_preview_status.SetLabel(_("Accept cancelled (oversized region) - preview still active"))
+                        self._update_preview_buttons()
+                        return
+                # preview_array holds 0/255 values (see
+                # _on_region_grown_preview()) - _commit_region_growing_
+                # result() does `np.where(result_mask > 0, ...)`, so a
+                # 0/255 array works identically to a 0/1 one.
+                name = self._commit_region_growing_result(
+                    self.preview_mgr.preview_array, self.preview_mgr.seed_voxel, self.preview_mgr.tolerance
+                )
+
+            if name is None:
+                self.preview_mgr.revert_accept()
+                wx.MessageBox(_("Failed to create the final mask."), _("Error"), wx.OK | wx.ICON_ERROR)
+                self._update_preview_buttons()
+                return
+
+            self._clear_preview_overlay()
+            self.preview_mgr.finish_accept()
+            self._preview_seed_world = None
+            self._preview_seed_voxel = None
+            self.btn_preview_region_growing.Enable(False)
+            self.controller.on_roi_source_changed()
+            self._refresh_after_edit()
+            self.lbl_preview_status.SetLabel(_(f"Idle (accepted '{name}')"))
+            self._update_preview_buttons()
+        except Exception as e:
+            print(f"ROI Viewer: preview accept failed - {e}")
+            self.preview_mgr.revert_accept()
+            self.lbl_preview_status.SetLabel(_("Accept failed - preview still active"))
+            self._update_preview_buttons()
+
+    def _on_preview_cancel(self, event):
+        self.cancel_preview()
 
     # ------------------------------------------------------------------
     # Undo / Redo of the real current mask
@@ -749,6 +1244,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # seed-pick callback registered on the shared picker pointing
         # back into this (about to be destroyed) panel.
         self.controller.picker.remove_callback(self._on_seed_picked)
+        # E2: always clear any active/pending preview on destroy,
+        # regardless of brush state - same "never leave native/plugin
+        # state stuck across a close" reasoning as the brush cleanup
+        # immediately below.
+        self.cancel_preview()
         if not self._brush_enabled():
             return
         # NOTE: deliberately not calling self._disable_brush() here - it

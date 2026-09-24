@@ -71,3 +71,73 @@ Exclusive (single-ROI) solo, matching the common DAW/3D-tool convention the term
 - Group/category metadata (feature list item 10) - deferred, `PLANNED`, not attempted this milestone (see the persistence discussion above).
 - Any colour **editing** UI (only an indicator was requested and built).
 - Any change to `invesalius/data/mask.py`, `invesalius/project.py`, or any other upstream/core file.
+
+---
+
+# E2 Preview Architecture
+
+## Source-first audit before any E2 code
+
+Files read in full: `plugins/roi_viewer/core/segmentation.py` (`SegmentationManager` - Otsu, region growing, `region_stats()`), `plugins/roi_viewer/core/mask_editor.py`, `plugins/roi_viewer/gui/segmentation_panel.py`'s full threshold/region-growing/undo-redo bodies. Targeted reads of `invesalius/data/slice_.py` (mask creation, colour, threshold, and - critically - the `aux_matrices`/`to_show_aux` rendering path) and `invesalius/data/styles.py` (the real `WatershedInteractorStyle`, which turned out to be the load-bearing precedent for E2's entire rendering design).
+
+## Preview source of truth
+
+**A preview is never a real project mask.** `core/segmentation_preview.SegmentationPreviewManager` (new) owns exactly this fact structurally: it has zero `invesalius.*` imports, zero pubsub, zero ability to call `Project().mask_dict` or any real InVesalius mutation - confirmed by the module containing no such import at all (verifiable by inspection, not just by convention). It tracks an opaque `preview_array` (real memmap in production, plain `numpy.ndarray` in tests) plus metadata (`preview_kind`, `source_threshold` or `seed_world`/`seed_voxel`/`tolerance`/`stats`), and a small state machine: `IDLE` → `COMPUTING` → `PREVIEW_READY` → `ACCEPTING` → (back to `IDLE`). `CANCELLED` is not a long-lived state (per the original task's own suggestion) - `cancel()` is a transition straight back to `IDLE`.
+
+**Project().mask_dict is modified before Accept: NO.** Confirmed by construction (see above) and by real tests against a live `Project()` singleton (`tests/ct3d/test_segmentation_preview_commit.py`): `otsu_preview_does_not_create_project_mask`/`region_preview_does_not_create_mask` assert `len(proj.mask_dict) == 0` after running the exact real preview-computation code path.
+
+## No temporary Project mask - the real alternative found
+
+The task's own instructions required proving a safer display path exists before ever considering a temporary `Project().mask_dict` entry. It does: **`invesalius.data.slice_.Slice.aux_matrices`/`.to_show_aux`** - a real, already-shipped mechanism. Confirmed by reading `invesalius/data/slice_.py`'s slice-rendering method directly: after the normal current-mask blend, it separately blends `self.aux_matrices[self.to_show_aux]` (a plain numpy array, per-orientation-sliced via `get_aux_slice()`) using a custom VTK colour lookup table (`do_custom_colour()`), entirely independent of `Project().mask_dict`. This is not a theoretical mechanism - it is the **exact real path InVesalius's own Watershed tool uses for its live segmentation preview** (`invesalius/data/styles.py`'s `WatershedInteractorStyle.SetUp()`/`CleanUp()`: `self.viewer.slice_.aux_matrices["watershed"] = <temp array>`, `self.viewer.slice_.to_show_aux = "watershed"`, then `self.viewer.OnScrollBar()` to redraw; `CleanUp()` resets `to_show_aux = ""`). E2's `_show_preview_overlay()`/`_clear_preview_overlay()` mirror this pattern exactly, using a distinct key (`"roi_viewer_preview"`) and `Publisher.sendMessage("Reload actual slice")` (already used elsewhere in this plugin, e.g. undo/redo refresh) as the redraw trigger instead of holding a direct `Viewer` reference.
+
+The backing array itself is allocated via `Slice.create_temp_mask()` - also a real, pre-existing method (already used by Watershed), returning a `(temp_file_path, np.memmap)` pair shaped like the real volume, `dtype=uint8`. Using it means E2's preview data is disk-backed, not a second full in-RAM copy of the volume (see "Memory" below).
+
+**Real, pre-existing constraint this inherits (not introduced by E2)**: the generic `to_show_aux` blend only runs when `self.current_mask is not None` (confirmed directly in the render method - the exact same condition gates Watershed's own overlay). E2's preview buttons therefore require a current mask to already exist (any mask), with the same user-facing guard message pattern `_on_toggle_brush()` already uses for its own "no mask selected" case - not a new limitation invented for this feature, a real one shared with native code.
+
+## State machine
+
+`IDLE` → (`new_generation()`) → `COMPUTING` → (`set_otsu_preview()`/`set_region_growing_preview()`) → `PREVIEW_READY` → (`begin_accept()`) → `ACCEPTING` → (`finish_accept()`) → `IDLE`. `cancel()` can fire from any state and always lands on `IDLE`. `revert_accept()` (`ACCEPTING` → `PREVIEW_READY`, added during E2 for the oversized-region-declined/commit-failed case) preserves the preview data instead of discarding it, so a declined confirmation or a transient commit failure doesn't lose the user's work-in-progress preview.
+
+## Otsu preview
+
+`_on_preview_otsu()` calls the SAME real `SegmentationManager.auto_threshold_otsu()`/`apply_threshold()` the classic Otsu checkbox already uses - no second implementation. Accept calls `_commit_threshold_mask()`, extracted from the classic `_on_apply_threshold()` handler's commit body so both paths share one real "Create new mask" call using the exact threshold the preview showed (proven by `otsu_accept_uses_same_threshold_as_preview`, a real test asserting the committed mask's `threshold_range` equals the value the preview computed).
+
+## Region Growing preview
+
+Seed-pick UX is unchanged (`btn_pick_seed`, same 3D picker). With Preview Workflow enabled, `_on_seed_picked()` now only *records* the seed (`self._preview_seed_world`/`_preview_seed_voxel`) instead of immediately spawning the background-growing worker - an explicit "Preview Region Growing" click starts the (still background-threaded, still `wx.CallAfter`-marshalled) computation, using whatever Tolerance value is set at that moment. This lets the user adjust Tolerance after picking, before paying the compute cost - a real UX improvement over the classic immediate-commit flow, not just a mechanical port of it. `_commit_region_growing_result()` was extracted from the classic `_on_region_grown()` handler's tail (mask creation + padded matrix write + `was_edited=True`) so Accept reuses the identical real commit, never a second implementation.
+
+## Accept semantics
+
+`_on_preview_accept()`: `preview_mgr.begin_accept()` gates entry (returns `False`, no-op, if not `PREVIEW_READY` - covers "already accepting" from a rapid double-click, and "nothing to accept"). Buttons are disabled immediately on entry. For Region Growing, if `preview_mgr.stats["exceeds_limit"]`, the SAME real oversized-region confirmation dialog the classic path shows appears here too, at commit time (not preview time) - declining it calls `revert_accept()` (preview preserved, state back to `PREVIEW_READY`) rather than losing the preview. On success: overlay cleared, `finish_accept()` (state → `IDLE`, all preview data released), `controller.on_roi_source_changed()` (real ROIManager resync, same call `_commit_threshold_mask`'s underlying `"Create new mask"` pubsub already triggers indirectly - kept explicit here for clarity), status updated. Real tests (`otsu_accept_creates_one_real_mask`, `region_accept_creates_exactly_one_mask`) confirm exactly one `Project().mask_dict` entry results.
+
+## Cancel semantics
+
+`_on_preview_cancel()` calls the shared `cancel_preview()` (also used by the lifecycle hooks below): clears the real overlay (`_clear_preview_overlay()`), calls `preview_mgr.cancel()` (bumps `generation_id`, clears all preview data/metadata, state → `IDLE`), clears the recorded seed, and resets UI state. Creates zero `Project()` masks - confirmed by `otsu_cancel_creates_no_mask`/`region_cancel_creates_zero_masks`.
+
+## Async race protection
+
+`SegmentationPreviewManager.generation_id`, bumped by `new_generation()` (before a computation starts) and by `cancel()`/`finish_accept()` (so a cancelled/completed preview's own in-flight worker, if any, can never resurrect it). `set_otsu_preview()`/`set_region_growing_preview()` both check `is_stale(generation_id)` first and return `False` (no mutation at all) for a stale result. Proven for real with the exact "request 1 starts, request 2 starts, request 1 finishes late" scenario the task specified (`test_generation_id_rejects_stale_result`, `test_stale_async_region_result_ignored`).
+
+## Lifecycle
+
+Preview is cleared via the shared `SegmentationPanel.cancel_preview()` from: `roi_panel.py`'s `on_project_close()` AND `on_project_load()` (a preview computed for the OLD project's volume is meaningless once a different project is loaded, defensive even though close-then-load already covers the normal flow), and `segmentation_panel.py`'s own `_on_destroy()` (plugin window closing) - unconditionally, not gated behind the brush-specific early-return that follows it. Widget-touching cleanup is wrapped separately from data cleanup and defends against `RuntimeError` from an already-destroyed wx widget (same real crash class already documented for the brush toggle's own destroy handler).
+
+## Save/Open isolation
+
+Preview is plugin-session state only - `SegmentationPreviewManager` has no serialization method at all, and nothing in E2 writes to any `Mask`/`Project` field before Accept. A project Save while a preview is visible saves the real masks exactly as they were (untouched); on Open, preview state is definitionally `IDLE` (a freshly constructed `SegmentationPanel`/`SegmentationPreviewManager`, or an existing one whose `cancel_preview()` already ran via `on_project_load()`). No change was made to `invesalius/project.py`'s serialization.
+
+## E1 interaction
+
+**Lock**: Otsu/Region Growing always create NEW masks (confirmed by reading `_commit_threshold_mask()`/`_commit_region_growing_result()` - both call `"Create new mask"`, never write into an already-existing mask), so a locked *current* ROI does not block preview generation - preview only *reads* the volume and the current mask's existence-as-a-render-precondition, never its content. **Solo**: the preview overlay renders via a completely separate mechanism (`aux_matrices`/`to_show_aux`) from per-ROI `Show mask`/`is_shown` visibility (confirmed by reading the render method - the aux blend happens unconditionally after the normal mask blend, regardless of which real mask is or isn't shown) - Solo hiding other ROIs has **zero effect** on whether the preview overlay renders. **Show All/Hide All**: only touch `ROI.visible`/`"Show mask"`, never `preview_mgr` or the aux overlay - cannot accidentally destroy preview state, confirmed by the same "separate mechanism" reasoning.
+
+## C8 interaction
+
+The preview overlay creates **no VTK actor/prop at all** - it is a 2D raster blend baked into each slice's own `vtkImageData` (via `do_custom_colour()`/`do_blend()`), the same way a real mask's own colour overlay is not a separate pickable actor either. It therefore cannot intercept 3D picking, cannot obstruct the C8 marker or slice planes (which live entirely in the 3D `Viewer`, a completely different rendering pipeline from the 2D slice views this overlay touches), cannot interfere with measurement tools, and cannot move the camera (nothing in this feature ever touches a `vtkCamera`). `test_overlay_is_not_actor_based_pickability_not_applicable` asserts the stored preview data has no `GetPickable` method at all, confirming by construction that "pickability" is not a concept that applies here.
+
+## Memory
+
+`Slice.create_temp_mask()` allocates `dtype=uint8`, shape = real volume shape, memmap-backed (disk, not pure RAM). For dataset `0051` (108×512×512 ≈ 28.3M voxels, see `CT3D_DATASET_REGISTRY.md`), that is ≈28.3MB per preview array - the SAME real order of magnitude as one Undo/Redo checkpoint (Phase 10 measured ≈27.36MB for a comparable real CT volume). At most ONE preview array is ever live at a time (`_reset_metadata()` clears the previous one's reference before a new one is set; `SegmentationPreviewManager` never accumulates multiple generations in memory), and `_clear_preview_overlay()`/a successful Accept always removes the backing temp file. This does not reintroduce the Phase 10 Undo/Redo memory-estimation mistake (a *single* array per preview, not an unbounded history).
+
+## Feature flag
+
+`ENABLE_PREVIEW_SEGMENTATION` is realized as `cb_enable_preview` (a real wx checkbox, "Enable Preview Workflow"), **default unchecked**. With it unchecked: `btn_preview_otsu`/`btn_preview_region_growing` stay disabled (`Enable(False)` at construction), `_on_seed_picked()` takes its original, unmodified immediate-grow branch, and `_commit_threshold_mask()`/`_commit_region_growing_result()` are reached ONLY through the classic handlers - E2 adds no new code to the classic call path at all when the flag is off (structurally, not just behaviorally, unchanged - proven by `otsu_classic_mode_unchanged_when_flag_off`/`test_classic_region_growing_unchanged_when_flag_off`).

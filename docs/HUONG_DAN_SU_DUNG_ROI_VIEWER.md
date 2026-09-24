@@ -103,6 +103,24 @@ Cạnh nhãn **"Active ROI:"** phía trên danh sách có 1 ô màu nhỏ hiển
 > **Vì sao cần bấm "Update 3D Surface" thủ công**: InVesalius gốc (kể cả không có plugin) **không tự động** cập nhật lại mô hình 3D mỗi khi mask bị sửa (vẽ brush, undo, region growing...) — đây là hành vi thật của InVesalius, không phải hạn chế riêng của plugin. Nút này đóng vòng lặp "sửa ROI → xem lại 3D" một cách chủ động, tránh việc tự động rebuild sau MỖI nét vẽ (sẽ làm treo giao diện vì dựng mô hình 3D là tác vụ nặng). **Sau khi sửa mask xong, luôn nhớ bấm nút này để thấy đúng kết quả mới nhất trên khối 3D** — nếu không bấm, khối 3D vẫn hiện hình dạng CŨ dù mask đã đổi.
 > Việc dựng lại có thể mất vài giây đến hơn chục giây tuỳ kích thước mask — quan sát dòng "Status:" phía dưới cùng panel để biết đang xử lý.
 
+### 3.3c (chỉ nhánh `enhancement/advanced-segmentation`) — Preview Segmentation (E2)
+
+> **Chỉ có trên nhánh `enhancement/advanced-segmentation`, KHÔNG có trên bản release ổn định (`thesis-ct-roi-tools`/tag `ct3d-rc1`).** Mặc định TẮT (`ENABLE_PREVIEW_SEGMENTATION = OFF`) — khi tắt, Otsu và Region Growing hoạt động y hệt bản ổn định (tạo mask thật ngay lập tức), không có gì thay đổi.
+
+**Điều kiện**: đã có ít nhất 1 mask thật đang là mask hiện hành (current mask) — đây là giới hạn thật, có sẵn của chính InVesalius (cơ chế preview dùng chung đường vẽ overlay thật InVesalius Watershed cũng dùng, đường này chỉ vẽ khi có current mask) — xem `CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`.
+
+**Cách dùng**:
+1. Tick **"Enable Preview Workflow"** trong khung "Preview Segmentation (E2, enhancement branch)".
+2. **Otsu**: bấm **"Preview Otsu"** (nút mới trong khung Threshold) → xem overlay màu cam bán trong suốt trên cả 3 khung 2D (Axial/Coronal/Sagittal), khác hẳn màu mask thật. Overlay này **CHƯA phải mask thật** — chưa lưu vào project, chưa có trong tab Masks gốc.
+3. **Region Growing**: bấm **"Pick Seed Point (3D)"** như bình thường, click 1 điểm trên khối 3D — khi Preview Workflow đang bật, thao tác này **chỉ ghi nhớ điểm hạt giống**, KHÔNG tự mọc vùng ngay (khác bản classic). Chỉnh Tolerance nếu muốn, rồi bấm **"Preview Region Growing"** (nút mới trong khung Region Growing) để tính và xem overlay.
+4. Xem dòng **"Preview status:"** để biết số voxel/% thể tích (và cảnh báo nếu vùng quá lớn).
+5. Bấm **"Accept Preview"** để biến overlay thành mask thật (dùng ĐÚNG threshold/kết quả đã xem, không tính lại) — hoặc **"Cancel Preview"** để huỷ, không tạo gì cả.
+
+**Lưu ý quan trọng**:
+- Preview KHÔNG bao giờ tạo mask thật, KHÔNG lưu vào Save/Open, KHÔNG ảnh hưởng ROI đang Lock (E1) hay trạng thái Solo (E1) của ROI khác.
+- Đóng project hoặc đóng cửa sổ plugin trong khi đang xem preview sẽ tự huỷ preview an toàn (không crash, không để lại overlay "ma").
+- Preview thứ 2 luôn thay thế preview thứ 1 (không chồng nhiều overlay).
+
 ### 3.4 Brush Tools (real 2D editor)
 - **Draw / Erase**: chọn chế độ vẽ hay xoá.
 - **Circle / Square**: hình dạng đầu cọ.

@@ -261,6 +261,14 @@ class ROIViewerFrame(wx.Frame):
         # freshly-opened .inv3 with masks created in a previous
         # session, which this plugin's own session never created).
         self.on_roi_source_changed()
+        # E2 (Advanced Segmentation Enhancement Track, enhancement/
+        # advanced-segmentation branch only): a preview computed for the
+        # OLD project's volume is meaningless (wrong shape/content) once
+        # a different project is loaded - never carry it over. Defensive
+        # even though on_project_close() already does this in the normal
+        # open-a-different-project flow.
+        if hasattr(self, "segmentation_panel"):
+            self.segmentation_panel.cancel_preview()
 
         # NOTE: "Load project data" (which drives this call) fires
         # synchronously from *inside* invesalius.control.Controller.
@@ -308,6 +316,10 @@ class ROIViewerFrame(wx.Frame):
         # both list widgets even though the underlying data was gone.
         if hasattr(self, "segmentation_panel"):
             self.segmentation_panel._refresh_roi_list()
+            # E2: same reasoning as on_project_load()'s call above - a
+            # preview tied to the volume that's now closing must not
+            # survive into whatever project (if any) opens next.
+            self.segmentation_panel.cancel_preview()
         if hasattr(self, "annotation_panel"):
             self.annotation_panel.refresh_from_manager()
         print("ROI Viewer: Project closed")

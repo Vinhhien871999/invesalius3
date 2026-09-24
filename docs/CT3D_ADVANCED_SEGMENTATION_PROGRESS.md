@@ -4,7 +4,9 @@
 
 **Status vocabulary**: `PLANNED` / `AUDITED` / `IN_PROGRESS` / `WORKING` / `PARTIAL` / `BLOCKED` / `EXPERIMENTAL`.
 
-## E1 — Multi-label / Advanced ROI Management
+## E1 — Advanced ROI Management / Segmentation Set
+
+*(Renamed from "Multi-label / Advanced ROI Management" during the E2 run - see `CT3D_ADVANCED_SEGMENTATION_ROADMAP.md`'s "Naming correction" note. The backend was never multi-label voxel data; only the doc title was imprecise.)*
 
 | ID | Feature | Backend | UI | Tests | Manual | Status |
 |---|---|---|---|---|---|---|
@@ -29,7 +31,23 @@
 
 ## E2 — Preview / Confirm segmentation workflow
 
-`PLANNED`. Not started. Will require: `SegmentationPreviewManager` (states `IDLE`/`PREVIEW_READY`/`ACCEPTING`/`CANCELLED`), applied first to Otsu and Region Growing, with explicit non-goals (must not modify `Project().mask_dict` permanently until Accept, must not pollute Save/Open, must not create duplicate masks, must not push unnecessary Undo history).
+| ID | Feature | Backend | UI | Tests | Manual | Status |
+|---|---|---|---|---|---|---|
+| E2.1 | Preview state machine (`IDLE`/`COMPUTING`/`PREVIEW_READY`/`ACCEPTING`) | `core/segmentation_preview.SegmentationPreviewManager` (new, pure, no wx/pubsub) | — | 13 unit tests (`test_segmentation_preview.py`) PASS | `NOT_RUN` | **WORKING** |
+| E2.2 | Otsu Preview | `SegmentationPanel._on_preview_otsu()`, reuses `SegmentationManager.auto_threshold_otsu()`/`apply_threshold()` unchanged | `btn_preview_otsu` (in Threshold box) | `otsu_preview_does_not_create_project_mask`, `otsu_preview_threshold_matches_existing_otsu` PASS (real `Slice()`/`Project()`) | `NOT_RUN` | **WORKING** |
+| E2.3 | Region Growing Preview | `SegmentationPanel._on_preview_region_growing()`/`_on_region_grown_preview()`, reuses `SegmentationManager.region_growing()`/`region_stats()` unchanged | `btn_preview_region_growing` (in Region Growing box), seed-pick now records instead of auto-growing when preview mode is on | `region_preview_does_not_create_mask`, `region_preview_matches_existing_region_growing_output`, `region_preview_stats_match`, `oversized_region_warning_state_preserved` PASS | `NOT_RUN` | **WORKING** |
+| E2.4 | Accept | `_on_preview_accept()`, reuses `_commit_threshold_mask()`/`_commit_region_growing_result()` - the SAME real commit code the classic buttons call, extracted not duplicated | `btn_preview_accept` | `otsu_accept_creates_one_real_mask`, `otsu_accept_uses_same_threshold_as_preview`, `region_accept_creates_exactly_one_mask`, `was_edited_semantics_preserved` PASS (real `Project().mask_dict` verified) | `NOT_RUN` | **WORKING** |
+| E2.5 | Cancel | `preview_mgr.cancel()` + `_clear_preview_overlay()` | `btn_preview_cancel` | `otsu_cancel_creates_no_mask`, `region_cancel_creates_zero_masks`, `test_cancel_clears_preview`, `test_cancel_idle_safe_noop` PASS | `NOT_RUN` | **WORKING** |
+| E2.6 | 2D Overlay | `_show_preview_overlay()`/`_clear_preview_overlay()`, via InVesalius's real `Slice().aux_matrices`/`to_show_aux` (the same native mechanism its own Watershed tool uses) - **NOT** a temporary `Project().mask_dict` entry, **NOT** a VTK actor | Renders automatically on the 2D slice views once shown | 7 tests (`test_segmentation_preview_overlay.py`) PASS against a real `Slice()`, including real per-axis slice extraction (`get_aux_slice`) | `NOT_RUN` | **WORKING** |
+| E2.7 | Async stale-result guard | `generation_id` in `SegmentationPreviewManager` | — | `test_generation_id_rejects_stale_result`, `test_stale_async_region_result_ignored` PASS | `NOT_RUN` | **WORKING** |
+| E2.8 | Lifecycle (project close/load, plugin close/destroy) | `SegmentationPanel.cancel_preview()`, called from `roi_panel.py`'s `on_project_close()`/`on_project_load()` and `segmentation_panel.py`'s `_on_destroy()` | — | `test_project_close_clear`, `test_plugin_close_clear` (manager-level) PASS; full wx-widget-teardown path not automatable, deferred to manual QA | `NOT_RUN` | **WORKING** (manager-level); manual GUI confirmation pending |
+| E2.9 | Classic-mode compatibility (`ENABLE_PREVIEW_SEGMENTATION` default OFF) | `cb_enable_preview` unchecked by default; `_commit_threshold_mask()`/`_commit_region_growing_result()` are the literal same methods the classic handlers call | Preview buttons disabled by default; classic Threshold/Region Growing buttons unchanged | `otsu_classic_mode_unchanged_when_flag_off`, `test_classic_region_growing_unchanged_when_flag_off` PASS | `NOT_RUN` | **WORKING** |
+
+**E2 automated regression this run**: `tests/ct3d -q` = **234 passed, 1 skipped** (was 199 passed/1 skipped after E1 - 35 new tests: 13 state-machine + 15 real-commit + 7 real-overlay, 0 removed, 0 failed), verified identical across 3 consecutive runs. Upstream `tests --ignore=tests/ct3d -q` = **94 passed**, unchanged. `pyflakes plugins/roi_viewer` = exit 0. `compileall plugins/roi_viewer` = exit 0.
+
+**E2 manual GUI QA**: see `docs/CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md`'s E2 section - all 12 items `NOT_RUN`.
+
+**E2_GATE: PASS** (automated). See `docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md` for the full design/audit writeup, including why a temporary `Project().mask_dict` entry was proven unnecessary (real native overlay mechanism found instead) and the real, pre-existing test-isolation gap discovered and worked around while writing E2's own tests.
 
 ## E3 — Segmentation cleanup tools
 
