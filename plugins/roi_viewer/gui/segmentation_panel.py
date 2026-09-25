@@ -88,6 +88,46 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._e4_debounce_timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_e4_debounce_timer, self._e4_debounce_timer)
         self._e4_callback_mask = None  # which real Mask currently has our modified-callback registered
+        # E5 hardening (Section 5 audit): before this, every debounced
+        # fire AND every "Refresh 3D Preview" click called
+        # _trigger_preview_3d_rebuild() unconditionally - a real,
+        # confirmed gap (not inferred from generation_id alone, per the
+        # audit's explicit instruction): rapid repeated manual Refresh
+        # clicks (or a Refresh landing while a debounced worker is still
+        # running) could spawn an unbounded number of simultaneous
+        # threading.Thread workers, each holding its own ~28MB numpy
+        # snapshot strongly referenced at once - generation_id alone
+        # only discards STALE *results*, it never limited how many
+        # workers/snapshots could be concurrently in flight. Hardened to
+        # "max 1 running worker + max 1 latest pending request":
+        # _e4_build_busy gates a NEW worker from starting while one is
+        # already in flight (synchronous early-return paths count as
+        # "in flight" too, for the same one-at-a-time guarantee);
+        # _e4_pending_reason remembers only the LATEST coalesced reason
+        # requested meanwhile (Section 5: "do NOT launch another worker
+        # immediately... only remember 'latest rebuild requested'").
+        # _finish_preview_3d_build() is the single place that clears
+        # _e4_build_busy and launches exactly one pending rebuild, if
+        # any, once the current one is fully done.
+        self._e4_build_busy = False
+        self._e4_pending_reason = None
+        # E5B (clipping - Section 16 audit): mask_index -> surface_index,
+        # populated ONLY from surface builds THIS plugin's own "Update 3D
+        # Surface from Selected ROI" button triggered (never guessed -
+        # see core/surface_clipping_3d.py's module docstring for the
+        # real, source-proven reason mask_index == surface_index is NOT
+        # a safe assumption: AddNewActor()'s real overwrite path assigns
+        # the rebuilt Surface's .index from the GLOBAL
+        # self.last_surface_index counter, not the mask index). Guarded
+        # by _pending_surface_build_mask_index, set right before this
+        # panel's own "Create surface from index" send and consumed by
+        # the very next real "Update surface info in GUI" event - the
+        # real pubsub message AddNewActor()/its async completion path
+        # sends with the actual, just-created Surface object (see
+        # _on_surface_info_updated() below).
+        self._roi_surface_index = {}
+        self._pending_surface_build_mask_index = None
+        self._subscribe_surface_info_once()
         self._init_ui()
         self.SetupScrolling()
 
@@ -154,7 +194,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_pick_seed = wx.ToggleButton(self, wx.ID_ANY, _("Pick Seed Point (3D)"))
         rg_sizer.Add(self.btn_pick_seed, 0, wx.ALL | wx.EXPAND, 5)
 
-        self.rg_status = wx.StaticText(self, wx.ID_ANY, _(""))
+        self.rg_status = wx.StaticText(self, wx.ID_ANY, "")
         rg_sizer.Add(self.rg_status, 0, wx.ALL | wx.EXPAND, 5)
 
         # E2: disabled unless Preview Workflow is enabled AND a seed has
@@ -338,7 +378,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         )
         cleanup_sizer.Add(self.btn_cleanup_smooth, 0, wx.ALL | wx.EXPAND, 3)
 
-        self.lbl_cleanup_status = wx.StaticText(self, wx.ID_ANY, _(""))
+        self.lbl_cleanup_status = wx.StaticText(self, wx.ID_ANY, "")
         cleanup_sizer.Add(self.lbl_cleanup_status, 0, wx.ALL | wx.EXPAND, 3)
 
         sizer.Add(cleanup_sizer, 0, wx.ALL | wx.EXPAND, 5)
@@ -371,7 +411,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         e4_state_row.Add(self.lbl_e4_state, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         preview3d_sizer.Add(e4_state_row, 0, wx.EXPAND, 3)
 
-        self.lbl_e4_mesh_info = wx.StaticText(self, wx.ID_ANY, _(""))
+        self.lbl_e4_mesh_info = wx.StaticText(self, wx.ID_ANY, "")
         preview3d_sizer.Add(self.lbl_e4_mesh_info, 0, wx.ALL | wx.EXPAND, 3)
 
         sizer.Add(preview3d_sizer, 0, wx.ALL | wx.EXPAND, 5)
@@ -574,7 +614,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         if not self.btn_pick_seed.GetValue():
             # User cancelled - unregister without growing anything.
             self.controller.picker.remove_callback(self._on_seed_picked)
-            self.rg_status.SetLabel(_(""))
+            self.rg_status.SetLabel("")
             return
 
         if not self.controller.ensure_picker_initialized():
@@ -1492,6 +1532,16 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # enabled must rebuild for the NEW source, not leave the OLD
             # ROI's mesh attached.
             self._mark_preview_3d_dirty("ROI selection changed")
+            # E5B (Section 23): switching ROI while clipping is enabled
+            # with target=Current ROI Final Surface must detach from the
+            # OLD surface's mapper and re-resolve for the NEW one (or
+            # report "no final surface" honestly) - never leave a stale
+            # ROI unexpectedly clipped.
+            if hasattr(self.controller, "interaction_panel"):
+                try:
+                    self.controller.interaction_panel.refresh_clipping_target()
+                except Exception as e:
+                    print(f"ROI Viewer: E5 clipping target refresh on ROI switch failed - {e}")
         except ImportError:
             pass
 
@@ -1684,6 +1734,13 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     "fill": False, "keep_largest": False, "overwrite": True,
                 },
             }
+            # E5B (Section 16/24): remember which mask THIS build is for
+            # so the next real "Update surface info in GUI" event (fired
+            # with the actual just-created Surface object) can be safely
+            # attributed to it - see _on_surface_info_updated() and this
+            # panel's __init__ NOTE for why mask_index cannot simply be
+            # assumed to equal the resulting surface's own index.
+            self._pending_surface_build_mask_index = mask_index
             Publisher.sendMessage("Create surface from index", surface_parameters=surface_options)
             self.status_text.SetLabel(
                 _(f"Status: Rebuilding 3D surface for mask #{mask_index} (method: {algorithm})...")
@@ -1691,6 +1748,52 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         except Exception as e:
             wx.MessageBox(_("Surface update failed."), _("Error"), wx.OK | wx.ICON_ERROR)
             print(f"ROI Viewer: surface update failed - {e}")
+
+    # ------------------------------------------------------------------
+    # E5B (Advanced Segmentation Enhancement Track, enhancement/advanced-
+    # segmentation branch ONLY): mask_index -> surface_index resolution
+    # for the "Current ROI Final Surface" clipping target.
+    # ------------------------------------------------------------------
+    def _subscribe_surface_info_once(self):
+        try:
+            from invesalius.pubsub import pub as Publisher
+
+            Publisher.subscribe(self._on_surface_info_updated, "Update surface info in GUI")
+        except ImportError:
+            pass
+
+    def _on_surface_info_updated(self, surface):
+        """
+        Real pubsub handler for "Update surface info in GUI" - fired by
+        invesalius/data/surface.py's AddNewActor()/CreateSurfaceFromPolydata()
+        with the actual just-created/just-updated real Surface object
+        (has a real `.index`). Only attributed to a mask if THIS panel's
+        own _on_update_surface() is the one that requested it (Section
+        16 - never guess a mapping for a surface build this plugin did
+        not itself trigger, e.g. one made via InVesalius's native
+        Surface tab).
+        """
+        if self._pending_surface_build_mask_index is None:
+            return
+        mask_index = self._pending_surface_build_mask_index
+        self._pending_surface_build_mask_index = None
+        try:
+            self._roi_surface_index[mask_index] = surface.index
+        except AttributeError:
+            return
+        if hasattr(self.controller, "interaction_panel"):
+            try:
+                self.controller.interaction_panel.refresh_clipping_target()
+            except Exception as e:
+                print(f"ROI Viewer: E5 clipping target refresh after surface build failed - {e}")
+
+    def get_surface_index_for_mask(self, mask_index) -> Optional[int]:
+        """Public accessor for InteractionPanel's E5B clipping target
+        resolution (Section 18/23) - returns None if this plugin has
+        never itself (re)built a surface for this mask_index this
+        session (a real, honest "no final surface for selected ROI"
+        case, not an error)."""
+        return self._roi_surface_index.get(mask_index)
 
     # ------------------------------------------------------------------
     # E3 (Advanced Segmentation Enhancement Track, enhancement/advanced-
@@ -1886,10 +1989,17 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self._trigger_preview_3d_rebuild("enabled")
         else:
             self._e4_debounce_timer.Stop()
+            # E5 hardening (test_pending_cancelled_on_disable): a
+            # coalesced pending rebuild must never fire once the user
+            # explicitly turned live preview off - _finish_preview_3d_
+            # build() already re-checks _e4_enabled() before acting on
+            # a pending reason, but clearing it here too is immediate
+            # and explicit rather than relying solely on that guard.
+            self._e4_pending_reason = None
             self.controller.preview_surface_3d.clear()
             self.lbl_e4_state.SetLabel(_("Idle"))
             self.lbl_e4_source.SetLabel(_("-"))
-            self.lbl_e4_mesh_info.SetLabel(_(""))
+            self.lbl_e4_mesh_info.SetLabel("")
             self.controller.request_render()
 
     def _on_refresh_3d_preview(self, event):
@@ -1928,10 +2038,41 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         return None, None, None
 
     def _trigger_preview_3d_rebuild(self, reason):
+        """
+        E5 hardening (Section 5 audit - see this file's __init__ NOTE
+        for the real gap found: repeated manual "Refresh 3D Preview"
+        clicks, or a Refresh landing while a debounced worker was still
+        in flight, could previously spawn an unbounded number of
+        simultaneous worker threads/~28MB snapshots - generation_id
+        alone only discarded stale RESULTS, it never bounded how many
+        builds could be concurrently in flight).
+
+        Bounded to "max 1 running build + max 1 latest pending request":
+        if a build is already in flight (_e4_build_busy), this call only
+        remembers `reason` as the latest pending one and returns
+        immediately - it does NOT start a second worker/snapshot. The
+        actual build logic lives in _run_preview_3d_rebuild(); every one
+        of its exit paths (synchronous early-return OR the async
+        worker's callback) goes through _finish_preview_3d_build(),
+        which clears the busy flag and - if a newer request arrived
+        meanwhile - launches exactly ONE more rebuild for that latest
+        reason. generation_id (core/preview_surface_3d.py) is unchanged
+        and still separately guards against a stale worker's RESULT
+        being applied - this hardening is a second, independent
+        guarantee (bounded concurrency), not a replacement for it.
+        """
         if not self._e4_enabled():
             return
+        if self._e4_build_busy:
+            self._e4_pending_reason = reason
+            return
+        self._e4_build_busy = True
+        self._run_preview_3d_rebuild(reason)
+
+    def _run_preview_3d_rebuild(self, reason):
         if not self.controller.ensure_preview_surface_attached():
             self.lbl_e4_state.SetLabel(_("No 3D view available yet"))
+            self._finish_preview_3d_build()
             return
 
         array, spacing, kind = self._select_preview_3d_source()
@@ -1939,8 +2080,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.controller.preview_surface_3d.clear()
             self.lbl_e4_state.SetLabel(_("No foreground voxels for 3D preview."))
             self.lbl_e4_source.SetLabel(_("-"))
-            self.lbl_e4_mesh_info.SetLabel(_(""))
+            self.lbl_e4_mesh_info.SetLabel("")
             self.controller.request_render()
+            self._finish_preview_3d_build()
             return
 
         try:
@@ -1948,14 +2090,16 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
             # Real snapshot BEFORE handing off to the worker (Section
             # 14/23): a plain numpy copy, never the live memmap a brush
-            # stroke could be actively mutating, and at most ONE
-            # snapshot (~28MB for a dataset-0051-sized volume) is ever
-            # strongly referenced at a time - no unbounded queue, only
-            # the latest requested generation matters.
+            # stroke could be actively mutating. Combined with the
+            # busy-gate above, at most ONE snapshot (~28MB for a
+            # dataset-0051-sized volume) is ever strongly referenced at
+            # a time - no unbounded queue, only the latest requested
+            # generation matters.
             snapshot = np.array(array)
         except Exception as e:
             self.lbl_e4_state.SetLabel(_("3D preview build failed"))
             print(f"ROI Viewer: E4 snapshot failed - {e}")
+            self._finish_preview_3d_build()
             return
 
         gen = self.controller.preview_surface_3d.new_generation()
@@ -1970,7 +2114,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # docstring) - it NEVER touches a wx widget, the renderer, the
         # actor, or the camera. The only cross-thread handoff is the
         # wx.CallAfter() call itself; _on_preview_3d_built() below is
-        # the ONLY place that touches the actor/mapper/renderer.
+        # the ONLY place that touches the actor/mapper/renderer. Exactly
+        # one worker thread is alive per build thanks to the busy-gate
+        # in _trigger_preview_3d_rebuild() above.
         import threading
 
         def worker():
@@ -1986,28 +2132,52 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 import traceback
 
                 wx.CallAfter(self.lbl_e4_state.SetLabel, _("3D preview build failed"))
+                wx.CallAfter(self._finish_preview_3d_build)
                 print("ROI Viewer: E4 preview build failed -\n" + traceback.format_exc())
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_preview_3d_build(self):
+        """
+        The ONE place that clears _e4_build_busy and, if a newer request
+        was coalesced while this build ran (_e4_pending_reason), starts
+        exactly one more rebuild for it - never more than one, and never
+        if live preview was disabled or the panel/project was torn down
+        meanwhile (both checked via _e4_enabled(), which already guards
+        against a destroyed checkbox widget - see its own docstring).
+        Called from every exit path of _run_preview_3d_rebuild() (the
+        synchronous early-returns) and from _on_preview_3d_built() /
+        the worker's own failure branch (the async completion paths).
+        """
+        self._e4_build_busy = False
+        pending = self._e4_pending_reason
+        self._e4_pending_reason = None
+        if pending is not None and self._e4_enabled():
+            self._trigger_preview_3d_rebuild(pending)
 
     def _on_preview_3d_built(self, generation_id, polydata, kind, elapsed_seconds):
         """Runs on the main thread (wx.CallAfter). Discards a stale
         result (Section 20) via the manager's own generation guard -
         the SAME real async-race protection concept E2 already
         established (core/segmentation_preview.py), reused here rather
-        than reimplemented."""
+        than reimplemented. Always finishes via _finish_preview_3d_build()
+        (Section 5 hardening) regardless of whether the result was
+        stale, so the busy-gate is reliably released and any coalesced
+        pending request gets its turn."""
         try:
             mgr = self.controller.preview_surface_3d
         except Exception:
+            self._finish_preview_3d_build()
             return  # controller/frame already torn down
         ok = mgr.set_polydata_if_current(generation_id, polydata, source_kind=kind)
         if not ok:
             print("ROI Viewer: discarded stale E4 preview mesh result")
+            self._finish_preview_3d_build()
             return
         try:
             if polydata is None:
                 self.lbl_e4_state.SetLabel(_("No foreground voxels for 3D preview."))
-                self.lbl_e4_mesh_info.SetLabel(_(""))
+                self.lbl_e4_mesh_info.SetLabel("")
             else:
                 self.lbl_e4_state.SetLabel(_("Ready"))
                 self.lbl_e4_mesh_info.SetLabel(
@@ -2021,6 +2191,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # succeeded/was rejected correctly; only this status-label
             # cosmetic update is skipped.
             print(f"ROI Viewer: E4 status widget update skipped (likely app shutdown) - {e}")
+        finally:
+            self._finish_preview_3d_build()
 
     def cancel_live_preview_3d(self):
         """Public lifecycle hook, mirrors cancel_preview() (E2) - called
@@ -2030,11 +2202,21 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         own lifecycle hooks already call self.preview_surface_3d.detach()
         directly on project close/load/plugin close, mirroring marker_3d/
         slice_planes_3d exactly) - this only stops OUR OWN timer/
-        callback bookkeeping."""
+        callback bookkeeping.
+
+        E5 hardening: also drops any coalesced pending rebuild request
+        (test_pending_cancelled_on_project_close) - a request queued for
+        a project/panel that is going away must never fire once it's
+        gone. Does NOT clear _e4_build_busy itself: an in-flight worker
+        thread is daemon and reads only its own already-captured
+        snapshot/closure state, so it cannot touch a destroyed widget;
+        its eventual wx.CallAfter callback runs _finish_preview_3d_build()
+        as normal and finds no pending request left to act on."""
         try:
             self._e4_debounce_timer.Stop()
         except Exception:
             pass
+        self._e4_pending_reason = None
         if self._e4_callback_mask is not None:
             try:
                 self._e4_callback_mask.remove_modified_callback(self._on_current_mask_modified)

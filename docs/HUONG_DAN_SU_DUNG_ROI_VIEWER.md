@@ -51,6 +51,25 @@ Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở 
 3. Click chuột trái vào một điểm trên khối 3D trong khung "Volume".
 4. Quan sát: ô toạ độ cập nhật, 3 khung 2D tự nhảy tới đúng lát cắt chứa điểm đó (nếu **Sync 3D → 2D** đang bật).
 
+### 2.1 (chỉ nhánh `enhancement/advanced-segmentation`) — 3D Visualization (E5): texture CT + Clipping/Cutaway
+
+> **Chỉ có trên nhánh `enhancement/advanced-segmentation`.** Khung "3D Visualization (E5, enhancement branch)" nằm ngay dưới khung "3D Point Picking" ở tab Interaction. Mặc định TẮT cả hai — khi tắt, hành vi giống hệt trước khi có E5 (3 mặt phẳng màu C8 như mục 2 ở trên).
+
+**Texture CT trên mặt phẳng (E5A)**:
+1. Tick **"Show CT texture on slice planes"**.
+2. 3 mặt phẳng màu (C8) biến mất, thay bằng 3 mặt phẳng hiển thị **ảnh CT thật** (đúng Window/Level hiện tại, và cả overlay mask/preview nếu đang bật — vì plugin tái dùng đúng dữ liệu thật InVesalius dùng để vẽ khung 2D, không tự tính lại).
+3. Di chuyển crosshair 2D (cần bật công cụ gốc `"Slices' cross intersection"` như mục 2) — cả 3 mặt phẳng tự cập nhật nội dung theo lát cắt mới.
+4. Tắt tick để quay lại 3 mặt phẳng màu C8 như cũ.
+
+> ⚠️ **Lưu ý thật (hướng ảnh)**: hình học của mặt phẳng texture đã được chứng minh thật (khớp chính xác với công thức hình học C8 đã có, và khớp đúng giá trị voxel ảnh thật ở từng góc, kiểm chứng bằng test tự động). Tuy nhiên, việc render trực tiếp (pixel thật trên màn hình) **chưa kiểm chứng được bằng ảnh dựng thử tự động** trong môi trường phát triển hiện tại (VTK offscreen render bị lỗi crash thật ở bước đọc khung hình — lỗi môi trường, không phải lỗi module này, xem `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`). Vì vậy **cần xác nhận bằng mắt thật (E5-B/C/D trong Manual QA)** trước khi coi hướng ảnh là hoàn toàn chắc chắn.
+
+**Clipping / Cutaway (E5B)**:
+1. Dựng surface 3D thật cho 1 ROI (mục 3.3, nút "Update 3D Surface from Selected ROI") trước.
+2. Tick **"Enable Clipping"**, chọn **Plane** (Axial/Coronal/Sagittal), tick **Invert** nếu muốn lật mặt cắt.
+3. Chọn **Target**: "Current ROI Final Surface" (mặc định) hoặc "Live Preview (E4)".
+4. Di chuyển crosshair 2D — mặt cắt 3D di chuyển theo, **không dựng lại surface**, không đổi dữ liệu mask/surface gốc (chỉ ẩn/hiện phần hình học lúc render — tắt Clipping là surface hiện lại y hệt ban đầu).
+5. Đổi ROI đang chọn hoặc bấm dựng lại surface — Clipping tự tìm đúng surface/mapper mới (hoặc báo "No final surface for selected ROI." nếu ROI chưa có surface).
+
 ---
 
 ## 3. Tab **Segmentation** — phân đoạn & quản lý ROI (trọng tâm plugin)

@@ -100,6 +100,16 @@ def _panel_like(controller):
     fake._current_mask = SegmentationPanel._current_mask.__get__(fake)
     fake._select_preview_3d_source = SegmentationPanel._select_preview_3d_source.__get__(fake)
     fake._on_preview_3d_built = SegmentationPanel._on_preview_3d_built.__get__(fake)
+    # E5 hardening (Section 5): _on_preview_3d_built() now always calls
+    # self._finish_preview_3d_build() (real code, bound the same way as
+    # the other SegmentationPanel methods above) to release the
+    # busy-gate and act on any coalesced pending request - needs
+    # _e4_pending_reason to pre-exist (read unconditionally); with it
+    # left None (these tests never call _trigger_preview_3d_rebuild()
+    # on this fake), the "act on pending" branch never fires, so
+    # _e4_enabled()/_trigger_preview_3d_rebuild() need not be bound here.
+    fake._finish_preview_3d_build = SegmentationPanel._finish_preview_3d_build.__get__(fake)
+    fake._e4_pending_reason = None
     fake.lbl_e4_state = types.SimpleNamespace(SetLabel=lambda *a, **k: None)
     fake.lbl_e4_mesh_info = types.SimpleNamespace(SetLabel=lambda *a, **k: None)
     return fake

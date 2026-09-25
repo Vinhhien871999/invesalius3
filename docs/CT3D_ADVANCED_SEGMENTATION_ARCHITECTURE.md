@@ -345,3 +345,96 @@ E4 never sends `"Create surface from index"` (grep-confirmed, and verified for r
 ## Performance
 
 See "Preview mesh benchmark" above - full-resolution `vtkFlyingEdges3D` build: 0.068s on a representative dataset-`0051`-shaped array. Combined with the 400ms debounce, real end-to-end latency after the LAST edit in a rapid sequence is dominated by the debounce window, not the build itself. No `FAST_PREVIEW_INTERACTIVE_LIMITATION` was hit - the feature ships enabled-by-default-OFF but fully functional, not gated behind a "too slow, manual Refresh only" fallback.
+
+---
+
+# E5 Advanced 3D Visualization Architecture
+
+## Pre-E5 reconciliation
+
+Two real issues, found by this run's own required audit steps, fixed before any E5 feature code:
+
+**Gettext empty-string UI bug** (a real operator report: the Segmentation tab was observed rendering raw gettext catalogue metadata - `Project-Id-Version`, `Report-Msgid-Bugs-To`, `PO-Revision-Date`, `Language-Team`, `Plural-Forms`, `X-Poedit-...` - displacing the Preview Workflow controls). Root cause, confirmed by directly reading `invesalius/i18n.py`: `tr` wraps a real `gettext.translation(...).gettext` function, and `gettext("")` on a REAL loaded `.mo` catalogue is documented, standard gettext behaviour - `msgid ""` maps to the catalogue's own PO header block, not an empty string. This plugin's own `_(s): return s` fallback (used only when `invesalius.i18n` cannot be imported, e.g. some test contexts) does not exhibit the bug - only the real InVesalius i18n system does, exactly the real-application case the operator hit. 7 real occurrences of `_("")` were found in `gui/segmentation_panel.py` (3x `wx.StaticText` construction, 4x `.SetLabel()` calls) and fixed to a plain `""` literal. `tests/ct3d/test_no_empty_gettext_calls.py` is a permanent regression guard (scans the whole plugin source for the pattern).
+
+**E4 worker-concurrency audit/hardening**: re-reading `SegmentationPanel._trigger_preview_3d_rebuild()` (E4) found a real, confirmed gap - `generation_id` (`core/preview_surface_3d.py`) only discards a STALE worker's *result*, it never bounded how many workers could be simultaneously IN FLIGHT. Repeated "Refresh 3D Preview" clicks, or a Refresh landing while a debounced worker was still running, could spawn an unbounded number of simultaneous `threading.Thread` workers, each holding its own ~28MB numpy snapshot strongly referenced at once. Hardened to "max 1 running build + max 1 latest pending request": `_e4_build_busy` gates a new build from starting while one is in flight (covering both the async worker path and the synchronous early-return paths); `_e4_pending_reason` remembers only the LATEST coalesced reason requested meanwhile; `_finish_preview_3d_build()` is the one place that clears the busy flag and launches exactly one more rebuild if a newer request arrived. `generation_id` is unchanged and still separately guards stale RESULTS - this hardening is a second, independent guarantee, not a replacement. 5 real tests (`tests/ct3d/test_preview_surface_concurrency.py`) exercise the real, unmodified gating methods against a stubbed build function, deterministically (no dependence on real thread timing).
+
+## Native slice display audit (E5A)
+
+Read directly: `invesalius/data/viewer_slice.py` (`SliceViewer.set_slice_number()`'s `self.slice_data.actor.SetInputData(image)`, where `actor` is a real `vtkImageActor` and `image` comes from `self.slice_.GetSlices(...)`), `invesalius/data/slice_.py` (`Slice.GetSlices()`, `do_ww_wl()`, `do_colour_image()`, `do_blend()`, `get_aux_slice()`/`aux_matrices`/`to_show_aux` - the same real overlay mechanism E2's preview already reuses). Real finding: `Slice().GetSlices(orientation, slice_number, number_slices=1, inverted=False, border_size=0)` returns the EXACT real `vtkImageData` the native 2D viewer displays for that slice - already reflecting real Window/Level (`do_ww_wl()`), the real greyscale-to-RGB colour table (`do_colour_image()`), the current mask's real colour blend (`do_blend()`) if one is shown, AND any active E2 preview overlay (`to_show_aux`) if one is active. E5A reuses this exact real output rather than reimplementing Window/Level math independently (this run's Section 7 explicit preference) - the texture a user sees is, by construction, pixel-for-pixel the same real display data the 2D view already shows for that slice.
+
+## Texture source
+
+`Slice().GetSlices()`, called once per orientation per real crosshair event (only while texture mode is on - Section 11's performance guard), from `ROIViewerFrame.update_textured_slice_planes()`, itself called from the SAME existing C8 `on_cross_focal_point_changed()` event path `marker_3d`/`slice_planes_3d` already use (no parallel crosshair observer created).
+
+## Coordinate convention (E5A)
+
+`core/textured_slice_planes_3d.plane_geometry_from_image_bounds()` derives a textured plane's (origin, point1, point2) directly from the real per-slice image's own `GetBounds()` - never independently recomputed from spacing/shape - so it is provably consistent with whatever real spacing/extent convention `converters.to_vtk()` used to build that image (the exact same convention `SlicePlanes3D._update_geometry()`'s own hardcoded per-axis formula already uses). Which axis is degenerate (min == max) self-describes the orientation (Axial: flat in Z; Coronal: flat in Y; Sagittal: flat in X - the real, proven world-axis mapping, see `core/surface_clipping_3d.py`'s own citation trail below), so the SAME formula produces the correct 3 corners for any of the 3 orientations without a separate orientation string needing to agree with the bounds. `tests/ct3d/test_textured_slice_planes_3d.py::test_geometry_and_texture_same_world_plane` directly cross-checks this against `SlicePlanes3D`'s own real, already-shipped Axial formula and confirms exact numeric coincidence.
+
+## Texture orientation proof
+
+`core/textured_slice_planes_3d.build_textured_plane_polydata()` builds an explicit quad (4 points, 1 cell) with explicit per-corner texture coordinates - NOT `vtkPlaneSource`'s auto-generated TCoords - so the image-to-world mapping is fully explicit and independently testable. Real, empirical (not assumed) proof obtained this milestone: for each of the 3 real orientation strings, a deliberately non-symmetric synthetic image (4 distinct corner values, non-square shape) was built via the real `converters.to_vtk()`, and the world position of each of the 4 quad corners was directly cross-checked against that real image's own `GetScalarComponentAsDouble()` value at the corresponding voxel index - confirming, for real, that this module's own geometry/TCoord-assignment code correctly correlates each world corner with the correct real image voxel (`tests/ct3d/test_textured_slice_planes_3d.py`'s `test_axial/coronal/sagittal_texture_orientation`).
+
+**Honest residual limitation**: this does NOT additionally prove how VTK's own GPU texture unit samples a given TCoord against the uploaded image at actual render time (the strongest possible proof, and the one this run's own instructions explicitly asked for - "must catch horizontal mirror / vertical mirror / axis swap / 90-degree rotation" via a real render). This was attempted during this milestone's audit: a real off-screen `vtkRenderWindow` (`SetOffScreenRendering(1)`) + `vtkWindowToImageFilter` pixel-readback pipeline was built and tested step by step. Every step up to and including `renwin.Render()` (actor/mapper/texture construction, camera setup) succeeded without error. `vtkWindowToImageFilter.Update()` (the framebuffer read-back call) reproducibly segfaulted - and this was confirmed to be a real, environment-level VTK/graphics limitation, not a defect in this module's own code, by reproducing the IDENTICAL segfault with a plain untextured `vtkSphereSource` actor and no texture code involved at all. Per this run's own explicit instruction ("if textured slice planes cannot be implemented safely... DO NOT fake them... set `PARTIAL`"), this specific claim is reported as `PARTIAL`, not `PASS` - real operator manual QA (`E5-B`/`E5-C`/`E5-D` in `CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md`) is the authoritative verification of live-rendered pixel orientation, not yet run.
+
+## Window/Level integration
+
+`Slice().GetSlices()` already bakes real Window/Level into the image it returns (`do_ww_wl()`) - a fresh call to it (which `update_textured_slice_planes()` always performs, never caching a previous image) therefore automatically reflects whatever Window/Level is current at call time, with no separate W/L-change-event subscription needed. Real result: `WindowLevelAutoRefresh = WORKING`, not the `PARTIAL` (manual-Refresh-only) outcome this run's own instructions anticipated as the likely honest fallback.
+
+## Textured-plane lifecycle
+
+`core/textured_slice_planes_3d.TexturedSlicePlanes3D` mirrors `SlicePlanes3D`'s/`CrosshairMarker3D`'s attach()/detach() pattern exactly - exactly 3 actors, created once, geometry+texture updated in place on every `update_plane()` call (never recreated), so scrolling/crosshair movement never grows the renderer's actor count. `actor.SetPickable(False)` at construction (Section 14). Default OFF (`cb_texture_planes` unchecked); enabling hides C8's existing geometric planes and shows the textured ones instead (never both at once, avoiding the z-fighting Section 13 explicitly calls out); disabling restores the geometric planes to whatever "Show slice planes in 3D" is currently set to.
+
+## Surface actor/mapper audit (E5B)
+
+Read `invesalius/data/surface.py` directly. Two real, load-bearing findings:
+
+1. **`mask_index == surface_index` is NOT a safe assumption - it is, in fact, provably FALSE in general.** `Surface` (the class backing `Project().surface_dict` entries) has no mask-index field anywhere. `SurfaceManager.AddNewActor()`'s real overwrite path (the exact path this plugin's own `_on_update_surface()` always exercises via `overwrite=True`) assigns the newly-built `Surface`'s `.index` from `self.last_surface_index` - a single GLOBAL "most recently touched surface" counter shared across ALL masks, not the mask index that was rebuilt.
+2. **`SurfaceManager.actors_dict` (index -> real `vtkActor`) is private state this plugin has no direct reference to** (`SurfaceManager` lives inside `invesalius.control.Controller`, never exposed). The real, already-existing, already-used-elsewhere (`invesalius/gui/task_efield.py`) way to fetch a real actor for a known surface index is the real pubsub request/reply pair `Publisher.sendMessage("Get Actor", surface_index=...)` -> `SurfaceManager.GetActor()` -> `Publisher.sendMessage("Send Actor", e_field_actor=...)`, synchronous within the same call stack for a single subscriber.
+
+## Clipping architecture
+
+`core/surface_clipping_3d.SurfaceClipping3D` owns exactly one real `vtkPlane` and tracks exactly one "owned" `vtkMapper` at a time. Uses the standard, real `vtkMapper.AddClippingPlane(vtkPlane)`/`RemoveClippingPlane()` API - clips display at the mapper level, never touches the mapper's input polydata (`vtkClipPolyData` was explicitly NOT used, per this run's own instruction). Ownership discipline: never calls `RemoveAllClippingPlanes()` (which could remove a plane something else added) - only ever adds/removes the exact `vtkPlane` instance it itself owns, on the exact mapper it itself added it to.
+
+## Clipping target
+
+Current ROI Final Surface (default) or Live Preview (E4), selectable via a `wx.Choice` in `interaction_panel.py`. Current ROI resolution: `SegmentationPanel._roi_surface_index` (a `mask_index -> surface_index` dict) is populated ONLY from surface builds THIS plugin's own `_on_update_surface()` itself triggered - guarded by `_pending_surface_build_mask_index`, set right before sending `"Create surface from index"` and consumed by the very next real `"Update surface info in GUI"` event (fired with the actual just-created `Surface` object). Live Preview resolution reuses `preview_surface_3d.mapper` directly (already a real, first-class attribute) - Section 25's "same vtkPlane safely attached/detached with no lifecycle conflict" is satisfied because clipping-plane state lives on a mapper independently of `set_polydata_if_current()`'s own `SetInputData()` calls, so the two never conflict.
+
+## Plane origin/normal mapping
+
+Real, proven world-axis mapping (not assumed): world X = SAGITAL (fastest-varying image axis), Y = CORONAL, Z = AXIAL slice stack - confirmed by TWO independent, already-tested real sources that had to agree with each other for either to be correct: `interface/project_interface.py`'s `ProjectInterface.voxel_to_world()`/`world_to_voxel()` docstrings, and `core/slice_planes_3d.py`'s own real, already-shipped geometry (Axial plane constant in Z, Coronal constant in Y, Sagital constant in X). A clipping plane's normal for a given orientation is the SAME axis that orientation's geometric plane is constant along. `Invert` multiplies the normal by -1 (`tests/ct3d/test_surface_clipping_3d.py`'s `test_axial/coronal/sagittal_normal`, `test_invert_normal`).
+
+## Crosshair integration
+
+`SurfaceClipping3D.set_origin()` is called unconditionally (cheap - a plain `vtkPlane.SetOrigin()`) from the SAME real C8 crosshair event path (`on_cross_focal_point_changed()`) `marker_3d`/`slice_planes_3d`/E5A's own texture update already use - Section 19's explicit "one spatial source of truth" requirement (no second, independent clipping-position slider).
+
+## ROI-switch handling
+
+`SegmentationPanel._on_roi_selected()` and `_on_surface_info_updated()` both call `InteractionPanel.refresh_clipping_target()`, which re-resolves the real mapper for whatever target is currently selected (no-op if clipping itself is disabled). `SurfaceClipping3D.set_target_mapper()` detaches from the OLD mapper (only if it actually owned a plane there) before adopting the new one - `tests/ct3d/test_surface_clipping_3d.py`'s `test_roi_switch_detaches_old_mapper`.
+
+## Surface-rebuild handling
+
+A surface rebuild (`_on_update_surface()`) always produces a NEW real `vtkActor`/`vtkPolyDataMapper` (`AddNewActor()`'s real overwrite path still creates a fresh actor even when overwriting the same surface index) - `_on_surface_info_updated()` triggers `refresh_clipping_target()` again after every real build this plugin itself triggered, re-resolving and re-binding the owned plane to the NEW mapper (`test_surface_rebuild_rebinds_mapper`). No dangling mapper reference is ever kept.
+
+## E4 interaction
+
+Textured planes and clipping both coexist safely with E4's live preview actor in the same renderer (`tests/ct3d/test_e5_cross_feature.py::test_textured_planes_coexist_with_e4_preview`) - independent actors, independent visibility, no shared state beyond the mapper reference clipping optionally targets (E5B.4).
+
+## C8 preservation
+
+Neither `core/textured_slice_planes_3d.py` nor `core/surface_clipping_3d.py` imports `marker_3d`/`CrosshairMarker3D` at all (verified via real AST inspection, not a prose grep - `test_e5_preserves_c8_marker`). `SlicePlanes3D`'s own real API (attach/set_bounds/update_position/set_visible) is exercised directly in a test alongside a co-attached `TexturedSlicePlanes3D` in the same renderer, proving no interference (`test_e5_preserves_c8_geometric_planes`).
+
+## Picker safety
+
+E5A's own 3 actors: `SetPickable(False)` at construction (same mechanism every other renderer-attached plugin actor already uses). E5B (clipping): never touches the TARGET surface's own actor's `SetPickable()` state at all - a real final-surface actor's pre-existing pickable state (whatever native code set it to) survives `enable()`/`disable()` completely untouched (`test_clipping_does_not_block_picker`).
+
+## Camera preservation
+
+Source-inspection guarantee (same real technique E4's own `test_camera_never_touched_by_manager_api` established): neither E5 core module, nor `InteractionPanel`'s/`ROIViewerFrame`'s new E5 methods, contain any camera-related VTK call (`test_camera_unchanged`).
+
+## Save/Open
+
+Both E5A and E5B are pure runtime VTK/display state - `TexturedSlicePlanes3D`/`SurfaceClipping3D` have no serialization method and are never referenced by `invesalius/project.py`. Saving/reopening a project is unaffected; both features default back to OFF on reopen (fresh `ROIViewerFrame`/`InteractionPanel` construction).
+
+## Performance
+
+Real measurement this milestone: `converters.to_vtk()` (the dominant real per-slice conversion cost inside `Slice().GetSlices()`) on a representative 512x512 uint8 slice - **0.04ms average** (20 runs). 3 orientations per real crosshair event (only while texture mode is on) - **~0.13ms** total, negligible relative to the 2D/3D render itself. `do_ww_wl()`/`do_colour_image()` are the SAME real VTK LUT-based filters the native 2D viewer already runs on every slice scroll - no additional cost profile beyond what InVesalius's own 2D views already pay continuously. Clipping-plane enable/disable/origin updates are pure mapper-state operations - negligible cost, no surface regeneration.

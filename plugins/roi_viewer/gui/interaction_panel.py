@@ -102,7 +102,65 @@ class InteractionPanel(scrolled.ScrolledPanel):
         pick_sizer.Add(self.txt_coords, 0, wx.ALL | wx.EXPAND, 3)
         
         main_sizer.Add(pick_sizer, 0, wx.ALL | wx.EXPAND, 5)
-        
+
+        # =================
+        # E5 (Advanced Segmentation Enhancement Track, enhancement/
+        # advanced-segmentation branch ONLY): Advanced 3D Visualization
+        # - textured slice planes (E5A) + surface clipping/cutaway (E5B).
+        # Both default OFF - with both left off, C8's existing behavior
+        # (geometric SlicePlanes3D, no clipping) is byte-identical to
+        # before E5 existed. See _on_texture_planes_toggle()/
+        # _on_clip_enabled_toggle() below and docs/CT3D_ADVANCED_E5_
+        # VISUALIZATION_REPORT.md for the full design/audit.
+        # =================
+        box_viz = wx.StaticBox(self, wx.ID_ANY, _("3D Visualization (E5, enhancement branch)"))
+        viz_sizer = wx.StaticBoxSizer(box_viz, wx.VERTICAL)
+
+        self.cb_texture_planes = wx.CheckBox(self, wx.ID_ANY, _("Show CT texture on slice planes"))
+        self.cb_texture_planes.SetValue(False)
+        self.Bind(wx.EVT_CHECKBOX, self._on_texture_planes_toggle, self.cb_texture_planes)
+        viz_sizer.Add(self.cb_texture_planes, 0, wx.ALL, 3)
+
+        viz_sizer.Add(wx.StaticLine(self), 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 4)
+
+        clip_title = wx.StaticText(self, wx.ID_ANY, _("Clipping / Cutaway"))
+        viz_sizer.Add(clip_title, 0, wx.ALL, 3)
+
+        self.cb_clip_enabled = wx.CheckBox(self, wx.ID_ANY, _("Enable Clipping"))
+        self.cb_clip_enabled.SetValue(False)
+        self.Bind(wx.EVT_CHECKBOX, self._on_clip_enabled_toggle, self.cb_clip_enabled)
+        viz_sizer.Add(self.cb_clip_enabled, 0, wx.ALL, 3)
+
+        clip_plane_row = wx.BoxSizer(wx.HORIZONTAL)
+        clip_plane_row.Add(wx.StaticText(self, wx.ID_ANY, _("Plane:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.choice_clip_plane = wx.Choice(self, wx.ID_ANY, choices=[_("Axial"), _("Coronal"), _("Sagittal")])
+        self.choice_clip_plane.SetSelection(0)
+        self.Bind(wx.EVT_CHOICE, self._on_clip_plane_changed, self.choice_clip_plane)
+        clip_plane_row.Add(self.choice_clip_plane, 1, wx.ALL, 3)
+        viz_sizer.Add(clip_plane_row, 0, wx.EXPAND, 3)
+
+        self.cb_clip_invert = wx.CheckBox(self, wx.ID_ANY, _("Invert"))
+        self.cb_clip_invert.SetValue(False)
+        self.Bind(wx.EVT_CHECKBOX, self._on_clip_invert_toggle, self.cb_clip_invert)
+        viz_sizer.Add(self.cb_clip_invert, 0, wx.ALL, 3)
+
+        clip_target_row = wx.BoxSizer(wx.HORIZONTAL)
+        clip_target_row.Add(wx.StaticText(self, wx.ID_ANY, _("Target:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.choice_clip_target = wx.Choice(
+            self, wx.ID_ANY,
+            choices=[_("Current ROI Final Surface"), _("Live Preview (E4)")],
+        )
+        self.choice_clip_target.SetSelection(0)
+        self.Bind(wx.EVT_CHOICE, self._on_clip_target_changed, self.choice_clip_target)
+        clip_target_row.Add(self.choice_clip_target, 1, wx.ALL, 3)
+        viz_sizer.Add(clip_target_row, 0, wx.EXPAND, 3)
+
+        self.lbl_e5_status = wx.StaticText(self, wx.ID_ANY, "")
+        self.lbl_e5_status.Wrap(260)
+        viz_sizer.Add(self.lbl_e5_status, 0, wx.ALL | wx.EXPAND, 3)
+
+        main_sizer.Add(viz_sizer, 0, wx.ALL | wx.EXPAND, 5)
+
         # =================
         # Real-time Update
         # =================
@@ -216,6 +274,134 @@ class InteractionPanel(scrolled.ScrolledPanel):
             Publisher.sendMessage("Render volume viewer")
         except ImportError:
             pass
+
+    # =================
+    # E5 (Advanced Segmentation Enhancement Track, enhancement/advanced-
+    # segmentation branch ONLY): Advanced 3D Visualization
+    # =================
+
+    # Index in choice_clip_plane -> real orientation string, matching
+    # core/surface_clipping_3d.py's PLANE_* constants (and
+    # core/slice_planes_3d.py's real one-T "SAGITAL" spelling - the
+    # actual InVesalius pubsub convention, not the common two-T one).
+    _CLIP_PLANE_BY_INDEX = ("AXIAL", "CORONAL", "SAGITAL")
+
+    def _on_texture_planes_toggle(self, event):
+        """
+        Section 8/13: strictly opt-in, default OFF. Turning texture mode
+        ON hides C8's existing geometric planes and shows the textured
+        ones instead (never both at once - avoids the z-fighting Section
+        13 explicitly calls out); turning it OFF restores the geometric
+        planes to whatever "Show slice planes in 3D" is currently set to
+        - texture mode never changes that checkbox's own stored state.
+        """
+        enabled = self.cb_texture_planes.GetValue()
+        self.controller.show_texture_planes = enabled
+        if enabled:
+            self.controller.slice_planes_3d.set_visible(False)
+            try:
+                from ..interface.view_interface import ViewInterface
+
+                viewer = ViewInterface().get_volume_viewer()
+                if viewer is not None and hasattr(viewer, "ren"):
+                    self.controller.textured_slice_planes_3d.attach(viewer.ren)
+                    # Section 11: rebuild immediately from the last known
+                    # real crosshair position, if any, rather than
+                    # waiting for the next 2D interaction - so enabling
+                    # the checkbox shows CURRENT content immediately.
+                    if self.controller._last_cross_focal_point is not None:
+                        self.controller.update_textured_slice_planes(
+                            self.controller._last_cross_focal_point
+                        )
+                    self.controller.textured_slice_planes_3d.set_visible(True)
+            except Exception as e:
+                print(f"ROI Viewer: E5A texture planes enable failed - {e}")
+        else:
+            self.controller.textured_slice_planes_3d.set_visible(False)
+            self.controller.slice_planes_3d.set_visible(self.controller.show_slice_planes)
+        self.controller.request_render()
+
+    def _on_clip_enabled_toggle(self, event):
+        enabled = self.cb_clip_enabled.GetValue()
+        clip = self.controller.surface_clipping_3d
+        if enabled:
+            clip.enable()
+            self.refresh_clipping_target()
+        else:
+            clip.disable()
+            self.lbl_e5_status.SetLabel("")
+        self.controller.request_render()
+
+    def _on_clip_plane_changed(self, event):
+        idx = self.choice_clip_plane.GetSelection()
+        if 0 <= idx < len(self._CLIP_PLANE_BY_INDEX):
+            self.controller.surface_clipping_3d.set_orientation(self._CLIP_PLANE_BY_INDEX[idx])
+            self.controller.request_render()
+
+    def _on_clip_invert_toggle(self, event):
+        self.controller.surface_clipping_3d.set_inverted(self.cb_clip_invert.GetValue())
+        self.controller.request_render()
+
+    def _on_clip_target_changed(self, event):
+        self.refresh_clipping_target()
+        self.controller.request_render()
+
+    def refresh_clipping_target(self):
+        """
+        Section 18/23/24 real target resolution - called on: this
+        panel's own Enable-Clipping/Target-choice changes, AND
+        externally by SegmentationPanel after a ROI selection change or
+        after ITS OWN "Update 3D Surface from Selected ROI" build
+        completes (see segmentation_panel.py's _on_roi_selected()/
+        _on_surface_info_updated()). No-op if clipping is not enabled -
+        nothing to (re)resolve yet.
+        """
+        clip = self.controller.surface_clipping_3d
+        if not self.cb_clip_enabled.GetValue():
+            return
+        target_idx = self.choice_clip_target.GetSelection()
+        if target_idx == 1:
+            # Live Preview (E4) - E4's manager already exposes its own
+            # real mapper directly (Section 25 - safe to attach/detach a
+            # clipping plane to it: clipping-plane state lives on the
+            # mapper independently of set_polydata_if_current()'s own
+            # SetInputData() calls, so the two never conflict).
+            mapper = self.controller.preview_surface_3d.mapper
+            clip.set_target_mapper(mapper)
+            self.lbl_e5_status.SetLabel(
+                _("Clipping target: Live Preview (E4)") if mapper is not None
+                else _("Live Preview has no mesh yet.")
+            )
+            return
+
+        # Current ROI Final Surface (Section 16/18 - default target).
+        mapper = None
+        try:
+            seg_panel = self.controller.segmentation_panel
+            rid = seg_panel._selected_roi_id()
+            if rid is not None:
+                mask_index = self.controller.roi_mgr.get_roi(rid).mask_index
+            else:
+                import invesalius.data.slice_ as sl
+
+                current = sl.Slice().current_mask
+                mask_index = current.index if current is not None else None
+            if mask_index is not None:
+                surface_index = seg_panel.get_surface_index_for_mask(mask_index)
+                if surface_index is not None:
+                    from ..core.surface_clipping_3d import resolve_surface_actor
+
+                    actor = resolve_surface_actor(surface_index)
+                    if actor is not None:
+                        mapper = actor.GetMapper()
+        except Exception as e:
+            print(f"ROI Viewer: E5B clipping target resolution failed - {e}")
+
+        clip.set_target_mapper(mapper)
+        if mapper is not None:
+            self.lbl_e5_status.SetLabel(_("Clipping target: Current ROI Final Surface"))
+        else:
+            self.lbl_e5_status.SetLabel(_("No final surface for selected ROI."))
 
     def _on_realtime_changed(self, event):
         """Handle real-time update checkbox change."""

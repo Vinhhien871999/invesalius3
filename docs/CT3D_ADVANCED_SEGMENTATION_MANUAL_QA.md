@@ -311,6 +311,120 @@ With live 3D preview left at its default (OFF), verify the rest of the classic w
 
 ---
 
+## E5 - Advanced 3D visualization (textured slice planes + clipping/cutaway)
+
+### TEST E5-A — Enable textured planes
+With a real project loaded and Sync 2D->3D active, tick "Show CT texture on slice planes" in the Interaction tab's "3D Visualization" box.
+**Expected**: the 3 geometric coloured planes (C8) disappear and are replaced by 3 planes showing real CT image content (grey/colour, matching the 2D views' current Window/Level).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-B — Axial texture orientation
+With texture mode on, compare the Axial textured plane's real anatomy (e.g. left/right, anterior/posterior landmarks) against the native Axial 2D view for the same slice.
+**Expected**: no mirroring, no 90-degree rotation - the textured plane's content matches the 2D view's own orientation.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-C — Coronal texture orientation
+Same comparison as E5-B for the Coronal plane.
+**Expected**: no mirroring, no rotation, matches the native Coronal 2D view.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-D — Sagittal texture orientation
+Same comparison as E5-B for the Sagittal plane.
+**Expected**: no mirroring, no rotation, matches the native Sagittal 2D view.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-E — Move crosshair, textures follow
+With texture mode on, use the native "Slices' cross intersection" tool to move the crosshair on a 2D view.
+**Expected**: all 3 textured planes update to the new slice position and new content, with no stale old-slice content left showing at the new geometric position.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-F — Window/Level texture refresh
+With texture mode on, change Window/Level via InVesalius's native control, then move the crosshair (or trigger any other real update).
+**Expected**: the textured planes reflect the new Window/Level on their next update - no stale intensity mapping.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-G — Texture toggle OFF restores geometric planes
+Untick "Show CT texture on slice planes".
+**Expected**: the textured planes disappear and C8's original geometric coloured planes reappear (if "Show slice planes in 3D" is checked), at the correct current crosshair position.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-H — 3D picker works through textured planes
+With texture mode on, use "Pick Point in 3D" or the Region Growing seed pick, clicking through/near a textured plane.
+**Expected**: the pick behaves exactly as without texture mode - the textured plane never intercepts the click.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-I — Enable Axial clipping
+Build a final surface for a real ROI (Update 3D Surface from Selected ROI), then tick "Enable Clipping" with Plane=Axial.
+**Expected**: the 3D surface is visibly cut away on one side of the current Axial crosshair position.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-J — Move Axial crosshair changes cut
+With Axial clipping enabled, move the crosshair up/down through the volume.
+**Expected**: the cutaway plane moves with the crosshair in real time (via the same C8 event path), with no surface rebuild/flicker.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-K — Coronal clipping
+Switch Plane to Coronal.
+**Expected**: the cutaway plane reorients to a Coronal cut, tracking the Coronal crosshair position.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-L — Sagittal clipping
+Switch Plane to Sagittal.
+**Expected**: the cutaway plane reorients to a Sagittal cut, tracking the Sagittal crosshair position.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-M — Invert clipping
+With any plane active, tick "Invert".
+**Expected**: the cutaway flips to show the OPPOSITE half of the surface.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-N — Final polydata unchanged
+With clipping enabled and a visible cutaway, disable clipping.
+**Expected**: the surface returns to its exact original, uncut appearance (proving the underlying geometry was never modified, only the display).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-O — ROI switch while clipping
+With clipping enabled on one ROI's final surface, select a different ROI in the Segmentation Set list.
+**Expected**: clipping re-targets the new ROI's own final surface if one exists (or reports "No final surface for selected ROI." if not) - the OLD ROI's surface is no longer clipped.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-P — Rebuild final surface while clipping
+With clipping enabled on the current ROI's final surface, click "Update 3D Surface from Selected ROI" again.
+**Expected**: after the rebuild completes, clipping is still active and correctly applied to the NEWLY rebuilt surface (no dangling reference to the old, discarded one).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-Q — E4 preview coexistence
+Enable E4's Live 3D Preview alongside E5A texture mode and/or E5B clipping.
+**Expected**: no crash; all features render correctly at once; switching the clipping Target to "Live Preview (E4)" clips the preview mesh instead of the final surface.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-R — Camera unchanged
+Rotate/zoom/pan to a specific framing, then toggle texture mode and clipping on/off several times, and move the crosshair repeatedly.
+**Expected**: the camera framing never changes on its own.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-S — Project close
+With texture mode and/or clipping enabled, close the project.
+**Expected**: no crash; no leftover textured planes or clipping plane visible; state is safely torn down.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-T — Plugin close/reopen
+With texture mode and/or clipping enabled, close the ROI Viewer window and reopen it.
+**Expected**: no crash; no duplicate/ghost textured-plane actors; clipping starts fresh (disabled) with no leftover plane on any mapper.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-U — Save/Open unaffected
+With texture mode and/or clipping enabled, save the project, close it, and reopen it.
+**Expected**: real mask/surface data saved/loaded identically to a session without E5 enabled; both E5 features default back to OFF on reopen.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E5-V — Classic mode with E5 OFF
+With both "Show CT texture on slice planes" and "Enable Clipping" left at their defaults (OFF), verify the rest of the classic workflow (C8 geometric planes, Threshold/Otsu/Region Growing, Brush/Eraser, Undo/Redo, Update 3D Surface, E1/E2/E3/E4) all behave exactly as in prior milestones.
+**Expected**: identical behavior - E5 only adds new, opt-in UI, changes nothing else.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+---
+
 ## Summary
 
 | # | Test | PASS/FAIL |
@@ -372,6 +486,28 @@ With live 3D preview left at its default (OFF), verify the rest of the classic w
 | E4-P | Plugin close/reopen, no duplicate actor | `NOT_RUN` |
 | E4-Q | Save/Open unaffected by live preview | `NOT_RUN` |
 | E4-R | Classic workflow unaffected with preview OFF | `NOT_RUN` |
+| E5-A | Enable textured planes | `NOT_RUN` |
+| E5-B | Axial texture orientation | `NOT_RUN` |
+| E5-C | Coronal texture orientation | `NOT_RUN` |
+| E5-D | Sagittal texture orientation | `NOT_RUN` |
+| E5-E | Move crosshair, textures follow | `NOT_RUN` |
+| E5-F | Window/Level texture refresh | `NOT_RUN` |
+| E5-G | Texture toggle OFF restores geometric planes | `NOT_RUN` |
+| E5-H | 3D picker works through textured planes | `NOT_RUN` |
+| E5-I | Enable Axial clipping | `NOT_RUN` |
+| E5-J | Move Axial crosshair changes cut | `NOT_RUN` |
+| E5-K | Coronal clipping | `NOT_RUN` |
+| E5-L | Sagittal clipping | `NOT_RUN` |
+| E5-M | Invert clipping | `NOT_RUN` |
+| E5-N | Final polydata unchanged | `NOT_RUN` |
+| E5-O | ROI switch while clipping | `NOT_RUN` |
+| E5-P | Rebuild final surface while clipping | `NOT_RUN` |
+| E5-Q | E4 preview coexistence | `NOT_RUN` |
+| E5-R | Camera unchanged | `NOT_RUN` |
+| E5-S | Project close | `NOT_RUN` |
+| E5-T | Plugin close/reopen | `NOT_RUN` |
+| E5-U | Save/Open unaffected | `NOT_RUN` |
+| E5-V | Classic mode with E5 OFF | `NOT_RUN` |
 
 **E1_MANUAL_QA_COMPLETE: NOT_RUN** (0/14) — awaiting a real operator session. This does not block E1's automated `PASS` gate (see `CT3D_ADVANCED_SEGMENTATION_PROGRESS.md`), consistent with how the stable release separated automated evidence from manual GUI confirmation throughout Phase 08-14.
 
@@ -380,3 +516,5 @@ With live 3D preview left at its default (OFF), verify the rest of the classic w
 **E3_MANUAL_QA_COMPLETE: NOT_RUN** (0/13) — same discipline, same reasoning. Does not block E3's automated `PASS` gate (Current ROI target).
 
 **E4_MANUAL_QA_COMPLETE: NOT_RUN** (0/18) — same discipline, same reasoning. Does not block E4's automated `PASS` gate.
+
+**E5_MANUAL_QA_COMPLETE: NOT_RUN** (0/22) — same discipline, same reasoning. Does not block E5's automated gate. Real operator confirmation of E5-B/C/D (texture orientation) is the authoritative verification for the one claim this milestone's own automated evidence could not additionally prove via live rendering (see `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`'s "Texture orientation proof" section).
