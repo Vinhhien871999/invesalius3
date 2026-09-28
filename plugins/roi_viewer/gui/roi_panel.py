@@ -110,6 +110,13 @@ class ROIViewerFrame(wx.Frame):
         self.textured_slice_planes_3d = textured_slice_planes_3d.TexturedSlicePlanes3D()
         self.surface_clipping_3d = surface_clipping_3d.SurfaceClipping3D()
         self.show_texture_planes = False
+        # Where the textured planes were last actually built. Deliberately
+        # NOT _last_cross_focal_point: that one keeps tracking the crosshair
+        # even while Sync 2D->3D is off (annotation fallback, see F3),
+        # while the 3D planes stay frozen - a W/L refresh from it would
+        # silently move frozen planes.
+        self._texture_planes_position = None
+        self._wl_texture_refresh_scheduled = False
         # Phase 09 (F3 fix): tracked independently of the Sync 2D->3D
         # checkbox/visual marker above - this is "the last real,
         # trustworthy world position InVesalius told us about", used
@@ -343,6 +350,7 @@ class ROIViewerFrame(wx.Frame):
         # different project is loaded.
         self.textured_slice_planes_3d.detach()
         self.surface_clipping_3d.detach()
+        self._texture_planes_position = None
 
         # NOTE: "Load project data" (which drives this call) fires
         # synchronously from *inside* invesalius.control.Controller.
@@ -388,6 +396,7 @@ class ROIViewerFrame(wx.Frame):
         # E5: same reasoning as E4 above.
         self.textured_slice_planes_3d.detach()
         self.surface_clipping_3d.detach()
+        self._texture_planes_position = None
         self._last_cross_focal_point = None
         # NOTE: the managers above were already cleared before this
         # round, but the widgets that display them were not - closing
@@ -590,6 +599,7 @@ class ROIViewerFrame(wx.Frame):
 
             pi = ProjectInterface()
             x, y, z = world_position
+            self._texture_planes_position = (float(x), float(y), float(z))
             axial_idx, coronal_idx, sagital_idx = pi.world_to_voxel(x, y, z)
             slice_ = sl.Slice()
             for orientation, index in (
@@ -606,6 +616,42 @@ class ROIViewerFrame(wx.Frame):
             self.textured_slice_planes_3d.set_visible(self.show_texture_planes)
         except Exception as e:
             print(f"ROI Viewer: E5A textured slice planes update failed - {e}")
+
+    def on_window_level_changed(self):
+        """
+        Real native W/L change (main.py forwards "Update window level
+        value"). While texture mode is on, schedules exactly one texture
+        refresh per event-loop turn: native W/L dragging sends this topic
+        on every mouse-move (data/styles.py), so without coalescing a
+        single drag would queue one 3-plane rebuild per move. wx.CallAfter
+        also defers the refresh until the whole native pubsub chain for
+        this change has finished.
+        """
+        if not self.show_texture_planes or self._texture_planes_position is None:
+            return
+        if self._wl_texture_refresh_scheduled:
+            return
+        self._wl_texture_refresh_scheduled = True
+        wx.CallAfter(self._run_scheduled_wl_texture_refresh)
+
+    def _run_scheduled_wl_texture_refresh(self):
+        try:
+            self._wl_texture_refresh_scheduled = False
+            self.refresh_slice_textures()
+        except RuntimeError:
+            pass  # frame destroyed between scheduling and running
+
+    def refresh_slice_textures(self) -> bool:
+        """Re-fetch all 3 textures at the position they were last built
+        at - never at the live crosshair (see _texture_planes_position's
+        NOTE). Same in-place update_plane() path, so geometry, camera, C8
+        planes, masks and surfaces are untouched. Returns whether a
+        refresh actually ran."""
+        if not self.show_texture_planes or self._texture_planes_position is None:
+            return False
+        self.update_textured_slice_planes(self._texture_planes_position)
+        self.request_render()
+        return True
 
     def _compute_volume_bounds(self):
         """

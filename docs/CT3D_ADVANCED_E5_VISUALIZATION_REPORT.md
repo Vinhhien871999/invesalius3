@@ -211,3 +211,73 @@ New: `plugins/roi_viewer/core/textured_slice_planes_3d.py`, `plugins/roi_viewer/
 ## Next recommendation
 
 Real operator manual QA session covering `E5-B`/`E5-C`/`E5-D` (texture orientation) is the highest-value next step before any further E5 work - it is the one remaining piece of evidence needed to upgrade `E5A`/`E5_TEXTURED_PLANES` from `PARTIAL` to a fully-proven `PASS`. After that: E6 — AI segmentation architecture, per the roadmap's priority order (E1→E2→E3→E4→E5 before E6/E6b), though E6 remains explicitly out of scope for any single run per this track's own stop conditions around committing model weights/data without review.
+
+---
+
+## E5 Finalization
+
+*Appended 28/09/2026. Everything above is the original E5 run's record and is left as written - including its `PARTIAL` gate - except where a correction below says otherwise.*
+
+### Git state
+
+Before this run: branch `enhancement/advanced-segmentation`, worktree clean, HEAD `61f6c566` ("Advanced segmentation E5: add advanced 3D visualization"), in sync with `origin`. `thesis-ct-roi-tools` and tag `ct3d-rc1` untouched.
+
+**Process deviation, recorded honestly**: the original E5 run's own instructions said to commit "If PASS", but it committed and pushed `61f6c566` with the gate at `PARTIAL`. That commit is not amended or rewritten here (no rebase, amend or force-push). This finalization is a normal follow-up commit. The E5 milestone commit's subject therefore should not be read as "E5 passed"; the gate recorded in the docs is authoritative.
+
+### Baseline
+
+Before any edit: `tests/ct3d -q` 367 passed / 1 skipped; upstream 94 passed; `pyflakes`/`compileall plugins/roi_viewer` exit 0; `git diff --check` clean. Matches the documented E5 baseline exactly.
+
+### Window/Level refresh audit
+
+The original "Window/Level integration" section claimed `WindowLevelAutoRefresh = WORKING`. Re-audited: that only proved **fresh-data correctness** (every `GetSlices()` call uses the current W/L). It did not prove, and in the original code it was not true, that a native W/L change refreshes the textures while the crosshair stays still - textures only rebuilt on a crosshair event.
+
+Real source audit found a reliable native event (**Case A**): W/L changes are always sent as `"Bright and contrast adjustment image"` followed by `"Update window level value"` at all 4 real senders (`control.py:871/873`, `gui/dialogs.py:7544/7547`, `data/styles.py:708/719`, `gui/widgets/slice_menu.py:194/196`). The first topic's subscriber, `Slice.UpdateWindowLevelBackground()`, stores the new W/L and discards the buffered vtk image; the plugin listens on the second, so `Slice()` already holds the new values when it reacts, independent of pypubsub listener order. Implemented:
+
+- `main.py`: `_on_window_level_changed(window, level)` subscribed once in `_subscribe_events()`, unsubscribed in `unload()`, same `if _roi_viewer_window:` guard as every other forwarder (a destroyed `wx.Frame` evaluates falsy - verified for real).
+- `ROIViewerFrame.on_window_level_changed()`: no-op unless texture mode is on and textures have been built; coalesces via `wx.CallAfter` to one refresh per event-loop turn (a native W/L drag sends the pair on every mouse-move).
+- `ROIViewerFrame.refresh_slice_textures()`: rebuilds all 3 textures in place at `_texture_planes_position` (where they were last built). No camera, C8, mask or surface access; reset on project close/load.
+
+**Second bug found and fixed while designing this**: `_last_cross_focal_point` keeps tracking the crosshair while Sync 2D->3D is off (it serves the annotation fallback), while C8's 3D planes stay frozen. The original E5 texture-enable handler built textures at `_last_cross_focal_point`, so with Sync 2D->3D off they could appear somewhere other than the frozen C8 planes. It now builds at `slice_planes_3d.get_position()`; the W/L refresh uses `_texture_planes_position` for the same reason.
+
+No manual "Refresh Slice Textures" button was added - Case A made it unnecessary.
+
+Classification: fresh-data correctness `WORKING`; **`WindowLevelImmediateAutoRefresh = WORKING`**. Tests: 9 in `tests/ct3d/test_textured_slice_planes_wl_refresh.py`, including `test_slice_holds_new_wl_when_update_topic_fires` (ordering checked against the real `Slice` subscriber, W/L state restored afterwards - including the "attribute absent" case, since `Slice.__init__` never creates `window_width`/`window_level`) and `test_enable_texture_uses_c8_plane_position_not_live_crosshair`.
+
+### Texture terminology
+
+`Slice().GetSlices()` returns the native composited slice image: CT after the current W/L, plus the current mask colour blend and any active E2 preview overlay. Behaviour unchanged. The UI label "Show CT texture on slice planes" is kept (existing manual QA steps reference it; it is incomplete rather than wrong), and a tooltip now states exactly what is shown. User Guide and Manual QA wording now say "native slice image" and name the mask/preview overlay explicitly.
+
+### Gettext regression verification
+
+Re-scanned production plugin source: no `_("")`, `_('')` or `gettext("")`. `tests/ct3d/test_no_empty_gettext_calls.py` passes.
+
+### E4 concurrency verification
+
+Code unchanged since E5. Max running E4 build workers = 1; max simultaneous snapshots = 1; max pending request = 1 (latest reason only, never a queue). `tests/ct3d/test_preview_surface_concurrency.py`: 5 passed.
+
+### Operator texture-orientation evidence
+
+**None supplied.** E5-A, E5-B (Axial), E5-C (Coronal), E5-D (Sagittal) all remain `NOT_RUN`. No live-render test was retried: it is known to segfault `pytest` in this environment.
+
+### E5A final status
+
+Source reuse, geometry, per-corner image-index correspondence (all 3 orientations), lifecycle, pickability, crosshair updates, W/L fresh-data and immediate refresh: `WORKING`. Live-rendered pixel orientation: unproven pending operator E5-B/C/D. **`E5_TEXTURED_PLANES = PARTIAL`** (unchanged).
+
+### E5B final status
+
+Re-audited, not redesigned; no E5B code changed this run. Only `vtkMapper.AddClippingPlane(self.plane)`/`RemoveClippingPlane(self.plane)` in code (the only `vtkClipPolyData`/`RemoveAllClippingPlanes` mentions are prose saying they are not used); one owned plane; mask/polydata/`surface_dict`/camera/picker untouched; ROI switch, surface rebuild and Live Preview target safe - 25 clipping + cross-feature tests pass. **`E5_CLIPPING = PASS`**. A "Specific Surface" target (for project-loaded or native-UI surfaces) is documented as a future enhancement in the architecture doc, not implemented.
+
+### Regression
+
+`tests/ct3d -q`: **376 passed, 1 skipped, 0 failed** (377 collected; 367 + 9 new), identical across 3 consecutive runs, and order-independent (new file also run first, ahead of every real-`Slice` integration file: 66 passed). Upstream **94 passed**. `pyflakes plugins/roi_viewer` exit 0; `compileall plugins/roi_viewer` exit 0; `git diff --check` exit 0.
+
+One regression was hit and fixed within this run: the new ordering test's first version restored the shared session `Slice`'s W/L via `s.window_width`, which raised `AttributeError` in the full suite (the attribute doesn't exist until a W/L change or project load creates it). Fixed by restoring "absent" as a real state.
+
+### Remaining manual QA
+
+E1 0/14, E2 0/12, E3 0/13, E4 0/18, E5 0/22 - all `NOT_RUN`. **`ADVANCED_FULL_MANUAL_QA_COMPLETE = NO`** (0/79). E5-F's steps were updated to test the new behaviour (W/L change without moving the crosshair, also with Sync 2D->3D off). The E5 technical gate and full E1-E5 operator validation are separate: E5 could reach `PASS` from E5-B/C/D alone, while full validation stays `NO` until all 79 items run.
+
+### Final E5 gate
+
+**`E5_GATE = PARTIAL`** (no transition this run). Every finalization criterion is met - regression, clipping, gettext, E4 concurrency, truthful W/L classification, no camera/picker/C8/D9-C7 regression, docs synchronized, no fabricated evidence - except the three operator orientation checks (E5-B/C/D), which have not been run. **E6 remains blocked by the roadmap** until E5 is `PASS`.

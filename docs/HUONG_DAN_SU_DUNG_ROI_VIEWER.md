@@ -1,6 +1,15 @@
 # Hướng dẫn sử dụng Plugin ROI Viewer
 
-> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Cập nhật theo mã nguồn sau Phase 14 (CT3D_P14_FINAL_AUDIT_REPORT, 17/09/2026) — bao gồm nội dung C8 mặt phẳng 2D→3D (`core/slice_planes_3d.SlicePlanes3D`, thêm ở Phase 13.5) và toàn bộ phần mềm ở trạng thái release-candidate cuối cùng của roadmap. Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
+> Tài liệu này mô tả **chính xác từng nút bấm thật** trong plugin (tên nút lấy trực tiếp từ code, không diễn giải), theo đúng trình tự thao tác từ đầu, và **khác biệt cụ thể** so với InVesalius gốc (khi chưa cài plugin). Dùng để demo, viết báo cáo NCKH, hoặc tự thao tác kiểm tra lại.
+>
+> **File này mô tả 2 phạm vi khác nhau — đọc kỹ để không nhầm:**
+>
+> | Phạm vi | Nhánh / tag | Nội dung |
+> |---|---|---|
+> | **Bản ổn định (stable baseline)** | `thesis-ct-roi-tools` / tag **`ct3d-rc1`** | Phần mềm sau Phase 14 (`CT3D_P14_FINAL_AUDIT_REPORT`, 17/09/2026), gồm C8 mặt phẳng 2D→3D (`core/slice_planes_3d.SlicePlanes3D`, Phase 13.5). Mọi mục **không** gắn nhãn "chỉ nhánh `enhancement/advanced-segmentation`" thuộc phạm vi này. |
+> | **Nhánh nâng cao (enhancement-only)** | `enhancement/advanced-segmentation` | Các mục gắn nhãn **"chỉ nhánh `enhancement/advanced-segmentation`"**: hiện gồm **E1–E5** (2.1, 3.3b–3.3e). **Tag `ct3d-rc1` KHÔNG chứa E1–E5.** |
+>
+> **Trạng thái E5 hiện tại: PARTIAL** — Clipping (E5B) đã PASS; texture mặt phẳng (E5A) đã chạy được nhưng **hướng ảnh render thật vẫn chờ người vận hành xác nhận bằng mắt** (Manual QA E5-B/C/D). Xem mục 7.
 
 ---
 
@@ -57,9 +66,10 @@ Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở 
 
 **Texture CT trên mặt phẳng (E5A)**:
 1. Tick **"Show CT texture on slice planes"**.
-2. 3 mặt phẳng màu (C8) biến mất, thay bằng 3 mặt phẳng hiển thị **ảnh CT thật** (đúng Window/Level hiện tại, và cả overlay mask/preview nếu đang bật — vì plugin tái dùng đúng dữ liệu thật InVesalius dùng để vẽ khung 2D, không tự tính lại).
+2. 3 mặt phẳng màu (C8) biến mất, thay bằng 3 mặt phẳng hiển thị **ảnh lát cắt gốc của InVesalius** (CT sau Window/Level hiện tại, **cộng** màu mask hiện hành và overlay Preview nếu đang bật — plugin tái dùng đúng ảnh InVesalius dùng để vẽ khung 2D, không tự tính lại; tên nút ghi "CT texture" nhưng thực chất là ảnh lát cắt đã tổng hợp, xem tooltip của nút). Texture xuất hiện đúng tại vị trí 3 mặt phẳng màu đang đứng.
 3. Di chuyển crosshair 2D (cần bật công cụ gốc `"Slices' cross intersection"` như mục 2) — cả 3 mặt phẳng tự cập nhật nội dung theo lát cắt mới.
-4. Tắt tick để quay lại 3 mặt phẳng màu C8 như cũ.
+4. Đổi Window/Level bằng công cụ gốc của InVesalius — texture tự làm mới ngay, **không cần** di chuyển crosshair.
+5. Tắt tick để quay lại 3 mặt phẳng màu C8 như cũ.
 
 > ⚠️ **Lưu ý thật (hướng ảnh)**: hình học của mặt phẳng texture đã được chứng minh thật (khớp chính xác với công thức hình học C8 đã có, và khớp đúng giá trị voxel ảnh thật ở từng góc, kiểm chứng bằng test tự động). Tuy nhiên, việc render trực tiếp (pixel thật trên màn hình) **chưa kiểm chứng được bằng ảnh dựng thử tự động** trong môi trường phát triển hiện tại (VTK offscreen render bị lỗi crash thật ở bước đọc khung hình — lỗi môi trường, không phải lỗi module này, xem `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`). Vì vậy **cần xác nhận bằng mắt thật (E5-B/C/D trong Manual QA)** trước khi coi hướng ảnh là hoàn toàn chắc chắn.
 
@@ -245,7 +255,13 @@ Cạnh nhãn **"Active ROI:"** phía trên danh sách có 1 ô màu nhỏ hiển
 
 **Quyết định thiết kế (không phải thiếu sót)**:
 1. **Đo khoảng cách/diện tích 2D không có danh sách riêng trong plugin** — cố ý remote-control công cụ đo gốc thay vì tạo thêm 1 nguồn dữ liệu đo lường thứ hai (tránh 2 danh sách lệch nhau). Kết quả luôn xem đúng ở tab "Measures" gốc của InVesalius.
-2. **Watershed và các phép toán hình thái học (dilate/erode/mở-đóng vùng) không có trong plugin** — InVesalius gốc đã có Watershed thật riêng (dùng qua UI gốc), không cần plugin làm lại.
+2. **Watershed và các phép toán hình thái học (dilate/erode/mở-đóng vùng) không có trong plugin** — InVesalius gốc đã có Watershed thật riêng (dùng qua UI gốc), không cần plugin làm lại. *(Đúng với bản ổn định `ct3d-rc1`. Trên nhánh `enhancement/advanced-segmentation`, E3 có thêm Smooth Mask dùng đóng→mở hình thái học — xem mục 3.3d.)*
+
+**Chỉ nhánh `enhancement/advanced-segmentation` — giới hạn E5 hiện tại (trạng thái thật, không phải lỗi bị giấu)**:
+1. **Hướng ảnh texture (E5A) vẫn cần người vận hành xác nhận bằng mắt** cho tới khi Manual QA E5-B/C/D PASS. Test tự động đã chứng minh thật hình học mặt phẳng và việc mỗi góc mặt phẳng ứng đúng voxel ảnh ở cả 3 hướng; nhưng chưa chứng minh được *pixel render thật trên màn hình* vì VTK offscreen render bị crash thật ở bước đọc framebuffer trong môi trường phát triển (lỗi môi trường, đã tái hiện được cả với actor không có texture).
+2. **Clipping mục tiêu "Current ROI Final Surface" chỉ tự tìm được surface do chính nút "Update 3D Surface from Selected ROI" của plugin dựng ra trong phiên làm việc hiện tại.** Surface mở từ project đã lưu, hoặc dựng qua tab Surface gốc của InVesalius, sẽ báo "No final surface for selected ROI." — plugin **cố ý không đoán** mask nào ứng với surface nào, vì mã nguồn InVesalius không lưu liên kết này (chỉ số surface ≠ chỉ số mask). Hãy bấm "Update 3D Surface from Selected ROI" một lần cho ROI đó.
+3. **Texture mặt phẳng dùng lại đúng ảnh lát cắt đã được InVesalius tổng hợp để hiển thị 2D** — không phải "CT thô": gồm CT sau Window/Level hiện tại, **cộng màu mask hiện hành** và **overlay Preview (E2) nếu đang bật**. Đây là chủ đích (tái dùng dữ liệu hiển thị thật, không tự tính lại Window/Level).
+4. **Window/Level**: đổi W/L bằng công cụ gốc thì texture tự làm mới ngay (không cần di chuyển crosshair) — tối đa 1 lần làm mới mỗi vòng sự kiện khi đang kéo chuột W/L. Texture luôn làm mới **tại vị trí mặt phẳng đang đứng**, kể cả khi đã tắt "Sync 2D → 3D" (mặt phẳng không bị dịch chuyển).
 
 ---
 

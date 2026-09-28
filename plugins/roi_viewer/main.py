@@ -139,6 +139,19 @@ def _subscribe_events():
         # `position` (not e.g. `pos`) is the fixed pypubsub MDS kwarg.
         Publisher.subscribe(_on_cross_focal_point, "Set cross focal point")
 
+        # E5 finalization: refresh E5A textured slice planes after a real
+        # native Window/Level change. "Update window level value" (not
+        # "Bright and contrast adjustment image") because at every real
+        # sender - control.py, gui/dialogs.py, data/styles.py,
+        # gui/widgets/slice_menu.py - it is sent AFTER "Bright and
+        # contrast adjustment image", whose Slice.UpdateWindowLevelBackground()
+        # subscriber is what actually stores the new W/L and discards the
+        # buffered vtk image. Listening on the later topic guarantees
+        # Slice() already holds the new values, independent of pypubsub's
+        # listener order. Signature (window, level) matches the real
+        # first subscriber, viewer_slice.UpdateWindowLevelValue().
+        Publisher.subscribe(_on_window_level_changed, "Update window level value")
+
         print("ROI Viewer: Subscribed to pubsub events")
     except ImportError as e:
         print(f"ROI Viewer: Could not import Publisher - {e}")
@@ -222,6 +235,15 @@ def _on_cross_focal_point(position):
         _roi_viewer_window.on_cross_focal_point_changed(position[:3])
 
 
+def _on_window_level_changed(window, level):
+    """Native Window/Level changed - see the NOTE by this topic's
+    subscription above. Fires on every mouse-move during a native W/L
+    drag, so the frame side only schedules a coalesced refresh (and only
+    when texture mode is on)."""
+    if _roi_viewer_window:
+        _roi_viewer_window.on_window_level_changed()
+
+
 def get_plugin_info():
     """
     Return information about the plugin.
@@ -269,6 +291,7 @@ def unload():
         Publisher.unsubscribe(_on_mask_visibility_changed, "Show mask")
         Publisher.unsubscribe(_on_masks_removed, "Remove masks")
         Publisher.unsubscribe(_on_cross_focal_point, "Set cross focal point")
+        Publisher.unsubscribe(_on_window_level_changed, "Update window level value")
     except ImportError:
         pass
     

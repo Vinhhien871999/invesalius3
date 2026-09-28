@@ -315,7 +315,7 @@ With live 3D preview left at its default (OFF), verify the rest of the classic w
 
 ### TEST E5-A — Enable textured planes
 With a real project loaded and Sync 2D->3D active, tick "Show CT texture on slice planes" in the Interaction tab's "3D Visualization" box.
-**Expected**: the 3 geometric coloured planes (C8) disappear and are replaced by 3 planes showing real CT image content (grey/colour, matching the 2D views' current Window/Level).
+**Expected**: the 3 geometric coloured planes (C8) disappear and are replaced, at the same positions, by 3 planes showing the native slice image (CT at the current Window/Level, plus the current mask colour / active Preview overlay if shown - matching the 2D views).
 **Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
 
 ### TEST E5-B — Axial texture orientation
@@ -339,8 +339,8 @@ With texture mode on, use the native "Slices' cross intersection" tool to move t
 **Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
 
 ### TEST E5-F — Window/Level texture refresh
-With texture mode on, change Window/Level via InVesalius's native control, then move the crosshair (or trigger any other real update).
-**Expected**: the textured planes reflect the new Window/Level on their next update - no stale intensity mapping.
+With texture mode on, change Window/Level via InVesalius's native control (drag on a 2D view in W/L mode, or pick a W/L preset) **without moving the crosshair**. Repeat once with "Sync 2D -> 3D" unticked.
+**Expected**: the textured planes pick up the new Window/Level immediately (no crosshair move needed), with no stale intensity mapping; during a W/L drag the 3D view stays responsive. With Sync 2D->3D off, the planes refresh in place and do not jump to the current crosshair.
 **Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
 
 ### TEST E5-G — Texture toggle OFF restores geometric planes
@@ -516,5 +516,7 @@ With both "Show CT texture on slice planes" and "Enable Clipping" left at their 
 **E3_MANUAL_QA_COMPLETE: NOT_RUN** (0/13) — same discipline, same reasoning. Does not block E3's automated `PASS` gate (Current ROI target).
 
 **E4_MANUAL_QA_COMPLETE: NOT_RUN** (0/18) — same discipline, same reasoning. Does not block E4's automated `PASS` gate.
+
+**ADVANCED_FULL_MANUAL_QA_COMPLETE: NO** (0/79 across E1-E5: 0/14 + 0/12 + 0/13 + 0/18 + 0/22). This is separate from any single milestone's technical gate - even if E5-B/C/D later pass and E5 reaches `PASS`, this stays `NO` until every intended item has actually been run by an operator.
 
 **E5_MANUAL_QA_COMPLETE: NOT_RUN** (0/22) — same discipline, same reasoning. Does not block E5's automated gate. Real operator confirmation of E5-B/C/D (texture orientation) is the authoritative verification for the one claim this milestone's own automated evidence could not additionally prove via live rendering (see `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`'s "Texture orientation proof" section).

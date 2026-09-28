@@ -118,6 +118,11 @@ class InteractionPanel(scrolled.ScrolledPanel):
 
         self.cb_texture_planes = wx.CheckBox(self, wx.ID_ANY, _("Show CT texture on slice planes"))
         self.cb_texture_planes.SetValue(False)
+        self.cb_texture_planes.SetToolTip(_(
+            "Shows the native 2D slice image on the 3D planes, exactly as the "
+            "2D views display it: CT after the current Window/Level, plus the "
+            "current mask colour and any active Preview overlay if shown."
+        ))
         self.Bind(wx.EVT_CHECKBOX, self._on_texture_planes_toggle, self.cb_texture_planes)
         viz_sizer.Add(self.cb_texture_planes, 0, wx.ALL, 3)
 
@@ -305,14 +310,14 @@ class InteractionPanel(scrolled.ScrolledPanel):
                 viewer = ViewInterface().get_volume_viewer()
                 if viewer is not None and hasattr(viewer, "ren"):
                     self.controller.textured_slice_planes_3d.attach(viewer.ren)
-                    # Section 11: rebuild immediately from the last known
-                    # real crosshair position, if any, rather than
-                    # waiting for the next 2D interaction - so enabling
-                    # the checkbox shows CURRENT content immediately.
-                    if self.controller._last_cross_focal_point is not None:
-                        self.controller.update_textured_slice_planes(
-                            self.controller._last_cross_focal_point
-                        )
+                    # Build immediately where C8's geometric planes
+                    # currently sit, so the textures replace them in
+                    # place. Not _last_cross_focal_point: it keeps moving
+                    # while Sync 2D->3D is off, when C8's planes stay
+                    # frozen - the textures would appear somewhere else.
+                    position = self.controller.slice_planes_3d.get_position()
+                    if position is not None:
+                        self.controller.update_textured_slice_planes(position)
                     self.controller.textured_slice_planes_3d.set_visible(True)
             except Exception as e:
                 print(f"ROI Viewer: E5A texture planes enable failed - {e}")
