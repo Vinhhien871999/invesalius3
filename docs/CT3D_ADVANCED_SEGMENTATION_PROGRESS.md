@@ -121,6 +121,8 @@
 
 **E5 finalization run (28/09/2026)**: `tests/ct3d -q` = **376 passed, 1 skipped** (377 collected; +9 W/L-refresh tests), verified identical across 3 consecutive runs and order-independent. Upstream **94 passed**. `pyflakes`/`compileall plugins/roi_viewer` exit 0. Also fixed: enabling texture mode now builds at C8's own plane position (not `_last_cross_focal_point`, which keeps moving while Sync 2D->3D is off). No operator evidence for E5-B/C/D was supplied, so **E5 stays `PARTIAL`**. See the E5 report's "E5 Finalization" section.
 
+**E5 operator-closure check (28/09/2026, after `a9d8874a`)**: the operator-closure run received **no operator results** - E5-A/B/C/D all remain `NOT_RUN`. Verified in source that the E5 finalization code is still in place (W/L forwarding + unsubscribe, immediate coalesced refresh, refresh at the existing plane position, exactly 3 non-pickable textured actors, no camera calls, no surface rebuild, clipping display-only). Regression unchanged: `tests/ct3d` **376 passed / 1 skipped / 0 failed** (377 collected); W/L 9, gettext 1, E4 concurrency 5, clipping + cross-feature 25 all pass; upstream **94 passed**; `pyflakes`/`compileall`/`git diff --check` clean. No code changed. **E5_GATE stays `PARTIAL`; E6 stays blocked.**
+
 **E5 manual GUI QA**: see `docs/CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md`'s E5 section - all items `NOT_RUN`.
 
 **E5_GATE: PARTIAL**. E5B (clipping) and all cross-cutting/reconciliation work (Sections 4/5) are fully `PASS`. E5A (textured slice planes) is implemented and real-source-audited (`WORKING` for source/geometry/lifecycle/W-L/pickability), but the specific pixel-level texture-orientation claim is honestly `PARTIAL` - real geometry math is proven, live-render empirical proof is blocked by a real, reproducible environment limitation (not faked, not silently skipped). See `docs/CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md` for the full gate breakdown.
@@ -137,3 +139,17 @@
 | `ENABLE_PREVIEW_SEGMENTATION` | **OFF** | **IMPLEMENTED / WORKING** — realized as the real `cb_enable_preview` checkbox ("Enable Preview Workflow") in `gui/segmentation_panel.py`, unchecked by default. With it unchecked, `btn_preview_otsu`/`btn_preview_region_growing` stay disabled and `_on_seed_picked()` takes its original immediate-grow branch - see `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`'s "E2 Preview Architecture" section and `docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md` §5-6. **[Corrected 24/09/2026, E3 run]**: this row previously read "OFF (once E2 exists) / not yet introduced" - stale, left over from before E2 was implemented; E2 landed with this flag real and working, but this table was never updated to match. |
 | `ENABLE_LIVE_3D_PREVIEW` | **OFF** | **IMPLEMENTED / WORKING** — realized as the real `cb_enable_live_3d_preview` checkbox ("Enable Live 3D Preview") in `gui/segmentation_panel.py`, unchecked by default. With it unchecked, no worker thread is spawned, no actor is attached, and behavior is identical to pre-E4. See `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`'s "E4 Live 3D Preview Architecture" section and `docs/CT3D_ADVANCED_E4_LIVE_3D_PREVIEW_REPORT.md`. **[Corrected 25/09/2026, E5 run]**: this row previously read "OFF (once E4 exists) / not yet introduced" - stale, left over from before E4 was implemented; E4 landed with this flag real and working, but this table was never updated to match. |
 | `ENABLE_AI_SEGMENTATION` | OFF (once E6 exists) | not yet introduced |
+
+## Run log
+
+One row per development/validation run on this branch - including runs that changed nothing, so every run leaves a trace. Dates and commits are taken from `git log`, not memory.
+
+| Date | Run | Commit | `tests/ct3d` | Upstream | Result |
+|---|---|---|---|---|---|
+| 24/09/2026 | E1 - Advanced ROI Management | `11d81dbb` | 199 passed / 1 skipped | 94 | E1_GATE PASS |
+| 24/09/2026 | E2 - Preview / Confirm | `4e28ff0c` | 234 / 1 | 94 | E2_GATE PASS |
+| 24/09/2026 | E3 - Segmentation cleanup | `dbbc4a50` | 274 / 1 | 94 | E3_GATE PASS (Current ROI) |
+| 24/09/2026 | E4 - Fast live 3D preview | `7611b475` | 318 / 1 | 94 | E4_GATE PASS |
+| 25/09/2026 | E5 - Advanced 3D visualization | `61f6c566` | 367 / 1 | 94 | E5_GATE PARTIAL (committed while PARTIAL - see the E5 report's "Git state") |
+| 28/09/2026 | E5 finalization | `a9d8874a` | 376 / 1 | 94 | E5_GATE PARTIAL - immediate W/L refresh added, docs synchronized |
+| 28/09/2026 | E5 operator-closure check | none (this log entry only) | 376 / 1 | 94 | E5_GATE PARTIAL - no operator results for E5-B/C/D supplied; nothing changed |

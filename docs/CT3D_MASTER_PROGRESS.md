@@ -1,5 +1,7 @@
 # CT3D Master Progress
 
+> **Tiến độ sau Phase 14 nằm ở file khác.** File này theo dõi roadmap bản ổn định (Phase 08 → 14) và được **đóng băng** cùng tag `ct3d-rc1` (branch `thesis-ct-roi-tools`) — nội dung bên dưới không đổi. Phần phát triển tiếp theo (E1–E5 và các mốc sau) là track nâng cao riêng, **chỉ có trên nhánh `enhancement/advanced-segmentation`, không có trong `ct3d-rc1`** — theo dõi tại [`CT3D_ADVANCED_SEGMENTATION_PROGRESS.md`](CT3D_ADVANCED_SEGMENTATION_PROGRESS.md) (bảng trạng thái + mục "Run log" ghi từng lượt chạy), phạm vi ở [`CT3D_ADVANCED_SEGMENTATION_ROADMAP.md`](CT3D_ADVANCED_SEGMENTATION_ROADMAP.md).
+
 > Cập nhật sau MỖI phase (Phase 08 → 14). Nguồn dữ liệu: các `CT3D_PXX_*_REPORT.md`, đối chiếu với `CT3D_FEATURE_AUDIT.md`/`CT3D_REMAINING_WORK.md` (kết quả 3 vòng audit trước Phase 08).
 
 ## Current baseline
