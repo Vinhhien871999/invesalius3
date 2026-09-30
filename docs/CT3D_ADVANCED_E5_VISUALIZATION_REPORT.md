@@ -281,3 +281,61 @@ E1 0/14, E2 0/12, E3 0/13, E4 0/18, E5 0/22 - all `NOT_RUN`. **`ADVANCED_FULL_MA
 ### Final E5 gate
 
 **`E5_GATE = PARTIAL`** (no transition this run). Every finalization criterion is met - regression, clipping, gettext, E4 concurrency, truthful W/L classification, no camera/picker/C8/D9-C7 regression, docs synchronized, no fabricated evidence - except the three operator orientation checks (E5-B/C/D), which have not been run. **E6 remains blocked by the roadmap** until E5 is `PASS`.
+
+---
+
+## E5-A operator failure and visibility fix
+
+*Appended 29/09/2026. Earlier sections are left as written.*
+
+### Operator evidence
+
+The first real manual GUI session reported (verbatim facts, nothing inferred):
+
+1. C8 geometric slice planes work.
+2. "Show CT texture on slice planes" does create visible textured slice imagery in the 3D Volume view.
+3. **Bug**: with texture mode ON, the original coloured C8 planes are still visible at the same time.
+
+**E5-A = FAIL.** E5-B/C/D were not reported and stay `NOT_RUN`.
+
+### Root cause (source, then reproduced)
+
+Before the fix, plane visibility was set in 4 places, each applying only its own flag:
+
+| Call site (pre-fix) | What it did | Consequence |
+|---|---|---|
+| `roi_panel.py` `on_cross_focal_point_changed()` | `slice_planes_3d.set_visible(show_slice_planes)` on **every** crosshair event, ignoring texture mode | **The operator's bug** - the toggle's hide was undone by the next crosshair move |
+| `roi_panel.py` `update_textured_slice_planes()` | `textured.set_visible(show_texture_planes)`, ignoring the master switch | Textures drawn with "Show slice planes in 3D" OFF |
+| `interaction_panel.py` texture toggle | hid C8 / showed textures directly, ignoring the master switch | Same as above |
+| `interaction_panel.py` "Show slice planes in 3D" | set only the C8 planes, ignoring texture mode; never touched the textured planes | Master ON re-showed C8 over textures; master OFF left textures visible |
+
+Reproduced on the pre-fix `HEAD` code using only methods that code already had (old crosshair update + old toggle, real VTK planes): texture ON → coloured **0** / textured 3; one crosshair move → coloured **3** / textured 3 - exactly what the operator saw. (The toggle alone was correct, which is why E5's original tests, which never moved the crosshair after enabling texture mode, did not catch it.)
+
+### Fix
+
+`ROIViewerFrame.apply_slice_plane_visibility()` is now the single place that decides plane visibility; all 4 call sites call it. Visibility truth table ("Show slice planes in 3D" is the master switch; texture mode only picks which set it shows and never bypasses it):
+
+| Show slice planes in 3D | Texture | C8 coloured planes | Textured planes |
+|---|---|---|---|
+| OFF | OFF | hidden | hidden |
+| ON | OFF | **visible** | hidden |
+| ON | ON | hidden | **visible** |
+| OFF | ON | hidden | hidden |
+
+Row 4 (case D) follows the preferred semantics: texture mode does not override the master checkbox. Crosshair updates still move geometry and rebuild textures (textures keep being rebuilt while hidden, so turning the master back on shows current content) - they just no longer decide visibility themselves.
+
+Not changed: texture coordinates, orientation mapping, Window/Level integration, clipping, camera, picker, C8 coordinate mapping, E4, final-surface pipeline.
+
+### Tests
+
+`tests/ct3d/test_slice_plane_visibility.py` (9): runs the REAL `ROIViewerFrame.on_cross_focal_point_changed()` / `update_textured_slice_planes()` / `apply_slice_plane_visibility()` and the REAL `InteractionPanel` checkbox handlers against real `SlicePlanes3D`/`TexturedSlicePlanes3D`/`CrosshairMarker3D` in a real `vtkRenderer` (only the viewer lookup and `Slice().GetSlices()` are substituted, with real `converters.to_vtk()` images). Covers: texture OFF → geometric on; texture ON hides geometric / shows textured; texture OFF restores; **crosshair moves in texture mode never re-show C8 planes** (the operator bug); master OFF hides both modes (case D), including across crosshair moves; master back ON with texture ON shows textures only; 4 ON/OFF cycles with a constant 7 actors (3 + 3 + marker); close/reopen starts clean.
+
+Two existing test doubles were updated to match the real frame (not weakened): `test_sync_2d3d.py`'s `_fake_frame` (Phase 13.5, pre-E5) now carries the E5 attributes the real `ROIViewerFrame.__init__` always creates, at their defaults (texture OFF). Without them, the real `apply_slice_plane_visibility()` raised `AttributeError`, which `on_cross_focal_point_changed()`'s broad `except` swallowed, so `test_sync3d_t6_show_planes_on_visible_at_current_position` failed. (On the pre-fix code the same fake already made `surface_clipping_3d.set_origin()` fail silently in those tests; they passed only because that happened after the visibility line.) `test_textured_slice_planes_wl_refresh.py`'s toggle test fake gained the new method.
+
+### Regression
+
+`tests/ct3d -q`: **385 passed, 1 skipped, 0 failed** (386 collected; 376 + 9), identical across 3 consecutive runs. Targeted E5 (texture, W/L, cross-feature, visibility): 44 passed. C8 sync: 22 passed. Upstream: **94 passed**. `pyflakes`/`compileall plugins/roi_viewer`: exit 0. `git diff --check`: clean.
+
+### Status
+
+E5-A: `FAIL` (29/09/2026) → fixed → **`NEEDS_RETEST`** (only the operator can make it PASS). E5-B/C/D: `NOT_RUN`. **`E5_GATE = PARTIAL`**. **E6 blocked.**

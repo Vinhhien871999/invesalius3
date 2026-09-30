@@ -546,7 +546,7 @@ class ROIViewerFrame(wx.Frame):
                     try:
                         self.slice_planes_3d.set_bounds(bounds)
                         self.slice_planes_3d.update_position((x, y, z))
-                        self.slice_planes_3d.set_visible(self.show_slice_planes)
+                        self.apply_slice_plane_visibility()
                     except ValueError as e:
                         print(f"ROI Viewer: slice planes geometry update skipped - {e}")
 
@@ -613,9 +613,26 @@ class ROIViewerFrame(wx.Frame):
                     print(f"ROI Viewer: E5A GetSlices({orientation}) failed - {e}")
                     continue
                 self.textured_slice_planes_3d.update_plane(orientation, image)
-            self.textured_slice_planes_3d.set_visible(self.show_texture_planes)
+            self.apply_slice_plane_visibility()
         except Exception as e:
             print(f"ROI Viewer: E5A textured slice planes update failed - {e}")
+
+    def apply_slice_plane_visibility(self):
+        """
+        The single place that decides which slice-plane set is drawn.
+        Every caller (crosshair updates, texture rebuilds, both
+        checkboxes) goes through here - a real operator hit the bug where
+        a crosshair update re-showed C8's coloured planes on top of the
+        textures because each call site applied only its own flag.
+
+        "Show slice planes in 3D" is the master switch; texture mode only
+        chooses which set it shows, and never bypasses it:
+          master OFF              -> neither set
+          master ON,  texture OFF -> geometric (C8) planes only
+          master ON,  texture ON  -> textured planes only
+        """
+        self.slice_planes_3d.set_visible(self.show_slice_planes and not self.show_texture_planes)
+        self.textured_slice_planes_3d.set_visible(self.show_slice_planes and self.show_texture_planes)
 
     def on_window_level_changed(self):
         """

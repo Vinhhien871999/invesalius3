@@ -269,10 +269,12 @@ class InteractionPanel(scrolled.ScrolledPanel):
         geometry keeps tracking the real crosshair position underneath
         even while hidden (see core/slice_planes_3d.py's set_visible()
         docstring for why), so toggling this back on shows the planes
-        at the CURRENT position immediately, not a stale one.
+        at the CURRENT position immediately, not a stale one. This is the
+        master switch for both plane sets - see ROIViewerFrame.
+        apply_slice_plane_visibility().
         """
         self.controller.show_slice_planes = event.IsChecked()
-        self.controller.slice_planes_3d.set_visible(self.controller.show_slice_planes)
+        self.controller.apply_slice_plane_visibility()
         try:
             from invesalius.pubsub import pub as Publisher
 
@@ -293,17 +295,14 @@ class InteractionPanel(scrolled.ScrolledPanel):
 
     def _on_texture_planes_toggle(self, event):
         """
-        Section 8/13: strictly opt-in, default OFF. Turning texture mode
-        ON hides C8's existing geometric planes and shows the textured
-        ones instead (never both at once - avoids the z-fighting Section
-        13 explicitly calls out); turning it OFF restores the geometric
-        planes to whatever "Show slice planes in 3D" is currently set to
-        - texture mode never changes that checkbox's own stored state.
+        Section 8/13: strictly opt-in, default OFF. Chooses which plane
+        set "Show slice planes in 3D" draws (never both at once - avoids
+        z-fighting); never changes that master checkbox's own state. The
+        actual show/hide is ROIViewerFrame.apply_slice_plane_visibility().
         """
         enabled = self.cb_texture_planes.GetValue()
         self.controller.show_texture_planes = enabled
         if enabled:
-            self.controller.slice_planes_3d.set_visible(False)
             try:
                 from ..interface.view_interface import ViewInterface
 
@@ -318,12 +317,9 @@ class InteractionPanel(scrolled.ScrolledPanel):
                     position = self.controller.slice_planes_3d.get_position()
                     if position is not None:
                         self.controller.update_textured_slice_planes(position)
-                    self.controller.textured_slice_planes_3d.set_visible(True)
             except Exception as e:
                 print(f"ROI Viewer: E5A texture planes enable failed - {e}")
-        else:
-            self.controller.textured_slice_planes_3d.set_visible(False)
-            self.controller.slice_planes_3d.set_visible(self.controller.show_slice_planes)
+        self.controller.apply_slice_plane_visibility()
         self.controller.request_render()
 
     def _on_clip_enabled_toggle(self, event):

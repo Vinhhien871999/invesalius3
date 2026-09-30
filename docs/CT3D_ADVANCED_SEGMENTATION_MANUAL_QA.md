@@ -315,8 +315,10 @@ With live 3D preview left at its default (OFF), verify the rest of the classic w
 
 ### TEST E5-A — Enable textured planes
 With a real project loaded and Sync 2D->3D active, tick "Show CT texture on slice planes" in the Interaction tab's "3D Visualization" box.
-**Expected**: the 3 geometric coloured planes (C8) disappear and are replaced, at the same positions, by 3 planes showing the native slice image (CT at the current Window/Level, plus the current mask colour / active Preview overlay if shown - matching the 2D views).
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Expected**: the 3 geometric coloured planes (C8) disappear and are replaced, at the same positions, by 3 planes showing the native slice image (CT at the current Window/Level, plus the current mask colour / active Preview overlay if shown - matching the 2D views). Also move the crosshair a few times with texture mode on - the coloured planes must stay hidden.
+**Actual Result (29/09/2026, real operator)**: **FAIL** — the real operator saw textured slice imagery in the 3D Volume view, but the original C8 coloured geometric planes stayed visible at the same time. The C8 geometric planes on their own worked.
+**Root cause / fix**: every crosshair update re-applied only "Show slice planes in 3D" to the C8 planes and never checked texture mode, so the next crosshair move after enabling texture mode showed them again. Reproduced on the pre-fix code (texture ON: coloured 0 / textured 3; after one crosshair move: coloured **3** / textured 3). Fixed in `ROIViewerFrame.apply_slice_plane_visibility()` - see `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`, "E5-A operator failure and visibility fix".
+**Status after fix**: `NEEDS_RETEST` - only the operator can turn this into PASS, by re-running this item in the real GUI. | **PASS/FAIL**: `FAIL` → `NEEDS_RETEST`
 
 ### TEST E5-B — Axial texture orientation
 With texture mode on, compare the Axial textured plane's real anatomy (e.g. left/right, anterior/posterior landmarks) against the native Axial 2D view for the same slice.
@@ -486,7 +488,7 @@ With both "Show CT texture on slice planes" and "Enable Clipping" left at their 
 | E4-P | Plugin close/reopen, no duplicate actor | `NOT_RUN` |
 | E4-Q | Save/Open unaffected by live preview | `NOT_RUN` |
 | E4-R | Classic workflow unaffected with preview OFF | `NOT_RUN` |
-| E5-A | Enable textured planes | `NOT_RUN` |
+| E5-A | Enable textured planes | `NEEDS_RETEST` (operator FAIL 29/09/2026, fixed) |
 | E5-B | Axial texture orientation | `NOT_RUN` |
 | E5-C | Coronal texture orientation | `NOT_RUN` |
 | E5-D | Sagittal texture orientation | `NOT_RUN` |
@@ -517,6 +519,6 @@ With both "Show CT texture on slice planes" and "Enable Clipping" left at their 
 
 **E4_MANUAL_QA_COMPLETE: NOT_RUN** (0/18) — same discipline, same reasoning. Does not block E4's automated `PASS` gate.
 
-**ADVANCED_FULL_MANUAL_QA_COMPLETE: NO** (0/79 across E1-E5: 0/14 + 0/12 + 0/13 + 0/18 + 0/22). This is separate from any single milestone's technical gate - even if E5-B/C/D later pass and E5 reaches `PASS`, this stays `NO` until every intended item has actually been run by an operator.
+**ADVANCED_FULL_MANUAL_QA_COMPLETE: NO** (0/79 passed across E1-E5: 0/14 + 0/12 + 0/13 + 0/18 + 0/22; 1 item run so far - E5-A, FAIL, now `NEEDS_RETEST`). This is separate from any single milestone's technical gate - even if E5-B/C/D later pass and E5 reaches `PASS`, this stays `NO` until every intended item has actually been run by an operator.
 
-**E5_MANUAL_QA_COMPLETE: NOT_RUN** (0/22) — same discipline, same reasoning. Does not block E5's automated gate. Real operator confirmation of E5-B/C/D (texture orientation) is the authoritative verification for the one claim this milestone's own automated evidence could not additionally prove via live rendering (see `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`'s "Texture orientation proof" section).
+**E5_MANUAL_QA_COMPLETE: NO** (0/22 passed; E5-A run once by the operator on 29/09/2026 - FAIL, fixed, `NEEDS_RETEST`; the other 21 `NOT_RUN`) — same discipline, same reasoning. Does not block E5's automated gate. Real operator confirmation of E5-B/C/D (texture orientation) is the authoritative verification for the one claim this milestone's own automated evidence could not additionally prove via live rendering (see `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`'s "Texture orientation proof" section).

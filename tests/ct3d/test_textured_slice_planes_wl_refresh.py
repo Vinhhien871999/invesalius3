@@ -177,6 +177,7 @@ def test_enable_texture_uses_c8_plane_position_not_live_crosshair(monkeypatch):
         textured_slice_planes_3d=TexturedSlicePlanes3D(),
         _last_cross_focal_point=(9.0, 9.0, 9.0),
         update_textured_slice_planes=lambda pos: built.append(tuple(pos)),
+        apply_slice_plane_visibility=lambda: None,
         request_render=lambda: None,
     )
     panel = types.SimpleNamespace(

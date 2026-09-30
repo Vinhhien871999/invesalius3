@@ -71,6 +71,17 @@ Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở 
 4. Đổi Window/Level bằng công cụ gốc của InVesalius — texture tự làm mới ngay, **không cần** di chuyển crosshair.
 5. Tắt tick để quay lại 3 mặt phẳng màu C8 như cũ.
 
+**Ô "Show slice planes in 3D" là công tắc chính cho cả 2 loại mặt phẳng** — texture chỉ chọn loại nào được hiện, không bao giờ vượt qua công tắc chính:
+
+| Show slice planes in 3D | Show CT texture | Mặt phẳng màu C8 | Mặt phẳng texture |
+|---|---|---|---|
+| Tắt | Tắt | ẩn | ẩn |
+| Bật | Tắt | **hiện** | ẩn |
+| Bật | Bật | ẩn | **hiện** |
+| Tắt | Bật | ẩn | ẩn |
+
+Di chuyển crosshair chỉ cập nhật vị trí/nội dung, không làm thay đổi bảng trên. *(Sửa 29/09/2026: trước đó, khi bật texture rồi di chuyển crosshair, mặt phẳng màu C8 bị hiện lại chồng lên texture — lỗi thật do người vận hành phát hiện, đã sửa, chờ kiểm tra lại E5-A.)*
+
 > ⚠️ **Lưu ý thật (hướng ảnh)**: hình học của mặt phẳng texture đã được chứng minh thật (khớp chính xác với công thức hình học C8 đã có, và khớp đúng giá trị voxel ảnh thật ở từng góc, kiểm chứng bằng test tự động). Tuy nhiên, việc render trực tiếp (pixel thật trên màn hình) **chưa kiểm chứng được bằng ảnh dựng thử tự động** trong môi trường phát triển hiện tại (VTK offscreen render bị lỗi crash thật ở bước đọc khung hình — lỗi môi trường, không phải lỗi module này, xem `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`). Vì vậy **cần xác nhận bằng mắt thật (E5-B/C/D trong Manual QA)** trước khi coi hướng ảnh là hoàn toàn chắc chắn.
 
 **Clipping / Cutaway (E5B)**:

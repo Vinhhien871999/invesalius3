@@ -23,7 +23,9 @@ import pytest
 
 from plugins.roi_viewer.core.marker_3d import CrosshairMarker3D
 from plugins.roi_viewer.core.slice_planes_3d import SlicePlanes3D
+from plugins.roi_viewer.core.surface_clipping_3d import SurfaceClipping3D
 from plugins.roi_viewer.core.sync_2d3d import SyncManager2D3D
+from plugins.roi_viewer.core.textured_slice_planes_3d import TexturedSlicePlanes3D
 from plugins.roi_viewer.gui import roi_panel
 
 
@@ -147,6 +149,15 @@ def _fake_frame(project_loaded=True, sync_enabled=True, marker=None, planes=None
     fake.marker_3d = marker if marker is not None else _FakeMarker()
     fake.slice_planes_3d = planes if planes is not None else _FakePlanes()
     fake.show_slice_planes = show_slice_planes
+    # E5 state the real ROIViewerFrame.__init__ always creates, at its
+    # real defaults (texture mode OFF, clipping inert) - so these C8 tests
+    # exercise exactly the pre-E5 behaviour. Without it, the real
+    # apply_slice_plane_visibility() raised AttributeError, silently
+    # swallowed by on_cross_focal_point_changed()'s broad except.
+    fake.show_texture_planes = False
+    fake.textured_slice_planes_3d = TexturedSlicePlanes3D()
+    fake.surface_clipping_3d = SurfaceClipping3D()
+    fake.apply_slice_plane_visibility = roi_panel.ROIViewerFrame.apply_slice_plane_visibility.__get__(fake)
     # Bind the REAL _compute_volume_bounds method - it only reads
     # ProjectInterface() (patched per-test below where real bounds
     # matter), no other `self` state.
