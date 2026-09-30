@@ -62,6 +62,11 @@ def real_env(real_slice_and_project_singleton):
     values = np.zeros(_SHAPE, dtype=np.uint8)
     values[1:5, 1:5, 1:5] = 255
     mask.matrix[1:, 1:, 1:] = values
+    # Axial slices flagged computed - the state of any real mask whose
+    # voxels hold data. Since 30/09/2026 E4 reads the current ROI through
+    # the native contract (core/native_mask.py), which computes slices
+    # still flagged 0 from the threshold, as InVesalius does.
+    mask.matrix[1:, 0, 0] = 1
     mask.matrix.flush()
     proj.mask_dict[0] = mask
     s.current_mask = mask
@@ -335,13 +340,14 @@ def test_roi_switch_rebuilds_for_new_source(real_env, renderer):
     values2 = np.zeros(_SHAPE, dtype=np.uint8)
     values2[2:4, 2:4, 2:4] = 255
     mask2.matrix[1:, 1:, 1:] = values2
+    mask2.matrix[1:, 0, 0] = 1  # computed slices - see real_env
     proj.mask_dict[1] = mask2
     s.current_mask = mask2  # real "Change mask selected" effect
 
     array2, _, kind2 = panel._select_preview_3d_source()
     assert kind2 == "current_roi"
     assert id(array2) != first_mask_id
-    assert np.array_equal(np.array(array2), values2)
+    assert np.array_equal(np.asarray(array2) != 0, values2 > 127)  # E4 now gets the bool foreground
 
 
 def test_plugin_reopen_no_duplicate_actor(renderer):

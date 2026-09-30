@@ -303,7 +303,15 @@ class ExportPanel(wx.Panel):
             from ..interface.project_interface import ProjectInterface
 
             spacing = ProjectInterface().get_spacing()
-            data = (mask.matrix[1:, 1:, 1:] > 0).astype("uint8")
+            import invesalius.data.slice_ as sl
+            from ..core import native_mask
+
+            # Native read contract (core/native_mask.py, 30/09/2026): slices
+            # not shown yet are computed first (as InVesalius's own NIfTI
+            # export does), and foreground is what the 2D views colour and
+            # the surface contours ("> 127"), so brush-erased voxels are
+            # not exported.
+            data = native_mask.logical_foreground(sl.Slice(), mask).astype("uint8")
             if selection == 1:  # NRRD
                 ok = self.controller.exporter.export_mask_nrrd(data, filepath, spacing=spacing)
             elif selection == 2:  # NumPy

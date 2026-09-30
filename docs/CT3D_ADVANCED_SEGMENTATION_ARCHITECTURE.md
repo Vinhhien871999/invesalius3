@@ -487,3 +487,14 @@ Presentation-only change: no handler, pubsub topic, `Project().mask_dict` access
 - Removed from "Tương tác & Hiển thị": "Real-time Update / Update delay" and the "Brush Mode" copy - both only stored values nothing read (the real brush controls are in "Phân đoạn"). Their dead handlers and `get_brush_config()` went with them (`test_dead_interaction_controls_removed`).
 - Pick-point readout shows the **slice-frame** coordinates (`view_to_slice`), consistent with the 2D views, instead of the raw y-flipped 3D view-frame pick.
 - Workflow hint deviates from the spec's suggested "Tạo/Xem trước → Kiểm tra → Hậu xử lý → Chấp nhận → Cập nhật 3D": post-processing cannot run on a preview (E3 "Cleanup targets" - Otsu Accept rebuilds the mask from the threshold), so the real order is "1. Tạo / xem trước → 2. Chấp nhận → 3. Hậu xử lý → 4. Cập nhật bề mặt 3D".
+
+---
+
+# Native mask contract (read/write) — 30/09/2026
+
+All whole-mask reads and writes go through `plugins/roi_viewer/core/native_mask.py` (full evidence: `docs/CT3D_NATIVE_MASK_CONTRACT_FIX_REPORT.md`):
+
+- **Read** (`logical_foreground`): `Slice().do_threshold_to_all_slices(mask)` first — threshold masks are computed lazily, slice by slice, as the 2D views show them — then foreground = `matrix[1:,1:,1:] > 127` (what the 2D colour table and the surface contour treat as mask; brush Erase writes 1 = background). Used by E3 cleanup, E4 Current ROI, Measure Volume, NumPy/NRRD export.
+- **Write** (`write_logical_region`): exactly 0/255, all three "slice computed" flag planes set (`matrix[0]`, `[:,0]`, `[:,:,0]` = 1, as native whole-volume writes do), `was_edited = True`, 2D slice buffers discarded. Setting only the axial flags (the old code) let `get_mask_slice()` re-threshold coronal/sagittal planes on first view and erase committed data.
+- **Commit** (`commit_preview_array_to_new_mask`): shape check before anything is created → native "Create new mask" → `write_logical_region`. The one commit path for computed candidates: Region Growing (classic, E2 Accept) and E6 AI Accept. E2 Otsu Accept keeps the native threshold commit.
+- `_refresh_after_edit()` discards the 2D slice buffers before "Reload actual slice".

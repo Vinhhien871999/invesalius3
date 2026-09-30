@@ -252,8 +252,14 @@ class MeasurementPanel(wx.Panel):
             # volume slightly (confirmed for real: UI showed 9575.83mm3
             # vs 9574.80mm3 independently computed from the real
             # interior voxels only). Use the interior only.
+            # Native read contract (core/native_mask.py, 30/09/2026): compute
+            # slices the 2D views have not shown yet and count only
+            # "value > 127" - brush-erased voxels (value 1) are background.
+            import invesalius.data.slice_ as sl
+            from ..core import native_mask
+
             measurement = self.controller.measure_mgr.add_volume_measurement(
-                name="", mask_index=mask.index, mask=mask.matrix[1:, 1:, 1:]
+                name="", mask_index=mask.index, mask=native_mask.logical_foreground(sl.Slice(), mask)
             )
             self.txt_volume.SetValue(f"{fmt_float(measurement.volume)} {measurement.unit}")
             self.add_measurement(measurement.name, measurement.volume, measurement.unit)

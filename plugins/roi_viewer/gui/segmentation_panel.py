@@ -11,7 +11,7 @@ from typing import Optional
 import wx
 import wx.lib.scrolledpanel as scrolled
 
-from ..core import segmentation_cleanup, segmentation_preview
+from ..core import native_mask, segmentation_cleanup, segmentation_preview
 from ..i18n import _, fmt_float, fmt_int
 from . import ui_helpers
 
@@ -658,90 +658,34 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
     def _commit_region_growing_result(self, result_mask, seed, tolerance) -> Optional[str]:
         """
-        Creates a real InVesalius mask sized to match the volume, then
-        overwrites its voxel data with the region-growing result - the
-        same direct matrix-write technique already verified for
-        Undo/Redo (mask.matrix[:] = ...), so this is real, first-class
-        mask data, not a disconnected copy. Extracted from
-        _on_region_grown() (E2, Advanced Segmentation Enhancement Track)
-        so the Accept-region-growing-preview path (_on_preview_accept())
-        can reuse this EXACT real commit instead of a second,
-        divergence-prone implementation. Returns the new mask's name on
-        success, None on failure (reason printed to console; callers
-        decide how to surface that in the UI).
+        Commits a region-growing result (classic path and E2 Accept) as a
+        new real mask named "Region Growing N", through the shared
+        core/native_mask.commit_preview_array_to_new_mask() - the same
+        commit E6 AI Accept uses. Returns the new mask's name, or None on
+        failure (reason printed to console; callers report it in the UI).
+
+        30/09/2026: this used to write np.where(result > 0, 255, target)
+        and mark only the axial "computed" sentinels. Showing a coronal or
+        sagittal slice that had not been displayed yet then re-thresholded
+        that plane with the placeholder threshold (1, 1) and erased the
+        committed voxels, and slices the 2D views had already thresholded
+        during mask creation could keep stray (1, 1) voxels. The shared
+        helper writes exactly 0/255 and marks all three sentinel planes,
+        like InVesalius's own Watershed commit - see core/native_mask.py.
+        was_edited is still set (Phase 08 surface policy -
+        choose_surface_algorithm()).
         """
         try:
-            import numpy as np
-            import invesalius.data.slice_ as sl
             import invesalius.constants as const
-            from invesalius.pubsub import pub as Publisher
             from ..interface.project_interface import ProjectInterface
 
             mask_count = len(ProjectInterface().get_mask_dict())
             colour = const.MASK_COLOUR[mask_count % len(const.MASK_COLOUR)]
             name = f"Region Growing {mask_count + 1}"
-
-            # Create an empty real mask of the right shape/threshold
-            # bookkeeping via the standard path (this also triggers
-            # ROIManager.rebuild_from_project_masks() via main.py's
-            # "Create new mask" subscriber - see core/roi_manager.py's
-            # module docstring), then overwrite its voxel data with the
-            # actual region-growing result.
-            Publisher.sendMessage(
-                "Create new mask", mask_name=name, thresh=(1, 1), colour=colour
-            )
-            new_mask = sl.Slice().current_mask
-            if new_mask is None or new_mask.matrix is None:
+            mask = native_mask.commit_preview_array_to_new_mask(result_mask > 0, name, colour)
+            if mask is None:
                 print("ROI Viewer: region growing commit failed - mask creation returned no current mask")
                 return None
-
-            # InVesalius mask matrices carry a 1-voxel padding border
-            # (see interface/project_interface.py notes elsewhere on
-            # mask padding); result_mask matches the unpadded volume
-            # shape, so write into the interior.
-            target = new_mask.matrix[1:, 1:, 1:]
-            if target.shape != result_mask.shape:
-                # Shapes should match ProjectInterface().get_shape(), but
-                # guard defensively rather than raising into a
-                # background-thread-originated callback.
-                print(f"ROI Viewer: region growing commit failed - shape mismatch {target.shape} vs {result_mask.shape}")
-                return None
-
-            target[:] = np.where(result_mask > 0, 255, target)
-            # Round-2 audit, section B: a mask created via the
-            # thresh=(1,1) bookkeeping placeholder above starts with
-            # every slice's "already thresholded" sentinel
-            # (Slice.do_threshold_to_all_slices()'s
-            # mask.matrix[n, 0, 0] check) at 0 - i.e. "never
-            # visited". invesalius/data/slice_.py's
-            # do_threshold_to_all_slices() runs automatically the
-            # FIRST time ANY surface is built for this mask
-            # (CreateSurfaceFromIndex calls it before "Create
-            # surface"), and for every slice whose sentinel is
-            # still 0 it OVERWRITES that slice's voxels by
-            # re-deriving them from thresh=(1,1) against the real
-            # image - discarding this hand-written region-growing
-            # result completely and silently, with no exception.
-            # Verified for real (test_surface_update_small_roi.py's
-            # own mask-write, which hit exactly this): the
-            # resulting surface reflected wherever the real CT
-            # image happened to equal exactly 1, not the actual
-            # grown/edited region. Marking every slice's sentinel
-            # as already-visited here - the exact same real
-            # mechanism InVesalius's own do_threshold_to_all_slices
-            # uses to protect a slice it already computed - tells
-            # it to leave this hand-written data alone.
-            new_mask.matrix[1:, 0, 0] = 1
-            new_mask.matrix.flush()
-            # Phase 08 fix: this mask's voxel data is 100% hand-
-            # written (region growing result), not derived from
-            # mask.threshold_range - _on_update_surface() needs
-            # was_edited=True to know it must use a mask-driven
-            # algorithm ("Binary") instead of "Default" (which
-            # would silently ignore this data entirely and
-            # re-contour the raw image instead - see that
-            # method's own NOTE for the full root-cause).
-            new_mask.was_edited = True
             return name
         except Exception as e:
             print(f"ROI Viewer: committing region growing result failed - {e}")
@@ -1245,8 +1189,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # sites individually.
         self._mark_preview_3d_dirty("mask edited")
         try:
+            import invesalius.data.slice_ as sl
             from invesalius.pubsub import pub as Publisher
 
+            # The 2D views cache the shown mask slice; without discarding
+            # it, "Reload actual slice" redraws the pre-edit slice.
+            native_mask.discard_slice_buffers(sl.Slice())
             Publisher.sendMessage("Reload actual slice")
             Publisher.sendMessage("Render volume viewer")
         except ImportError:
@@ -1754,23 +1702,22 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         2. Saves exactly ONE real Undo checkpoint via the EXISTING
            `controller.mask_mgr`/`UndoRedoManager` (Section 16 - no
            E3-specific undo stack).
-        3. Writes the result into `mask.matrix[1:, 1:, 1:]` ONLY - the
-           real logical voxel region (Section 6) - never touching the
-           1-voxel padding border or its per-axial-slice sentinel cells
-           beyond the one explicit, deliberate exception in step 4.
-        4. Marks every axial slice's "already thresholded" sentinel
-           (`mask.matrix[1:, 0, 0] = 1`) - the EXACT same real defensive
-           write `_on_region_grown()` already does and explains in
-           depth (see that method's own NOTE): without this, a later
-           surface build's `do_threshold_to_all_slices()` would
-           silently re-derive any not-yet-visited slice from the
-           mask's `threshold_range` against the raw image, discarding
-           this cleanup's result for that slice. Confirmed by directly
-           re-reading `invesalius/data/slice_.py.do_threshold_to_all_
-           slices()` for this milestone (Section 6's explicit
-           re-audit requirement) - it only ever checks/sets this one
-           AXIAL-indexed sentinel, never a Coronal/Sagital one, so
-           nothing else needs to be touched here.
+        3. Reads the mask through core/native_mask.logical_foreground():
+           unvisited slices of a lazily computed threshold mask are
+           computed first (native do_threshold_to_all_slices()), and
+           foreground is "value > 127", so brush-erased voxels (value 1)
+           stay background.
+        4. Writes the result with native_mask.write_logical_region():
+           exactly 0/255 in mask.matrix[1:, 1:, 1:], all three sentinel
+           planes marked computed, 2D slice buffers discarded.
+           *Corrected 30/09/2026*: this used to read "!= 0" without
+           computing unvisited slices (a fresh threshold mask read as
+           mostly empty, and the result was then written back as final)
+           and marked only the axial sentinels, on the belief that only
+           do_threshold_to_all_slices() re-derives slices - but
+           get_mask_slice() also re-thresholds any coronal/sagittal
+           plane whose own sentinel is 0 when a 2D view shows it, which
+           undid the cleanup on that plane.
         5. Sets `mask.was_edited = True` (Phase 08 D9/C7 policy - see
            choose_surface_algorithm()) but deliberately does NOT call
            "Create surface from index" - the surface intentionally goes
@@ -1795,11 +1742,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             import numpy as np
             from ..interface.project_interface import ProjectInterface
 
-            region = mask.matrix[1:, 1:, 1:]
-            before = np.array(region)  # real copy, not a view - region is about to be overwritten in place
+            import invesalius.data.slice_ as sl
+
+            s = sl.Slice()
+            before_fg = native_mask.logical_foreground(s, mask)
+            before = before_fg.astype(np.uint8) * 255
             result, op_info = op_callable(before)
 
-            if np.array_equal(result > 0, before > 0):
+            if np.array_equal(result > 0, before_fg):
                 self.lbl_cleanup_status.SetLabel(_("No changes were needed."))
                 return
 
@@ -1809,10 +1759,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             editor.mask = mask.matrix
             editor.save_state()  # exactly one checkpoint, same real UndoRedoManager as Save Checkpoint/Undo/Redo above
 
-            region[:] = result
-            mask.matrix[1:, 0, 0] = 1  # protect against a later surface build re-deriving un-visited slices - see docstring
-            mask.matrix.flush()
-            mask.was_edited = True
+            native_mask.write_logical_region(s, mask, result > 0)  # also sets was_edited - see docstring
 
             pi = ProjectInterface()
             stats = segmentation_cleanup.cleanup_stats(before, result, pi.get_spacing())
@@ -1975,7 +1922,15 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         mask = self._current_mask()
         if mask is not None and mask.matrix is not None:
-            return mask.matrix[1:, 1:, 1:], spacing, "current_roi"
+            # Native read contract (core/native_mask.py): unvisited slices
+            # computed first, brush-erased voxels (value 1) are background.
+            try:
+                import invesalius.data.slice_ as sl
+
+                return native_mask.logical_foreground(sl.Slice(), mask), spacing, "current_roi"
+            except Exception as e:
+                print(f"ROI Viewer: E4 could not read the current ROI - {e}")
+                return None, None, None
 
         return None, None, None
 

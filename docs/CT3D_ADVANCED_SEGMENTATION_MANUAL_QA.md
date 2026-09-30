@@ -8,6 +8,8 @@
 >
 > **Reconciliation note (30/09/2026)**: Operator reports previous feature groups passed during manual use; item-level reconciliation pending. The operator's statement was general (per feature group, not per item), so no item below was changed to PASS on the strength of it: only items with specific evidence recorded in this file are marked PASS (currently E5-A).
 >
+> **Native mask contract fix (30/09/2026)**: Region Growing commit (classic + E2-G Accept), E3 cleanup (E3-A..M), E4 Current ROI, Measure Volume and NumPy/NRRD export changed how they read/write masks (`docs/CT3D_NATIVE_MASK_CONTRACT_FIX_REPORT.md`). Run those items on a build that includes this fix. Quick check while doing so: after Region Growing, scroll the Coronal and Sagittal views through the new mask - it must not lose voxels.
+>
 > **Operator report, 30/09/2026 (E6 instruction)**: "the parts just tested basically PASS, including E4 Live 3D Preview and E5 texture/clipping (basic)", after the coordinate fix and UI polish. Recorded as *operator-confirmed, group level* on the E4 and E5 sections below. It names no item, so item statuses are unchanged. The E5 technical gate was closed separately by a rendered automated proof (`tests/ct3d/test_texture_orientation_render.py`) - not by this statement. E5-B/C/D/E/J/K/L are `RETEST_REQUIRED` because they depend on world↔voxel coordinates fixed in `7b245865`/`c9f220bd` - any earlier result for them is void.
 
 ## E1 — Advanced ROI Manager

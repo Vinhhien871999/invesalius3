@@ -81,11 +81,15 @@ def _panel_like(controller):
 
 
 def _write_region(mask, values: np.ndarray):
-    """Write a real (unpadded, logical) array into the mask's real
-    padded matrix interior, exactly as core/segmentation.py's own
-    _commit_region_growing_result() does - the real production write
-    pattern, not a shortcut."""
+    """Write a real (unpadded, logical) array into the mask's padded
+    matrix interior and flag its axial slices computed - the state of a
+    real mask that holds data. (Before 30/09/2026 this left the flags at
+    0, a state real InVesalius never keeps data in: the next
+    do_threshold_to_all_slices() recomputes such slices from the
+    threshold. _run_cleanup() now performs that native step before
+    reading - see core/native_mask.py.)"""
     mask.matrix[1:, 1:, 1:] = values
+    mask.matrix[1:, 0, 0] = 1
     mask.matrix.flush()
 
 
@@ -107,38 +111,17 @@ def test_cleanup_current_roi_updates_logical_region(real_mask_env):
     assert result[2, 2, 2] == 255  # main blob kept
 
 
-def test_cleanup_preserves_padding(real_mask_env):
-    """The 1-voxel padding border (index 0 on every axis) must be
-    untouched by a cleanup write - only mask.matrix[1:,1:,1:] is ever
-    assigned to (Section 6's explicit re-audit requirement)."""
-    from plugins.roi_viewer.core import segmentation_cleanup
+def test_cleanup_marks_every_sentinel_plane(real_mask_env):
+    """The padding planes matrix[0], matrix[:, 0], matrix[:, :, 0] are
+    InVesalius's per-slice "computed" flags (axial/coronal/sagittal). After
+    a cleanup write all three must be set, as native whole-volume writes do
+    (Mask.modified(all_volume=True), Watershed) - otherwise showing a
+    coronal/sagittal slice for the first time re-thresholds that plane and
+    undoes the cleanup there (see test_native_mask_contract.py).
 
-    mask, roi_mgr, mask_mgr = real_mask_env
-    values = np.zeros(_SHAPE, dtype=np.uint8)
-    values[1:5, 1:5, 1:5] = 255
-    _write_region(mask, values)
-
-    # Mark a recognizable value in the padding border that must survive.
-    mask.matrix[0, 5, 5] = 7
-    mask.matrix[3, 0, 5] = 7
-    mask.matrix[3, 5, 0] = 7
-
-    controller = _FakeController(roi_mgr, mask_mgr)
-    panel = _panel_like(controller)
-    panel._run_cleanup(lambda region: segmentation_cleanup.smooth_binary_mask(region, iterations=1), "Smooth Mask")
-
-    assert mask.matrix[0, 5, 5] == 7
-    assert mask.matrix[3, 0, 5] == 7
-    assert mask.matrix[3, 5, 0] == 7
-
-
-def test_cleanup_sets_axial_sentinel_after_write(real_mask_env):
-    """Real, verified protection against do_threshold_to_all_slices()
-    silently discarding the cleanup on a not-yet-visited slice (see
-    SegmentationPanel._run_cleanup()'s own docstring and
-    invesalius/data/slice_.py.do_threshold_to_all_slices(), re-audited
-    for this milestone) - every axial slice's sentinel
-    (mask.matrix[n, 0, 0]) must be 1 after a real cleanup write."""
+    Replaces two tests (30/09/2026): test_cleanup_preserves_padding asserted
+    the padding stayed untouched, and test_cleanup_sets_axial_sentinel_after_
+    write asserted only the axial flags - both encoded the bug."""
     from plugins.roi_viewer.core import segmentation_cleanup
 
     mask, roi_mgr, mask_mgr = real_mask_env
@@ -146,13 +129,16 @@ def test_cleanup_sets_axial_sentinel_after_write(real_mask_env):
     values[1:5, 1:5, 1:5] = 255
     values[2, 2, 2] = 0  # real enclosed cavity, so fill_holes() is a real mutation, not a no-op
     _write_region(mask, values)
-    assert (np.array(mask.matrix[1:, 0, 0]) == 0).all()  # sentinels start unvisited
+    assert (np.array(mask.matrix[0, 1:, 0]) == 0).all()  # coronal flags start unvisited
 
     controller = _FakeController(roi_mgr, mask_mgr)
     panel = _panel_like(controller)
     panel._run_cleanup(lambda region: segmentation_cleanup.fill_holes(region), "Fill Holes")
 
-    assert (np.array(mask.matrix[1:, 0, 0]) == 1).all()  # all axial slices now marked visited
+    assert (np.array(mask.matrix[0, :, :]) == 1).all()
+    assert (np.array(mask.matrix[:, 0, :]) == 1).all()
+    assert (np.array(mask.matrix[:, :, 0]) == 1).all()
+    assert np.array(mask.matrix[3, 3, 3]) == 255  # the cavity was filled - the write itself happened
 
 
 def test_cleanup_sets_was_edited(real_mask_env):
