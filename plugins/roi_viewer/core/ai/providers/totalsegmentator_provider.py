@@ -75,6 +75,13 @@ PARAM_ACQUISITION = OPTION_ACQUISITION
 
 REQUIRED_API_PARAMETERS = ("input", "output", "task", "roi_subset", "device")
 
+# TotalSegmentator 2.18.0 python_api: a CT run with roi_subset (always used
+# here) first predicts a rough 6 mm "total" segmentation for cropping - task
+# 298 - before the selected sub-mode's own task ids (map_tasks_config.
+# TASK_CONFIGS["total"]["sub_modes"]: default 291-295, fast 297).
+CROP_TASK_ID = 298
+SUB_MODE_KEYS = {MODE_STANDARD: "default", MODE_FAST: "fast"}
+
 
 class OrientationUnknown(ValueError):
     pass
@@ -185,18 +192,40 @@ class TotalSegmentatorProvider(AISegmentationProvider):
     def _class_map(self):
         return dict(self._module("totalsegmentator.map_to_binary").class_map[TASK])
 
-    def _weights_status(self):
-        """TotalSegmentator's own weights directory (get_weights_dir():
-        $TOTALSEG_WEIGHTS_PATH, else $TOTALSEG_HOME_DIR/nnunet/results, else
-        ~/.totalsegmentator/nnunet/results). Ready if it holds at least one
-        downloaded TotalSegmentator dataset folder. The run itself is
-        additionally guarded against downloading (_guard)."""
+    def _weights_table(self):
+        """(weights_dir, sub_modes, TASK_ID_WEIGHTS_CONFIGS) from the INSTALLED
+        package: TotalSegmentator's own weights directory (config.
+        get_weights_dir(): $TOTALSEG_WEIGHTS_PATH, else $TOTALSEG_HOME_DIR/
+        nnunet/results, else ~/.totalsegmentator/nnunet/results) and its own
+        task -> weight-folder tables."""
         weights_dir = Path(self._module("totalsegmentator.config").get_weights_dir())
-        if not weights_dir.is_dir():
-            return False, f"no weights directory at {weights_dir}"
-        found = [p.name for p in weights_dir.iterdir()
-                 if p.is_dir() and p.name.startswith("Dataset") and "TotalSegmentator" in p.name]
-        return bool(found), f"{len(found)} TotalSegmentator weight folder(s) in {weights_dir}"
+        tasks = self._module("totalsegmentator.map_tasks_config")
+        return weights_dir, tasks.TASK_CONFIGS[TASK]["sub_modes"], tasks.TASK_ID_WEIGHTS_CONFIGS
+
+    @staticmethod
+    def _weights_folder(weights_dir, table, task_id) -> Path:
+        info = table[task_id]
+        folder = Path(info["foldername"])
+        rel = info.get("rel_path")
+        return weights_dir / (Path(rel) / folder if rel else folder)
+
+    def _weights_status(self):
+        """(modes whose weights are all on disk, detail). A mode needs its
+        sub-mode task ids plus the crop model (CROP_TASK_ID)."""
+        weights_dir, sub_modes, table = self._weights_table()
+        ready, missing = [], []
+        for mode, key in SUB_MODE_KEYS.items():
+            if key not in sub_modes:
+                continue
+            ids = sub_modes[key]["task_id"]
+            needed = (list(ids) if isinstance(ids, (list, tuple)) else [ids]) + [CROP_TASK_ID]
+            absent = [t for t in needed if t not in table or not self._weights_folder(weights_dir, table, t).is_dir()]
+            if absent:
+                missing.append(f"{mode}: task {absent}")
+            else:
+                ready.append(mode)
+        detail = f"weights dir {weights_dir}" + (f"; missing {'; '.join(missing)}" if missing else "")
+        return tuple(ready), detail
 
     def _cuda_available(self) -> bool:
         torch = self._module("torch")
@@ -227,13 +256,13 @@ class TotalSegmentatorProvider(AISegmentationProvider):
         except Exception as e:
             return self._unavailable(REASON_API, f"no class map for task '{TASK}': {e}", version)
         try:
-            ready, detail = self._weights_status()
+            ready_modes, detail = self._weights_status()
         except Exception as e:
-            ready, detail = False, f"cannot locate weights: {e}"
-        if not ready:
+            ready_modes, detail = (), f"cannot determine the required weights: {e}"
+        modes = tuple(m for m in ready_modes if m == MODE_STANDARD or "fast" in params)
+        if not modes:
             return self._unavailable(REASON_WEIGHTS, detail, version)
         devices = (DeviceKind.CPU, DeviceKind.CUDA) if self._cuda_available() else (DeviceKind.CPU,)
-        modes = (MODE_STANDARD, MODE_FAST) if "fast" in params else (MODE_STANDARD,)
         return AIProviderInfo(
             provider_id=PROVIDER_ID, display_name="TotalSegmentator", version=version, available=True,
             capabilities=(Capability.AUTOMATIC,),  # no prompts; not interruptible (see infer)
@@ -275,12 +304,24 @@ class TotalSegmentatorProvider(AISegmentationProvider):
 
     @contextlib.contextmanager
     def _guard(self):
-        """While TotalSegmentator runs: its weight download function raises
-        instead of downloading (the plugin never starts a download), and
-        its usage-statistics upload is a no-op (inference stays local)."""
+        """While TotalSegmentator runs: its weight "download" function only
+        checks that the weights are on disk (TotalSegmentator calls it on every
+        run; with weights present the original does nothing either) and raises
+        WeightsNotReady instead of downloading anything missing; its
+        usage-statistics upload is a no-op (inference stays local).
 
-        def refuse_download(*args, **kwargs):
-            raise WeightsNotReady(f"TotalSegmentator weights missing (task id {args[0] if args else '?'})")
+        30/09/2026: the first version replaced it with a function that always
+        raised - every real run would have failed even with all weights
+        present. Found by reading the installed 2.18.0 source."""
+        try:
+            weights_dir, _, table = self._weights_table()
+        except Exception:
+            weights_dir, table = None, {}
+
+        def refuse_download(task_id=None, *args, **kwargs):
+            if weights_dir is not None and task_id in table and                     self._weights_folder(weights_dir, table, task_id).is_dir():
+                return None  # present: nothing to do
+            raise WeightsNotReady(f"TotalSegmentator weights missing (task id {task_id})")
 
         def no_usage_stats(*args, **kwargs):
             return None

@@ -27,6 +27,12 @@ import importlib
 import json
 import os
 import sys
+import tempfile
+
+# Never touch the user's InVesalius config (same rule as conftest.py): under
+# pytest XDG_CONFIG_HOME is already a temp dir; standalone, use a fresh one.
+if "XDG_CONFIG_HOME" not in os.environ:
+    os.environ["XDG_CONFIG_HOME"] = tempfile.mkdtemp(prefix="ct3d_probe_xdg_")
 
 import numpy as np
 

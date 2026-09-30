@@ -29,18 +29,33 @@ SHAPE = (6, 10, 12)
 SPACING = (0.5, 0.8, 2.3)
 
 
+# Shaped like TotalSegmentator 2.18.0's map_tasks_config (read from its wheel).
+SUB_MODES = {"default": {"task_id": [291, 292, 293, 294, 295]}, "fast": {"task_id": 297},
+             "fastest": {"task_id": 298}}
+WEIGHT_FOLDERS = {291: "Dataset291_TotalSegmentator_part1_organs_1559subj",
+                  292: "Dataset292_TotalSegmentator_part2_vertebrae_1532subj",
+                  293: "Dataset293_TotalSegmentator_part3_cardiac_1559subj",
+                  294: "Dataset294_TotalSegmentator_part4_muscles_1559subj",
+                  295: "Dataset295_TotalSegmentator_part5_ribs_1559subj",
+                  297: "Dataset297_TotalSegmentator_total_3mm_1559subj",
+                  298: "Dataset298_TotalSegmentator_total_6mm_1559subj"}
+
+
 def fake_modules(tmp_path, weights=True, cuda=False, signature="full", block=None, fail=False,
-                 bad_affine=False, download_on_call=False):
+                 bad_affine=False, missing=()):
     calls = {"ts": [], "download": 0, "usage": 0, "empty_cache": 0}
     weights_dir = tmp_path / "weights"
     weights_dir.mkdir(exist_ok=True)
     if weights:
-        (weights_dir / "Dataset291_TotalSegmentator_part1_organs_1559subj").mkdir(exist_ok=True)
+        for task_id, folder in WEIGHT_FOLDERS.items():
+            if task_id not in missing:
+                (weights_dir / folder).mkdir(exist_ok=True)
 
     api = types.ModuleType("totalsegmentator.python_api")
 
-    def download_pretrained_weights(task_id):
-        calls["download"] += 1
+    def download_pretrained_weights(task_id):  # the real one downloads when the folder is missing
+        if not (weights_dir / WEIGHT_FOLDERS[task_id]).is_dir():
+            calls["download"] += 1
 
     def send_usage_stats(*a, **k):
         calls["usage"] += 1
@@ -48,8 +63,13 @@ def fake_modules(tmp_path, weights=True, cuda=False, signature="full", block=Non
     def run(input, output=None, ml=False, fast=False, task="total", roi_subset=None, quiet=False, device="gpu"):
         calls["ts"].append({"output": output, "ml": ml, "fast": fast, "task": task, "roi_subset": roi_subset,
                             "quiet": quiet, "device": device, "input_type": type(input).__name__})
-        if download_on_call:
-            api.download_pretrained_weights(291)  # module-global lookup, as the real code does
+        # As 2.18.0 does on EVERY run (module-global lookup): the sub-mode's
+        # weights, then the 6 mm crop model because roi_subset is set.
+        ids = SUB_MODES["fast" if fast else "default"]["task_id"]
+        for task_id in (ids if isinstance(ids, list) else [ids]):
+            api.download_pretrained_weights(task_id)
+        if roi_subset is not None:
+            api.download_pretrained_weights(298)
         api.send_usage_stats({}, {"task": task})
         if block is not None:
             block.wait(10)
@@ -82,12 +102,17 @@ def fake_modules(tmp_path, weights=True, cuda=False, signature="full", block=Non
     config.get_weights_dir = lambda: weights_dir
     mapping = types.ModuleType("totalsegmentator.map_to_binary")
     mapping.class_map = {"total": dict(CLASS_MAP)}
+    tasks = types.ModuleType("totalsegmentator.map_tasks_config")
+    tasks.TASK_CONFIGS = {"total": {"sub_modes": SUB_MODES}}
+    tasks.TASK_ID_WEIGHTS_CONFIGS = {t: {"foldername": f, "version": "v2.0.0-weights"}
+                                     for t, f in WEIGHT_FOLDERS.items()}
 
     torch = types.SimpleNamespace(cuda=types.SimpleNamespace(
         is_available=lambda: cuda, device_count=lambda: 1 if cuda else 0,
         empty_cache=lambda: calls.__setitem__("empty_cache", calls["empty_cache"] + 1)))
     modules = {"totalsegmentator": types.ModuleType("totalsegmentator"), "totalsegmentator.python_api": api,
                "totalsegmentator.config": config, "totalsegmentator.map_to_binary": mapping,
+               "totalsegmentator.map_tasks_config": tasks,
                "nibabel": nib, "torch": torch}
     return modules, calls
 
@@ -217,14 +242,39 @@ def test_missing_class_in_output_gives_empty_mask(tmp_path):
     assert not _infer(provider, request).mask.any()
 
 
-def test_no_download_and_no_usage_stats_during_the_run(tmp_path):
-    provider, calls = _provider(tmp_path, download_on_call=True)
+def test_run_with_all_weights_present_succeeds(tmp_path):
+    """Regression (30/09/2026): TotalSegmentator calls its download function
+    on every run; the first guard always raised there, so every real run
+    would have failed although all weights were on disk."""
+    provider, calls = _provider(tmp_path)
+    result = _infer(provider, _request())
+    assert result.mask.any() and calls["download"] == 0
+
+
+def test_missing_weights_during_the_run_raise_and_never_download(tmp_path):
+    provider, calls = _provider(tmp_path)
     api = provider._modules["totalsegmentator.python_api"]
     original_download, original_usage = api.download_pretrained_weights, api.send_usage_stats
+    (tmp_path / "weights" / WEIGHT_FOLDERS[298]).rmdir()  # e.g. deleted after the probe
     with pytest.raises(ts.WeightsNotReady):
         _infer(provider, _request())
     assert calls["download"] == 0  # the real download function was never reached
     assert api.download_pretrained_weights is original_download and api.send_usage_stats is original_usage
+
+
+@pytest.mark.parametrize("missing, modes", [
+    ((), ("standard", "fast")),
+    ((297,), ("standard",)),  # fast model absent
+    ((293,), ("fast",)),  # one standard part absent
+    ((298,), None),  # the crop model every roi_subset run needs
+])
+def test_modes_offered_only_with_their_weights(tmp_path, missing, modes):
+    info = _provider(tmp_path, missing=missing)[0].probe()
+    if modes is None:
+        assert not info.available and info.unavailable_reason.startswith(ai_provider.REASON_WEIGHTS)
+        assert "298" in info.unavailable_reason
+    else:
+        assert info.available and info.parameter_choices[ai_provider.OPTION_MODE] == modes
 
 
 def test_usage_stats_not_sent(tmp_path):
