@@ -249,6 +249,8 @@ CATALOG = {
     "All ROIs shown.": "Đã hiện tất cả ROI.",
     "All ROIs hidden.": "Đã ẩn tất cả ROI.",
     "Rebuilding the 3D surface of '{name}'…": "Đang dựng lại bề mặt 3D của '{name}'…",
+    "3D surface of '{name}' updated.": "Đã cập nhật bề mặt 3D của '{name}'.",
+    "Mask {index}": "Mặt nạ {index}",
     "Surface update failed.": "Cập nhật bề mặt thất bại.",
     "Waiting for update…": "Đang chờ cập nhật…",
     "No foreground voxels for 3D preview.": "Không có voxel thuộc vùng phân đoạn.",

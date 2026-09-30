@@ -688,7 +688,7 @@ Leave AI off; run Threshold, Otsu, Region Growing, brush, Undo/Redo, E1–E5, su
 ### TEST E6b-A — TotalSegmentator appears only when installed/available
 Tick AI on a machine without TotalSegmentator, then (after installing package + weights) again.
 **Expected**: Without it: "TotalSegmentator chưa được cài đặt." (or the weights/dependency reason) and no model in the list; with it: Mô hình "TotalSegmentator".
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator screenshots + console log, 30/09/2026, real InVesalius, project 0801 (neck/chest CT), structure `trachea`, CUDA, standard): With the package + `total` weights installed (constrained command; operator check printed `2.7.1+cu118 True 1.26.4`) the model TotalSegmentator was offered and ran (log: `provider_name 'TotalSegmentator'`, `model_version '2.18.0'`). Before the install the status showed the registry defect ("totalsegmentator hiện không dùng được.", fixed in `7fea302d`); the corrected "chưa được cài đặt" text was not observed by the operator. | **PASS/FAIL**: `PARTIAL`
 
 ### TEST E6b-B — Structure list populated
 Open the Cấu trúc list.
@@ -698,7 +698,7 @@ Open the Cấu trúc list.
 ### TEST E6b-C — Select structure
 Pick e.g. "spleen"; also type a name not in the list and press Xem trước bằng AI.
 **Expected**: Valid name accepted; invalid → "Hãy chọn một cấu trúc trong danh sách."; point/box controls disabled.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator screenshots + console log, 30/09/2026, real InVesalius, project 0801 (neck/chest CT), structure `trachea`, CUDA, standard): `trachea` selected and run (log `structure 'trachea'`, `label_id 16`). The invalid-name check and the disabled point/box controls were not shown. | **PASS/FAIL**: `PARTIAL`
 
 ### TEST E6b-D — CPU inference without GUI freeze
 Thiết bị CPU, Xem trước bằng AI on 0051.
@@ -708,12 +708,12 @@ Thiết bị CPU, Xem trước bằng AI on 0051.
 ### TEST E6b-E — CUDA inference if available
 Thiết bị CUDA (only listed when available).
 **Expected**: Runs on the GPU; no silent CPU fallback.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator screenshots + console log, 30/09/2026, real InVesalius, project 0801 (neck/chest CT), structure `trachea`, CUDA, standard): Log: `device 'cuda'`, `ts_device 'gpu'`, `inference_s 46.77`, `runtime_seconds 48.51` (conversion 1.42 s, mapping 0.18 s). CUDA was available (operator check `True`); no CPU fallback. | **PASS/FAIL**: `PASS`
 
 ### TEST E6b-F — AI preview visible in all 3 2D views
 After a run, scroll Axial/Coronal/Sagittal.
 **Expected**: Orange overlay on the right anatomy in all 3 views.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator screenshots + console log, 30/09/2026, real InVesalius, project 0801 (neck/chest CT), structure `trachea`, CUDA, standard): After Accept the mask "AI - trachea" lies on the trachea in Axial (slice 81), Sagittal and Coronal — anatomy and orientation correct (output affine diag(−0.977, 0.977, 1.0), as expected for IOP (1,0,0,0,1,0)). The orange preview overlay itself (before Accept) was not captured. | **PASS/FAIL**: `PARTIAL`
 
 ### TEST E6b-G — E4 live 3D preview shows the same candidate
 Enable Xem trước 3D thời gian thực.
@@ -728,7 +728,7 @@ Hủy xử lý AI during a run; also Hủy xem trước after one.
 ### TEST E6b-I — Accept creates exactly one ROI
 Chấp nhận (click twice quickly).
 **Expected**: One new ROI "AI - <structure>".
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator screenshots + console log, 30/09/2026, real InVesalius, project 0801 (neck/chest CT), structure `trachea`, CUDA, standard): Exactly one new ROI "AI - trachea" (mặt nạ #1) in the ROI list and in Data → Masks. The quick double-click was not tested. | **PASS/FAIL**: `PARTIAL`
 
 ### TEST E6b-J — Accepted ROI matches the preview
 Compare the new mask with the preview just before Accept.
@@ -743,7 +743,7 @@ Run Hậu xử lý on the accepted ROI.
 ### TEST E6b-L — Final 3D surface works after Accept
 Cập nhật bề mặt 3D từ ROI hiện tại.
 **Expected**: Surface matches the accepted mask.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator screenshots + console log, 30/09/2026, real InVesalius, project 0801 (neck/chest CT), structure `trachea`, CUDA, standard): The surface built from "AI - trachea" showed the trachea with the carina and main bronchi (matches the mask). **The same action exposed a defect**: the button always sent overwrite=True, and InVesalius overwrites its last surface whatever its mask — the operator's bone surface was no longer shown. Fixed (the ROI's own surface is replaced, otherwise a new one named after the ROI is added); the changed path needs a re-test. | **PASS/FAIL**: `RETEST_REQUIRED`
 
 ### TEST E6b-M — Save/Open preserves the accepted AI ROI
 Save, close, reopen the project.
@@ -766,9 +766,9 @@ Leave AI off; run the classic workflow.
 **Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
 
 ### Real inference
-**`BLOCKED_MODEL_NOT_AVAILABLE`** — TotalSegmentator/nnunetv2 not installed, no weights.
+**`DONE` (1 run, operator, 30/09/2026)** — 0801, `trachea`, CUDA, standard: 48.5 s total, 25,953 voxels, accepted as "AI - trachea". (Before: `BLOCKED_MODEL_NOT_AVAILABLE`.)
 
-**E6b_MANUAL_QA_COMPLETE: NOT_RUN** (0/16).
+**E6b_MANUAL_QA_COMPLETE: NO** — 1 PASS (E), 4 PARTIAL (A, C, F, I), 1 RETEST_REQUIRED (L), 10 NOT_RUN (B, D, G, H, J, K, M, N, O, P).
 
 ---
 
@@ -817,3 +817,12 @@ Operator evidence reported earlier: Smooth reduced an ROI 170,405 → 10,127 vox
 | the same soft tissue on only 2 axial slices (brush-like) | 174,504 | 0 | **−100 %** |
 
 The opening step (6-connected, in voxels) removes anything thinner than 3 voxels along any axis - 4.5 mm in z here - so ROIs drawn on 1-2 slices disappear. Undo restores them. Status: **WARNING / open investigation** (options: confirm before a large loss; an in-plane or anisotropy-aware smoothing). Algorithm unchanged. E3 manual items (E3-G in particular) not complete.
+
+## Operator run 30/09/2026 (night) — first real TotalSegmentator inference
+
+Evidence: 4 screenshots (pip install tail + environment check `2.7.1+cu118 True 1.26.4`; `totalseg_download_weights -t total` tasks 291–295 + 298; InVesalius console `ROI Viewer: AI preview ready - {...}`; InVesalius window). Item results are in the E6b section above. Findings from the same run:
+
+1. **Defect — "Cập nhật bề mặt 3D từ ROI hiện tại" replaced another ROI's surface** (operator: "chỉ có mỗi hình vàng, không có toàn bộ xương"). Cause: the button always sent `overwrite=True`; `SurfaceManager` overwrites `last_surface_index` (the most recently created or selected surface, of any mask). Fixed: it replaces only the surface it built for that mask (tracked as the Surface object, since `Project.RemoveSurface` renumbers), selecting it first; otherwise it adds a surface named after the ROI; the status line now reports completion. `tests/ct3d/test_surface_rebuild_target.py` (real `SurfaceManager`); the operator's case fails on the old code.
+2. **Not a defect — coloured planes in the 3D view after turning on the cross tool**: C8's "Hiển thị mặt phẳng lát cắt trong 3D" (tab Hiển thị, default on; red = sagittal, green = coronal, blue = axial, 25 % opacity). They appear once InVesalius's "Slices' cross intersection" tool moves the crosshair; seen face-on, the coronal plane tints the whole Volume view green. Untick to hide. Recorded as a UX observation (default kept).
+3. **Caution — AI mask and InVesalius's threshold slider**: the accepted mask shows threshold "1 – 1"; moving the native threshold re-thresholds the mask from the image and discards the AI result (native behaviour for every edited mask). Added to the user guide.
+4. Console "State file found … Restoring a previous state…" lines come from InVesalius (`invesalius/session.py`), not from the plugin.

@@ -170,3 +170,22 @@ The E6b guard replaced `download_pretrained_weights` with a function that **alwa
 ### Real-application defect (30/09/2026, from an operator screenshot)
 
 In the real InVesalius the AI status read "totalsegmentator hiện không dùng được." instead of "TotalSegmentator chưa được cài đặt.". Cause: InVesalius's PluginManager imports the plugin as the package **"ROI Viewer"** (`invesalius.plugins.import_source`), while `KNOWN_PROVIDER_MODULES` named the provider absolutely (`plugins.roi_viewer...`). That loaded a second copy of `core/ai`; the provider's `AIProviderInfo` was a different class, and the registry rejected every probe ("probe returned invalid provider info"). pytest imports the plugin as `plugins.roi_viewer`, so no test saw it. Fix: provider modules are named relative to the registry's package (`.providers.totalsegmentator_provider`). New test loads the plugin exactly like the application (fresh interpreter, `import_source("ROI Viewer", ...)`) and checks the provider's own info and that no second package copy exists; it fails on the old code with the operator's symptom.
+
+## 14. First real inference (30/09/2026, operator)
+
+Setup done by the operator with the documented commands: constrained install (environment check afterwards `2.7.1+cu118 True 1.26.4`; re-measured read-only: numpy 1.26.4, torch 2.7.1+cu118 CUDA True, vtk 9.3.0, wxPython 4.2.5, scipy 1.14.0, `pip check` clean) and `totalseg_download_weights -t total` (tasks 291–295 + 298; no `total_fast`). Read-only probe through InVesalius's own plugin loader: TotalSegmentator 2.18.0 available, devices cpu/cuda, 117 structures, modes: standard only (fast weights absent — as designed).
+
+Run (console line `ROI Viewer: AI preview ready - {...}`): project 0801 (neck/chest CT, spacing 0.977 × 0.977 × 1.0 mm), structure `trachea` (label 16), mode standard, device cuda → `ts_device 'gpu'`.
+
+| Stage | Time |
+|---|---:|
+| input conversion | 1.42 s |
+| inference (TotalSegmentator) | 46.77 s |
+| output mapping | 0.18 s |
+| **total** | **48.51 s** |
+
+Result: 25,953 foreground voxels (≈ 24.8 cm³); output affine diag(−0.9766, 0.9766, 1.0) — the expected LPS→RAS mapping for IOP (1,0,0,0,1,0), no axis swap or mirror. Accepted as "AI - trachea": on the trachea in all three 2D views; 3D surface shows the trachea, carina and main bronchi. Item-level status: Manual QA E6b section (E PASS; A, C, F, I PARTIAL; L RETEST_REQUIRED after the surface fix; 10 NOT_RUN). Not a clinical validation.
+
+A defect in the final-surface button (it overwrote InVesalius's last surface, e.g. the bone) was found in the same run and fixed — see Manual QA "Operator run 30/09/2026 (night)".
+
+`REAL_AI_INFERENCE = DONE (1 run)`. **`E6b_GATE = PARTIAL_MANUAL_QA_PENDING`** (before: `PARTIAL_REAL_INFERENCE_PENDING`): real inference works end to end; still open: CPU run (D), E4 live preview (G), cancel (H), Accept == preview (J), cleanup (K), surface re-test (L), Save/Open (M), close during inference (N, O), AI off (P).

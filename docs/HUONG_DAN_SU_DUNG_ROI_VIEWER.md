@@ -204,7 +204,9 @@ D:\PyTools\invx-venv\Scripts\totalseg_download_weights.exe -t total
 
 Dòng kiểm tra phải in `2.7.1+cu118 True 1.26.4`. `-t total` tải trọng số cho chế độ **Chính xác tiêu chuẩn** (kèm mô hình cắt vùng mà mỗi lần phân đoạn một cấu trúc cần); thêm `-t total_fast` nếu muốn chế độ **Nhanh**. Sau đó khởi động lại InVesalius. (Đường dẫn trên là môi trường của máy phát triển; máy khác thay bằng Python đang chạy InVesalius.) Chi tiết: `CT3D_ADVANCED_RC_READINESS_REPORT.md` mục 6.
 
-**Chưa có lần chạy thật nào được ghi nhận** (30/09/2026: TotalSegmentator chưa được cài trên máy phát triển). Dữ liệu mẫu 0051 là **CT sọ** — khi chạy thử, chọn cấu trúc `brain` (không chọn `spleen`/`liver` vì không nằm trong ảnh).
+**Lần chạy thật đầu tiên (30/09/2026, người vận hành)**: dữ liệu 0801 (CT cổ–ngực), cấu trúc `trachea`, CUDA, Chính xác tiêu chuẩn — **48,5 s** (chuyển dữ liệu 1,4 s, suy luận 46,8 s, ánh xạ kết quả 0,2 s), 25.953 voxel; mặt nạ "AI - trachea" nằm đúng khí quản trên cả 3 mặt cắt và bề mặt 3D có cả chỗ chia đôi phế quản. Chọn cấu trúc có trong vùng chụp: 0801 → `trachea`, `heart`, `aorta`, các thùy phổi; 0051 (**CT sọ**) → `brain`, `skull` (không chọn `spleen`/`liver` khi chúng nằm ngoài ảnh — kết quả sẽ rỗng).
+
+> ⚠️ **Đừng kéo thanh ngưỡng (Threshold) của InVesalius khi đang chọn mặt nạ AI** (ô ngưỡng hiện "1 – 1"): InVesalius sẽ tính lại mặt nạ từ ngưỡng và **xóa kết quả AI** — đây là hành vi gốc cho mọi mặt nạ đã chỉnh sửa (cọ vẽ, phát triển vùng, AI), không riêng plugin.
 
 **Quy trình**: tab **Phân đoạn** → mở **Phân đoạn AI (thử nghiệm)** → tick **Bật phân đoạn AI (thử nghiệm)** → **Mô hình**: TotalSegmentator → **Cấu trúc**: gõ để tìm và chọn một cấu trúc (tên gốc tiếng Anh của mô hình, ví dụ `spleen`, `liver`) → **Thiết bị**: Tự động / CPU / CUDA (CUDA chỉ hiện khi có GPU dùng được) → **Chế độ**: Chính xác tiêu chuẩn hoặc Nhanh / ít bộ nhớ hơn (kém chính xác hơn) → **Xem trước bằng AI** → kiểm tra lớp phủ trên Axial/Coronal/Sagittal và trong Xem trước 3D → **Chấp nhận** (tạo mặt nạ "AI - <cấu trúc>") → **Hậu xử lý** nếu cần → **Cập nhật bề mặt 3D từ ROI hiện tại**.
 
@@ -245,6 +247,10 @@ Cạnh nhãn **"ROI hiện tại:"** phía trên danh sách có 1 ô màu nhỏ 
 ### 3.2 Bề mặt 3D — Cập nhật bề mặt 3D từ ROI hiện tại (Update 3D Surface from Selected ROI)
 
 Nút **"Cập nhật bề mặt 3D từ ROI hiện tại"** dựng lại (hoặc dựng mới) mô hình 3D cho ĐÚNG mặt nạ đang chọn trong danh sách (nếu không chọn dòng nào, dùng mặt nạ hiện hành).
+
+- Lần đầu: **thêm một bề mặt mới mang tên ROI** (ví dụ "AI - trachea"); các bề mặt khác (ví dụ bề mặt xương) **giữ nguyên**. Lần sau: thay đúng bề mặt mà nút này đã dựng cho ROI đó. Khi xong, dòng trạng thái đổi thành *"Đã cập nhật bề mặt 3D của '…'."*
+- **[Sửa 30/09/2026]** Trước đó nút luôn gửi "ghi đè" cho InVesalius — mà InVesalius ghi đè lên **bề mặt được tạo/chọn gần nhất**, bất kể của mặt nạ nào → bề mặt xương có thể bị thay bằng bề mặt ROI (người vận hành gặp trên 0801). Nếu bề mặt xương đã mất, dựng lại: chọn Mask 1 → bấm nút này (hoặc Create Surface gốc, bỏ tick "Overwrite last surface").
+- Bề mặt do nút "Create Surface" gốc tạo không được plugin nhận là của ROI nào, nên bấm nút này cho cùng mặt nạ sẽ tạo thêm một bề mặt mới (không xóa bề mặt gốc). Xem/ẩn/xóa bề mặt ở tab **Data → 3D surfaces** của InVesalius.
 
 > **Vì sao cần bấm thủ công**: InVesalius gốc (kể cả không có plugin) **không tự động** cập nhật lại mô hình 3D mỗi khi mặt nạ bị sửa (cọ vẽ, hoàn tác, phát triển vùng...) — đây là hành vi thật của InVesalius, không phải hạn chế riêng của plugin. Nút này đóng vòng lặp "sửa ROI → xem lại 3D" một cách chủ động, tránh việc tự động dựng lại sau MỖI nét vẽ (sẽ làm treo giao diện vì dựng mô hình 3D là tác vụ nặng). **Sau khi sửa mặt nạ xong, luôn nhớ bấm nút này để thấy đúng kết quả mới nhất trên khối 3D** — nếu không bấm, khối 3D vẫn hiện hình dạng CŨ dù mặt nạ đã đổi.
 > Việc dựng lại có thể mất vài giây đến hơn chục giây tuỳ kích thước mặt nạ — quan sát dòng trạng thái cuối tab (*"Đang dựng lại bề mặt 3D của '…'…"*).

@@ -55,6 +55,11 @@ def env(real_slice_and_project_singleton, monkeypatch):
     Publisher.sendMessage("Create new mask", mask_name="Base", thresh=(200, 400), colour=(1.0, 0.0, 0.0))
     base = s.current_mask
     monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
+    # Only the stub: ticking AI would otherwise also load the real
+    # TotalSegmentator provider, available or not depending on the machine.
+    from plugins.roi_viewer.core.ai import registry as ai_registry
+
+    monkeypatch.setattr(ai_registry, "KNOWN_PROVIDER_MODULES", ())
 
     top = wx.Frame(None)
     frame = ROIViewerPanel(top)

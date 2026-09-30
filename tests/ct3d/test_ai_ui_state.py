@@ -12,8 +12,14 @@ from plugins.roi_viewer.core.ai.types import DeviceKind
 
 
 @pytest.fixture
-def frame(real_slice_and_project_singleton):
+def frame(real_slice_and_project_singleton, monkeypatch):
     import wx
+
+    # Only the stub: ticking AI would otherwise also load the real
+    # TotalSegmentator provider, available or not depending on the machine.
+    from plugins.roi_viewer.core.ai import registry as ai_registry
+
+    monkeypatch.setattr(ai_registry, "KNOWN_PROVIDER_MODULES", ())
 
     from plugins.roi_viewer.gui.roi_panel import ROIViewerPanel
 

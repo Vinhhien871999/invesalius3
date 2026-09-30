@@ -64,6 +64,18 @@ def choose_surface_algorithm(mask) -> str:
     return "Binary" if getattr(mask, "was_edited", False) else "Default"
 
 
+def live_surface_index(surface, surface_dict) -> Optional[int]:
+    """Index of `surface` in the project's surface_dict, or None when that
+    object is no longer there (removed, replaced by an overwrite, or from
+    a project that was closed). Project.RemoveSurface keeps .index in
+    step with the dict key, so a surface still present is found at its
+    own .index."""
+    index = getattr(surface, "index", None)
+    if surface is None or index is None:
+        return None
+    return index if surface_dict.get(index) is surface else None
+
+
 class SegmentationPanel(scrolled.ScrolledPanel):
     """
     Panel for segmentation tools (threshold-based mask creation, plus
@@ -127,22 +139,18 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # any, once the current one is fully done.
         self._e4_build_busy = False
         self._e4_pending_reason = None
-        # E5B (clipping - Section 16 audit): mask_index -> surface_index,
-        # populated ONLY from surface builds THIS plugin's own "Update 3D
-        # Surface from Selected ROI" button triggered (never guessed -
-        # see core/surface_clipping_3d.py's module docstring for the
-        # real, source-proven reason mask_index == surface_index is NOT
-        # a safe assumption: AddNewActor()'s real overwrite path assigns
-        # the rebuilt Surface's .index from the GLOBAL
-        # self.last_surface_index counter, not the mask index). Guarded
-        # by _pending_surface_build_mask_index, set right before this
-        # panel's own "Create surface from index" send and consumed by
-        # the very next real "Update surface info in GUI" event - the
-        # real pubsub message AddNewActor()/its async completion path
-        # sends with the actual, just-created Surface object (see
-        # _on_surface_info_updated() below).
-        self._roi_surface_index = {}
-        self._pending_surface_build_mask_index = None
+        # E5B (clipping - Section 16 audit): mask_index -> the Surface
+        # object this panel's own "Update 3D surface" button built for it
+        # (never guessed - mask_index == surface_index is not a safe
+        # assumption, see core/surface_clipping_3d.py). The object, not
+        # its index, is kept: Project.RemoveSurface renumbers indices and
+        # an overwrite replaces the object - live_surface_index() checks
+        # it is still in the project. _pending_surface_build holds
+        # (mask_index, surface name) from the build request until the
+        # "Update surface info in GUI" event for that surface arrives
+        # (see _on_surface_info_updated() below).
+        self._roi_surfaces = {}
+        self._pending_surface_build = None
         # E6: created only when the user switches AI on - with it off no
         # provider module is imported and no AI thread can exist.
         self._ai_registry = None
@@ -2235,6 +2243,22 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 mask_index = mask.index
 
             algorithm = choose_surface_algorithm(mask)
+            name = str(getattr(mask, "name", "") or _("Mask {index}").format(index=mask_index))
+
+            # Rebuild THIS ROI's surface, never another one. InVesalius's
+            # overwrite replaces its "last surface" - the most recently
+            # created or selected one, whatever mask it came from. Until
+            # 30/09/2026 this always sent overwrite=True, so e.g. the bone
+            # surface was replaced by the ROI's (seen in the real
+            # application). Now only the surface this panel built for this
+            # mask, if it still exists, is replaced - selected first so it
+            # is InVesalius's last surface; otherwise a new surface named
+            # after the ROI is added. Selecting sends its own "Update
+            # surface info in GUI", so it must happen before
+            # _pending_surface_build is set.
+            target = self.get_surface_index_for_mask(mask_index)
+            if target is not None:
+                Publisher.sendMessage("Change surface selected", surface_index=target)
 
             # Same real topic/argument shape used and verified in the
             # performance test (test_perf.py) that measured real render
@@ -2242,21 +2266,13 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             surface_options = {
                 "method": {"algorithm": algorithm, "options": {}},
                 "options": {
-                    "index": mask_index, "name": "", "quality": "Optimal *",
-                    "fill": False, "keep_largest": False, "overwrite": True,
+                    "index": mask_index, "name": name, "quality": "Optimal *",
+                    "fill": False, "keep_largest": False, "overwrite": target is not None,
                 },
             }
-            # E5B (Section 16/24): remember which mask THIS build is for
-            # so the next real "Update surface info in GUI" event (fired
-            # with the actual just-created Surface object) can be safely
-            # attributed to it - see _on_surface_info_updated() and this
-            # panel's __init__ NOTE for why mask_index cannot simply be
-            # assumed to equal the resulting surface's own index.
-            self._pending_surface_build_mask_index = mask_index
+            self._pending_surface_build = (mask_index, name)
             Publisher.sendMessage("Create surface from index", surface_parameters=surface_options)
-            self.roi_status.SetLabel(
-                _("Rebuilding the 3D surface of '{name}'…").format(name=getattr(mask, "name", mask_index))
-            )
+            self.roi_status.SetLabel(_("Rebuilding the 3D surface of '{name}'…").format(name=name))
         except Exception as e:
             wx.MessageBox(_("Surface update failed."), _("Error"), wx.OK | wx.ICON_ERROR)
             print(f"ROI Viewer: surface update failed - {e}")
@@ -2280,18 +2296,21 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         invesalius/data/surface.py's AddNewActor()/CreateSurfaceFromPolydata()
         with the actual just-created/just-updated real Surface object
         (has a real `.index`). Only attributed to a mask if THIS panel's
-        own _on_update_surface() is the one that requested it (Section
-        16 - never guess a mapping for a surface build this plugin did
-        not itself trigger, e.g. one made via InVesalius's native
-        Surface tab).
+        own _on_update_surface() requested it and the surface carries the
+        name that build asked for (Section 16 - never guess a mapping for
+        a surface this plugin did not build: selecting a surface fires
+        the same event, and a cancelled build never fires it at all).
         """
-        if self._pending_surface_build_mask_index is None:
+        if self._pending_surface_build is None:
             return
-        mask_index = self._pending_surface_build_mask_index
-        self._pending_surface_build_mask_index = None
+        mask_index, name = self._pending_surface_build
+        if getattr(surface, "name", None) != name or getattr(surface, "index", None) is None:
+            return
+        self._pending_surface_build = None
+        self._roi_surfaces[mask_index] = surface
         try:
-            self._roi_surface_index[mask_index] = surface.index
-        except AttributeError:
+            self.roi_status.SetLabel(_("3D surface of '{name}' updated.").format(name=name))
+        except RuntimeError:  # panel already destroyed
             return
         if hasattr(self.controller, "interaction_panel"):
             try:
@@ -2301,11 +2320,17 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
     def get_surface_index_for_mask(self, mask_index) -> Optional[int]:
         """Public accessor for InteractionPanel's E5B clipping target
-        resolution (Section 18/23) - returns None if this plugin has
-        never itself (re)built a surface for this mask_index this
-        session (a real, honest "no final surface for selected ROI"
-        case, not an error)."""
-        return self._roi_surface_index.get(mask_index)
+        resolution (Section 18/23) and _on_update_surface() - returns
+        None if this plugin has not (re)built a surface for this
+        mask_index, or that surface is gone (a real, honest "no final
+        surface for selected ROI" case, not an error)."""
+        try:
+            import invesalius.project as prj
+
+            surface_dict = prj.Project().surface_dict
+        except Exception:
+            return None
+        return live_surface_index(self._roi_surfaces.get(mask_index), surface_dict)
 
     # ------------------------------------------------------------------
     # E3 (Advanced Segmentation Enhancement Track, enhancement/advanced-

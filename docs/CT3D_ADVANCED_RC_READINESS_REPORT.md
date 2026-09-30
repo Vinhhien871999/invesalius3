@@ -7,7 +7,7 @@
 **`ADVANCED_RC_READY = NO`.**
 
 Release blockers:
-1. **E6b real inference has not been run** (`E6b_GATE = PARTIAL_REAL_INFERENCE_PENDING`): TotalSegmentator is not installed in the InVesalius environment. Installing it needs the constrained command in §6 — a plain install would break the environment.
+1. **E6b manual QA incomplete** (`E6b_GATE = PARTIAL_MANUAL_QA_PENDING`): the first real inference was run by the operator on 30/09/2026 (0801, `trachea`, CUDA, 48.5 s, correct anatomy in all views), but the release checks E6b-D/G/J/M are not run and E6b-L needs a re-test after the surface fix.
 2. **Sidebar only partly verified in a real InVesalius**: an operator screenshot (30/09/2026, project 0801) shows the pane docked on the right with the viewers usable (UI-K `PARTIAL`); UI-L..UI-N `NOT_RUN`. The same screenshot exposed an AI status defect (provider loaded twice under InVesalius's plugin loader), fixed and covered by a test that uses the application's loader.
 
 Everything else automated is green. The remaining manual items below are coverage, not blockers, except where marked.
@@ -27,7 +27,7 @@ Everything else automated is green. The remaining manual items below are coverag
 
 ## 3. Automated evidence (this run)
 
-- `tests/ct3d`: 616 passed / 1 skipped (optional `pynrrd`) / 0 failed, 3 consecutive runs; upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
+- `tests/ct3d`: 622 passed / 2 skipped (optional `pynrrd`; the "package missing" probe test, skipped now that TotalSegmentator is installed) / 0 failed, 3 consecutive runs; upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
 - All test and helper processes use a temporary `XDG_CONFIG_HOME`; verified that a full run leaves `%USERPROFILE%\.config\invesalius\config.json` / `state.json` untouched.
 
 ## 4. Manual QA status
@@ -36,7 +36,7 @@ Everything else automated is green. The remaining manual items below are coverag
 
 | Group | Status | Blocking? |
 |---|---|---|
-| E6b-A..P (real TotalSegmentator) | NOT_RUN — real inference BLOCKED (not installed) | **yes** (E6b-D/F/G/I/J/M at minimum) |
+| E6b-A..P (real TotalSegmentator) | E PASS; A, C, F, I PARTIAL; L RETEST_REQUIRED; 10 NOT_RUN — first real run done | **yes** (E6b-D/G/J/L/M at minimum) |
 | UI-K..UI-N (sidebar in real InVesalius) | UI-K PARTIAL (screenshot: docked right); UI-L..N NOT_RUN | **yes** (UI-K reuse, UI-M) |
 | E5-B/C/D/E/J/K/L | RETEST_REQUIRED (after the coordinate fix) | no — orientation is proven by a rendered automated test; operator confirmation recommended |
 | E1-A..N, E2-A..L, E3-A..M, E4-A..R, E5 others, E6-A..L, UI-A..J | NOT_RUN | no (coverage) |
@@ -49,6 +49,8 @@ Everything else automated is green. The remaining manual items below are coverag
 - One AI structure per preview. TotalSegmentator inference cannot be interrupted (cancel discards the late result; the computation continues). CPU inference can be slow. Standard mode needs weights 291–295 + 298; fast mode 297 + 298.
 - **E3 "Làm mịn mặt nạ" (smooth)** — measured on real 0051 (head CT, 0.4785 × 0.4785 × 1.5 mm, 1 pass): bone threshold ROI 1,730,409 → 1,704,840 (−1.5 %, thin skull-base parts removed); soft-tissue ROI 7,130,381 → 7,026,144 (−1.5 %); **the same soft tissue on only 2 axial slices (brush-like): 174,504 → 0 (−100 %)**. Mechanism: the voxel-based 6-connected opening removes anything thinner than 3 voxels along any axis (4.5 mm in z here). This matches the operator's earlier report (170,405 → 10,127, −94 %). Undo restores it. **Investigation item open** (e.g. warn before a large loss, or an in-plane/anisotropy-aware option); algorithm not changed without a decision.
 - The preview overlay needs a current mask (native InVesalius constraint).
+- Moving InVesalius's threshold slider on an accepted AI (or any edited) mask re-thresholds it and discards the result (native behaviour).
+- A surface made with InVesalius's own Create Surface is not linked to a ROI; "Cập nhật bề mặt 3D" then adds a second surface instead of replacing it.
 - Lock/"show only" state is session-only by design.
 - The sidebar cannot appear automatically when InVesalius starts without a change to InVesalius itself (plugins are imported on menu click).
 - Not clinically validated.
@@ -86,7 +88,7 @@ Plugins → ROI Viewer docks the "ROI Viewer" pane on the right of the InVesaliu
 
 ## 9. Next steps to reach YES
 
-1. Operator runs §6.
-2. One real inference on 0051 with **structure `brain`** (CUDA, standard), with the E6b-D/F/G/I/J/K/L/M checks and the timings the provider records. 0051 is a **head CT** (skull, 108 axial slices) - `spleen`/`liver` (the usual first choices) are not in the field of view and would give an empty result. `brain` (id 90) and `skull` (id 91) are in TotalSegmentator 2.18.0's 117-class `total` map.
+1. ~~Operator runs §6~~ — done 30/09/2026.
+2. ~~First real inference~~ — done (0801, `trachea`). Remaining E6b checks: D (CPU run), G (E4 live preview), H (cancel), J (Accept == preview), K (cleanup), L (surface re-test after the fix), M (Save/Open), N/O (close during inference), P (AI off). For 0051 (head CT) use `brain`/`skull`.
 3. UI-K..UI-N in the real InVesalius.
 4. Re-run the regression; update this report.

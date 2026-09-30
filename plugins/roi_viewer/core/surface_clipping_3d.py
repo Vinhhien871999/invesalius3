@@ -23,9 +23,9 @@
 #     NO mask-index field anywhere - `mask_index == surface_index` is
 #     NOT a safe assumption (it is, in fact, provably FALSE in
 #     general): `SurfaceManager.AddNewActor()`'s real overwrite path
-#     (data/surface.py ~line 1445-1448, the exact path this plugin's
-#     own `_on_update_surface()` always exercises via
-#     `surface_parameters["options"]["overwrite"]=True`) assigns the
+#     (data/surface.py ~line 1445-1448, which this plugin's own
+#     `_on_update_surface()` uses when it rebuilds a surface it built
+#     before for the same mask - see gui/segmentation_panel.py) assigns the
 #     newly-built Surface's `.index` from `self.last_surface_index` - a
 #     single GLOBAL "most recently touched surface" counter shared
 #     across ALL masks, not the mask index that was rebuilt. This
