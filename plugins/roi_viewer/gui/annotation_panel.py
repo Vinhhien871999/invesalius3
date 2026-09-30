@@ -6,11 +6,7 @@
 import wx
 import wx.lib.colourselect as csel
 
-try:
-    from invesalius.i18n import tr as _
-except ImportError:
-    def _(s):
-        return s
+from ..i18n import _
 
 
 class AnnotationPanel(wx.Panel):

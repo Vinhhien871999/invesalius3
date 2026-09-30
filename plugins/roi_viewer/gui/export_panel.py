@@ -5,11 +5,7 @@
 
 import wx
 
-try:
-    from invesalius.i18n import tr as _
-except ImportError:
-    def _(s):
-        return s
+from ..i18n import _
 
 
 def _is_nrrd_available() -> bool:

@@ -6,11 +6,8 @@
 import wx
 import wx.lib.scrolledpanel as scrolled
 
-try:
-    from invesalius.i18n import tr as _
-except ImportError:
-    def _(s):
-        return s
+from ..i18n import _, fmt_float
+from . import ui_helpers
 
 
 class InteractionPanel(scrolled.ScrolledPanel):
@@ -30,214 +27,119 @@ class InteractionPanel(scrolled.ScrolledPanel):
         # State
         self.sync_3d_2d_enabled = True
         self.sync_2d_3d_enabled = True
-        self.realtime_update_enabled = True
-        self.update_delay = 100
 
         self._init_ui()
-        self.SetupScrolling()
+        self.SetupScrolling(scroll_x=False)
         
     def _init_ui(self):
-        """Initialize the interaction panel UI."""
+        """
+        Three groups: 2D-3D sync, 3D point picking, and a collapsed
+        "advanced 3D display" section (E5 textured planes + clipping, both
+        off by default). The former "Real-time Update" and "Brush Mode"
+        boxes were removed: neither had any effect (the update delay only
+        throttled SyncManager2D3D.request_3d_update(), whose callback list
+        nothing ever registers into, and get_brush_config() had no caller -
+        the real brush lives on the "Phân đoạn" tab).
+        """
         main_sizer = wx.BoxSizer(wx.VERTICAL)
-        
-        # =================
-        # Title
-        # =================
-        title = wx.StaticText(self, wx.ID_ANY, _("2D-3D Interaction"))
-        title_font = wx.Font(wx.FontInfo(10).Bold())
-        title.SetFont(title_font)
-        main_sizer.Add(title, 0, wx.ALL | wx.EXPAND, 5)
-        
-        # =================
-        # 3D Point Picking
-        # =================
-        box_pick = wx.StaticBox(self, wx.ID_ANY, _("3D Point Picking"))
-        pick_sizer = wx.StaticBoxSizer(box_pick, wx.VERTICAL)
-        
-        # Enable sync checkboxes
-        self.cb_sync_3d_2d = wx.CheckBox(self, wx.ID_ANY, _("Sync 3D -> 2D"))
-        self.cb_sync_3d_2d.SetValue(True)
-        self.Bind(wx.EVT_CHECKBOX, self._on_sync_3d_2d_changed, self.cb_sync_3d_2d)
-        pick_sizer.Add(self.cb_sync_3d_2d, 0, wx.ALL, 3)
-        
-        self.cb_sync_2d_3d = wx.CheckBox(self, wx.ID_ANY, _("Sync 2D -> 3D"))
-        self.cb_sync_2d_3d.SetValue(True)
-        self.Bind(wx.EVT_CHECKBOX, self._on_sync_2d_3d_changed, self.cb_sync_2d_3d)
-        pick_sizer.Add(self.cb_sync_2d_3d, 0, wx.ALL, 3)
 
-        # Phase 13.5 (pre-Phase-14, visual enhancement of Sync 2D -> 3D -
-        # still C8, not a new feature ID): a separate concern from the
-        # Sync checkbox itself - controls only whether the 3 slice-plane
-        # actors are drawn (core/slice_planes_3d.SlicePlanes3D), not
-        # whether the crosshair marker/planes track position at all.
+        # --- 2D <-> 3D sync (C8) ---
+        box_sync = wx.StaticBox(self, wx.ID_ANY, _("2D-3D sync"))
+        sync_sizer = wx.StaticBoxSizer(box_sync, wx.VERTICAL)
+
+        self.cb_sync_2d_3d = wx.CheckBox(self, wx.ID_ANY, _("Sync 2D → 3D"))
+        self.cb_sync_2d_3d.SetValue(True)
+        self.cb_sync_2d_3d.SetToolTip(_("Moving the 2D crosshair moves the 3D marker and slice planes."))
+        self.Bind(wx.EVT_CHECKBOX, self._on_sync_2d_3d_changed, self.cb_sync_2d_3d)
+        sync_sizer.Add(self.cb_sync_2d_3d, 0, wx.ALL, 3)
+
+        self.cb_sync_3d_2d = wx.CheckBox(self, wx.ID_ANY, _("Sync 3D → 2D"))
+        self.cb_sync_3d_2d.SetValue(True)
+        self.cb_sync_3d_2d.SetToolTip(_("A point picked in 3D moves the 2D views to that slice."))
+        self.Bind(wx.EVT_CHECKBOX, self._on_sync_3d_2d_changed, self.cb_sync_3d_2d)
+        sync_sizer.Add(self.cb_sync_3d_2d, 0, wx.ALL, 3)
+
+        # Controls only whether the planes are drawn, not whether they
+        # track the crosshair - see apply_slice_plane_visibility().
         self.cb_show_slice_planes = wx.CheckBox(self, wx.ID_ANY, _("Show slice planes in 3D"))
         self.cb_show_slice_planes.SetValue(True)
         self.Bind(wx.EVT_CHECKBOX, self._on_show_slice_planes_changed, self.cb_show_slice_planes)
-        pick_sizer.Add(self.cb_show_slice_planes, 0, wx.ALL, 3)
+        sync_sizer.Add(self.cb_show_slice_planes, 0, wx.ALL, 3)
 
-        # Plugin never auto-toggles InVesalius's own native toolbar tool
-        # - the user must turn it on themselves for 2D click/drag to
-        # actually send the real "Set cross focal point" topic this
-        # whole feature depends on (see core/sync_2d3d.py /
-        # roi_panel.py.on_cross_focal_point_changed()'s own NOTEs for
-        # why that topic, not a new one, is used).
-        lbl_prereq = wx.StaticText(
-            self, wx.ID_ANY,
-            _('Requires InVesalius "Slices\' cross intersection" tool to be active.'),
-        )
-        lbl_prereq.Wrap(260)
-        lbl_prereq.SetForegroundColour(wx.Colour(90, 90, 90))
-        pick_sizer.Add(lbl_prereq, 0, wx.ALL, 3)
+        # The plugin never switches InVesalius's toolbar tool itself.
+        sync_sizer.Add(ui_helpers.hint(
+            self, _("Turn on InVesalius's \"Slices' cross intersection\" tool first."), wrap=260
+        ), 0, wx.ALL, 3)
+        main_sizer.Add(sync_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
-        # Pick point button
-        self.btn_pick_point = wx.Button(self, wx.ID_ANY, _("Pick Point in 3D"))
+        # --- 3D point picking ---
+        box_pick = wx.StaticBox(self, wx.ID_ANY, _("3D point picking"))
+        pick_sizer = wx.StaticBoxSizer(box_pick, wx.VERTICAL)
+        self.btn_pick_point = wx.Button(self, wx.ID_ANY, _("Pick a point in 3D"))
         self.Bind(wx.EVT_BUTTON, self._on_pick_point, self.btn_pick_point)
         pick_sizer.Add(self.btn_pick_point, 0, wx.ALL | wx.EXPAND, 3)
-        
-        # Coordinate display
-        self.txt_coords = wx.TextCtrl(
-            self, wx.ID_ANY, "X: -, Y: -, Z: -",
-            style=wx.TE_READONLY | wx.TE_CENTER
-        )
+        self.txt_coords = wx.TextCtrl(self, wx.ID_ANY, "X: -, Y: -, Z: -", style=wx.TE_READONLY | wx.TE_CENTER)
         pick_sizer.Add(self.txt_coords, 0, wx.ALL | wx.EXPAND, 3)
-        
         main_sizer.Add(pick_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
-        # =================
-        # E5 (Advanced Segmentation Enhancement Track, enhancement/
-        # advanced-segmentation branch ONLY): Advanced 3D Visualization
-        # - textured slice planes (E5A) + surface clipping/cutaway (E5B).
-        # Both default OFF - with both left off, C8's existing behavior
-        # (geometric SlicePlanes3D, no clipping) is byte-identical to
-        # before E5 existed. See _on_texture_planes_toggle()/
-        # _on_clip_enabled_toggle() below and docs/CT3D_ADVANCED_E5_
-        # VISUALIZATION_REPORT.md for the full design/audit.
-        # =================
-        box_viz = wx.StaticBox(self, wx.ID_ANY, _("3D Visualization (E5, enhancement branch)"))
-        viz_sizer = wx.StaticBoxSizer(box_viz, wx.VERTICAL)
+        # --- Advanced 3D display (E5), collapsed. Both features default
+        # OFF; with both off, C8 behaves exactly as before E5. ---
+        pane, p = ui_helpers.collapsible(self, _("Advanced 3D display (experimental)"), self._on_section_toggled)
+        viz_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        self.cb_texture_planes = wx.CheckBox(self, wx.ID_ANY, _("Show CT texture on slice planes"))
+        self.cb_texture_planes = wx.CheckBox(p, wx.ID_ANY, _("Show slice image on 3D planes"))
         self.cb_texture_planes.SetValue(False)
         self.cb_texture_planes.SetToolTip(_(
-            "Shows the native 2D slice image on the 3D planes, exactly as the "
-            "2D views display it: CT after the current Window/Level, plus the "
-            "current mask colour and any active Preview overlay if shown."
+            "Shows the 2D slice image on the 3D planes exactly as the 2D views show it "
+            "(current Window/Level, plus the mask colour and preview overlay if shown). "
+            "Display only - no mask or surface is changed."
         ))
         self.Bind(wx.EVT_CHECKBOX, self._on_texture_planes_toggle, self.cb_texture_planes)
         viz_sizer.Add(self.cb_texture_planes, 0, wx.ALL, 3)
 
-        viz_sizer.Add(wx.StaticLine(self), 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 4)
+        viz_sizer.Add(wx.StaticLine(p), 0, wx.EXPAND | wx.TOP | wx.BOTTOM, 4)
 
-        clip_title = wx.StaticText(self, wx.ID_ANY, _("Clipping / Cutaway"))
-        viz_sizer.Add(clip_title, 0, wx.ALL, 3)
-
-        self.cb_clip_enabled = wx.CheckBox(self, wx.ID_ANY, _("Enable Clipping"))
+        self.cb_clip_enabled = wx.CheckBox(p, wx.ID_ANY, _("Enable 3D clipping"))
         self.cb_clip_enabled.SetValue(False)
+        self.cb_clip_enabled.SetToolTip(_(
+            "Cuts the 3D surface away along the current slice plane. Display only - "
+            "the surface data, masks and saved project are not changed."
+        ))
         self.Bind(wx.EVT_CHECKBOX, self._on_clip_enabled_toggle, self.cb_clip_enabled)
         viz_sizer.Add(self.cb_clip_enabled, 0, wx.ALL, 3)
 
-        clip_plane_row = wx.BoxSizer(wx.HORIZONTAL)
-        clip_plane_row.Add(wx.StaticText(self, wx.ID_ANY, _("Plane:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        self.choice_clip_plane = wx.Choice(self, wx.ID_ANY, choices=[_("Axial"), _("Coronal"), _("Sagittal")])
+        self.choice_clip_plane = wx.Choice(p, wx.ID_ANY, choices=[_("Axial"), _("Coronal"), _("Sagittal")])
         self.choice_clip_plane.SetSelection(0)
         self.Bind(wx.EVT_CHOICE, self._on_clip_plane_changed, self.choice_clip_plane)
-        clip_plane_row.Add(self.choice_clip_plane, 1, wx.ALL, 3)
-        viz_sizer.Add(clip_plane_row, 0, wx.EXPAND, 3)
+        viz_sizer.Add(ui_helpers.labelled_row(p, _("Plane:"), self.choice_clip_plane), 0, wx.EXPAND)
 
-        self.cb_clip_invert = wx.CheckBox(self, wx.ID_ANY, _("Invert"))
+        self.cb_clip_invert = wx.CheckBox(p, wx.ID_ANY, _("Invert cut side"))
         self.cb_clip_invert.SetValue(False)
         self.Bind(wx.EVT_CHECKBOX, self._on_clip_invert_toggle, self.cb_clip_invert)
         viz_sizer.Add(self.cb_clip_invert, 0, wx.ALL, 3)
 
-        clip_target_row = wx.BoxSizer(wx.HORIZONTAL)
-        clip_target_row.Add(wx.StaticText(self, wx.ID_ANY, _("Target:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         self.choice_clip_target = wx.Choice(
-            self, wx.ID_ANY,
-            choices=[_("Current ROI Final Surface"), _("Live Preview (E4)")],
+            p, wx.ID_ANY, choices=[_("Final surface of current ROI"), _("Preview surface")],
         )
         self.choice_clip_target.SetSelection(0)
         self.Bind(wx.EVT_CHOICE, self._on_clip_target_changed, self.choice_clip_target)
-        clip_target_row.Add(self.choice_clip_target, 1, wx.ALL, 3)
-        viz_sizer.Add(clip_target_row, 0, wx.EXPAND, 3)
+        viz_sizer.Add(ui_helpers.labelled_row(p, _("Target:"), self.choice_clip_target), 0, wx.EXPAND)
 
-        self.lbl_e5_status = wx.StaticText(self, wx.ID_ANY, "")
+        self.lbl_e5_status = wx.StaticText(p, wx.ID_ANY, "")
         self.lbl_e5_status.Wrap(260)
         viz_sizer.Add(self.lbl_e5_status, 0, wx.ALL | wx.EXPAND, 3)
+        p.SetSizer(viz_sizer)
+        main_sizer.Add(pane, 0, wx.ALL | wx.EXPAND, 5)
 
-        main_sizer.Add(viz_sizer, 0, wx.ALL | wx.EXPAND, 5)
-
-        # =================
-        # Real-time Update
-        # =================
-        box_update = wx.StaticBox(self, wx.ID_ANY, _("Real-time Update"))
-        update_sizer = wx.StaticBoxSizer(box_update, wx.VERTICAL)
-        
-        self.cb_realtime = wx.CheckBox(self, wx.ID_ANY, _("Enable real-time update"))
-        self.cb_realtime.SetValue(True)
-        self.Bind(wx.EVT_CHECKBOX, self._on_realtime_changed, self.cb_realtime)
-        update_sizer.Add(self.cb_realtime, 0, wx.ALL, 3)
-        
-        # Update delay slider
-        delay_label = wx.StaticText(self, wx.ID_ANY, _("Update delay (ms):"))
-        update_sizer.Add(delay_label, 0, wx.ALL, 3)
-        
-        self.slider_delay = wx.Slider(
-            self, wx.ID_ANY, 100, 0, 500,
-            style=wx.SL_HORIZONTAL
-        )
-        self.Bind(wx.EVT_SLIDER, self._on_delay_changed, self.slider_delay)
-        update_sizer.Add(self.slider_delay, 0, wx.ALL | wx.EXPAND, 3)
-        
-        self.lbl_delay_value = wx.StaticText(self, wx.ID_ANY, "100 ms")
-        update_sizer.Add(self.lbl_delay_value, 0, wx.ALL | wx.ALIGN_CENTER, 3)
-        
-        main_sizer.Add(update_sizer, 0, wx.ALL | wx.EXPAND, 5)
-        
-        # =================
-        # Brush Mode
-        # =================
-        box_brush = wx.StaticBox(self, wx.ID_ANY, _("Brush Mode"))
-        brush_sizer = wx.StaticBoxSizer(box_brush, wx.VERTICAL)
-        
-        # Brush size
-        size_label = wx.StaticText(self, wx.ID_ANY, _("Brush Size:"))
-        brush_sizer.Add(size_label, 0, wx.ALL, 3)
-        
-        self.slider_brush_size = wx.Slider(
-            self, wx.ID_ANY, 5, 1, 50,
-            style=wx.SL_HORIZONTAL | wx.SL_VALUE_LABEL
-        )
-        self.Bind(wx.EVT_SLIDER, self._on_brush_size_changed, self.slider_brush_size)
-        brush_sizer.Add(self.slider_brush_size, 0, wx.ALL | wx.EXPAND, 3)
-        
-        self.lbl_brush_size = wx.StaticText(self, wx.ID_ANY, "5 px")
-        brush_sizer.Add(self.lbl_brush_size, 0, wx.ALL | wx.ALIGN_CENTER, 3)
-        
-        # Brush shape
-        shape_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.rb_circle = wx.RadioButton(self, wx.ID_ANY, _("Circle"), style=wx.RB_GROUP)
-        self.rb_circle.SetValue(True)
-        shape_row.Add(self.rb_circle, 0, wx.ALL, 3)
-        
-        self.rb_square = wx.RadioButton(self, wx.ID_ANY, _("Square"))
-        shape_row.Add(self.rb_square, 0, wx.ALL, 3)
-        
-        brush_sizer.Add(shape_row, 0, wx.EXPAND, 3)
-        
-        main_sizer.Add(brush_sizer, 0, wx.ALL | wx.EXPAND, 5)
-        
-        # =================
-        # Status
-        # =================
-        self.status_text = wx.StaticText(
-            self, wx.ID_ANY,
-            _("Status: Ready"),
-            style=wx.ST_NO_AUTORESIZE
-        )
+        self.status_text = wx.StaticText(self, wx.ID_ANY, _("Ready."), style=wx.ST_NO_AUTORESIZE)
         main_sizer.Add(self.status_text, 0, wx.ALL | wx.EXPAND, 5)
-        
+
         self.SetSizer(main_sizer)
-        
+
+    def _on_section_toggled(self, event):
+        ui_helpers.relayout_scrolled(self)
+        event.Skip()
+
     # =================
     # Event Handlers
     # =================
@@ -375,8 +277,8 @@ class InteractionPanel(scrolled.ScrolledPanel):
             mapper = self.controller.preview_surface_3d.mapper
             clip.set_target_mapper(mapper)
             self.lbl_e5_status.SetLabel(
-                _("Clipping target: Live Preview (E4)") if mapper is not None
-                else _("Live Preview has no mesh yet.")
+                _("Clipping the preview surface.") if mapper is not None
+                else _("The preview surface has no mesh yet.")
             )
             return
 
@@ -405,25 +307,9 @@ class InteractionPanel(scrolled.ScrolledPanel):
 
         clip.set_target_mapper(mapper)
         if mapper is not None:
-            self.lbl_e5_status.SetLabel(_("Clipping target: Current ROI Final Surface"))
+            self.lbl_e5_status.SetLabel(_("Clipping the final surface of the current ROI."))
         else:
-            self.lbl_e5_status.SetLabel(_("No final surface for selected ROI."))
-
-    def _on_realtime_changed(self, event):
-        """Handle real-time update checkbox change."""
-        self.realtime_update_enabled = event.IsChecked()
-        self._update_status()
-
-    def _on_delay_changed(self, event):
-        """Handle update delay slider change."""
-        self.update_delay = event.GetInt()
-        self.lbl_delay_value.SetLabel(f"{self.update_delay} ms")
-        self.controller.sync_mgr.set_update_delay(self.update_delay)
-
-    def _on_brush_size_changed(self, event):
-        """Handle brush size slider change."""
-        size = event.GetInt()
-        self.lbl_brush_size.SetLabel(f"{size} px")
+            self.lbl_e5_status.SetLabel(_("The current ROI has no final 3D surface yet."))
 
     def _on_point_picked(self, world_point):
         """
@@ -431,7 +317,11 @@ class InteractionPanel(scrolled.ScrolledPanel):
         coordinate every time the user clicks in the 3D view.
         """
         x, y, z = world_point
-        wx.CallAfter(self.update_coordinates, x, y, z)
+        from ..core.coordinates import view_to_slice
+
+        # Shown in the slice frame, the same coordinates native InVesalius
+        # uses (the raw pick is in the y-flipped 3D view frame).
+        wx.CallAfter(self.update_coordinates, *view_to_slice((x, y, z)))
 
         if not self.sync_3d_2d_enabled:
             return
@@ -460,7 +350,7 @@ class InteractionPanel(scrolled.ScrolledPanel):
     def _on_pick_point(self, event):
         """Handle pick point button click."""
         if not self.controller.ensure_picker_initialized():
-            self.status_text.SetLabel(_("Status: No 3D view available yet"))
+            self.status_text.SetLabel(_("No 3D view available yet"))
             return
         if not self._callback_registered:
             self.controller.picker.add_callback(self._on_point_picked)
@@ -469,23 +359,16 @@ class InteractionPanel(scrolled.ScrolledPanel):
         self.status_text.SetLabel(_("Click a point in the 3D view..."))
         
     def _update_status(self):
-        """Update status text."""
-        sync_mode = []
-        if self.sync_3d_2d_enabled:
-            sync_mode.append("3D->2D")
+        directions = []
         if self.sync_2d_3d_enabled:
-            sync_mode.append("2D->3D")
-        
-        if sync_mode:
-            status = f"Sync: {', '.join(sync_mode)}"
+            directions.append("2D → 3D")
+        if self.sync_3d_2d_enabled:
+            directions.append("3D → 2D")
+        if directions:
+            self.status_text.SetLabel(_("Sync on: {directions}.").format(directions=", ".join(directions)))
         else:
-            status = "Sync: None"
-            
-        if self.realtime_update_enabled:
-            status += f" | RT: {self.update_delay}ms"
-            
-        self.status_text.SetLabel(status)
-        
+            self.status_text.SetLabel(_("Sync off."))
+
     # =================
     # Public Methods
     # =================
@@ -506,16 +389,10 @@ class InteractionPanel(scrolled.ScrolledPanel):
         handler caught this crashing for real.
         """
         try:
-            self.txt_coords.SetValue(f"X: {x:.2f}, Y: {y:.2f}, Z: {z:.2f}")
+            self.txt_coords.SetValue(
+                "X: {}, Y: {}, Z: {} mm".format(fmt_float(x), fmt_float(y), fmt_float(z)))
         except RuntimeError:
             pass
-        
-    def get_brush_config(self):
-        """Get current brush configuration."""
-        return {
-            'size': self.slider_brush_size.GetValue(),
-            'shape': 'circle' if self.rb_circle.GetValue() else 'square'
-        }
         
     def set_status(self, message):
         """Set status message."""

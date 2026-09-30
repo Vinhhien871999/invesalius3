@@ -169,6 +169,11 @@ def test_export_panel_nrrd_dropdown_reflects_availability(wx_app):
     import wx
 
     from plugins.roi_viewer.gui.export_panel import ExportPanel, _is_nrrd_available
+    from plugins.roi_viewer.i18n import _
+
+    # Compared through the plugin's translation, not English text - the UI
+    # is localized (30/09/2026), the behaviour under test is unchanged.
+    unavailable_label = _("NRRD (.nrrd) - library not installed")
 
     frame = wx.Frame(None)
     try:
@@ -176,10 +181,10 @@ def test_export_panel_nrrd_dropdown_reflects_availability(wx_app):
         label = panel.choice_mask_format.GetString(1)  # index 1 = NRRD, per the dropdown's fixed order
         assert "NRRD" in label
         if _is_nrrd_available():
-            assert "not installed" not in label
+            assert label != unavailable_label
             assert panel._nrrd_available is True
         else:
-            assert "not installed" in label
+            assert label == unavailable_label
             assert panel._nrrd_available is False
             assert panel.choice_mask_format.GetToolTipText()  # non-empty tooltip explaining why
     finally:

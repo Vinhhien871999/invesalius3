@@ -29,13 +29,9 @@
 # --------------------------------------------------------------------------
 
 import wx
+import wx.lib.scrolledpanel as scrolled
 
-# Import constants
-try:
-    from invesalius.i18n import tr as _
-except ImportError:
-    def _(s):
-        return s
+from ..i18n import _
 
 # Import core modules
 from ..core import (
@@ -235,14 +231,19 @@ class ROIViewerFrame(wx.Frame):
         # reach the shared managers above and the interface/ bridge to
         # real InVesalius data.
         self.interaction_panel = InteractionPanel(self.notebook, self)
-        self.segmentation_panel = SegmentationPanel(self.notebook, self)
+        # "ROI & 3D" is a plain page; SegmentationPanel builds its ROI
+        # management and 3D-surface widgets onto it (one class, two pages -
+        # see SegmentationPanel._init_ui()).
+        self.roi_3d_page = scrolled.ScrolledPanel(self.notebook)
+        self.segmentation_panel = SegmentationPanel(self.notebook, self, roi_page=self.roi_3d_page)
         self.measurement_panel = MeasurementPanel(self.notebook, self)
         self.annotation_panel = AnnotationPanel(self.notebook, self)
         self.export_panel = ExportPanel(self.notebook, self)
 
-        # Add panels to notebook
-        self.notebook.AddPage(self.interaction_panel, _("Interaction"))
+        # Workflow order: segment -> manage ROIs / 3D -> interact / display.
         self.notebook.AddPage(self.segmentation_panel, _("Segmentation"))
+        self.notebook.AddPage(self.roi_3d_page, _("ROI & 3D"))
+        self.notebook.AddPage(self.interaction_panel, _("Interaction & display"))
         self.notebook.AddPage(self.measurement_panel, _("Measurements"))
         self.notebook.AddPage(self.annotation_panel, _("Annotations"))
         self.notebook.AddPage(self.export_panel, _("Export"))

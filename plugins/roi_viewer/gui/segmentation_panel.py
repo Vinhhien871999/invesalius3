@@ -12,12 +12,8 @@ import wx
 import wx.lib.scrolledpanel as scrolled
 
 from ..core import segmentation_cleanup, segmentation_preview
-
-try:
-    from invesalius.i18n import tr as _
-except ImportError:
-    def _(s):
-        return s
+from ..i18n import _, fmt_float, fmt_int
+from . import ui_helpers
 
 # E2 (Advanced Segmentation Enhancement Track, enhancement/advanced-
 # segmentation branch only): the real Slice().aux_matrices/to_show_aux key
@@ -61,9 +57,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     session, so state (like undo history) survives switching tabs.
     """
 
-    def __init__(self, parent, controller):
+    def __init__(self, parent, controller, roi_page=None):
         scrolled.ScrolledPanel.__init__(self, parent)
         self.controller = controller
+        # ROI management + 3D surface widgets go on this second page ("ROI
+        # & 3D") when the frame supplies one, otherwise onto this panel.
+        self.roi_page = roi_page if roi_page is not None else self
         self._roi_list_ids = []
         # E2: preview state lives on this panel instance (like mask_mgr/
         # roi_mgr live on `controller`) - pure bookkeeping, see
@@ -129,359 +128,189 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._pending_surface_build_mask_index = None
         self._subscribe_surface_info_once()
         self._init_ui()
-        self.SetupScrolling()
+        self.SetupScrolling(scroll_x=False)
 
     def _init_ui(self):
+        """
+        Two pages, one class. This panel ("Phân đoạn") holds the
+        segmentation workflow in the order it is used: create/preview ->
+        accept -> post-process -> manual edit. ROI management and the 3D
+        surface controls are built onto self.roi_page ("ROI & 3D") when
+        the frame provides one. Every widget is bound directly with
+        widget.Bind(), so handlers behave the same whichever page a
+        widget sits on. Advanced sections are native wx.CollapsiblePanes,
+        collapsed by default.
+        """
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        title = wx.StaticText(self, wx.ID_ANY, _("ROI Segmentation Tools"))
-        title_font = wx.Font(wx.FontInfo(10).Bold())
-        title.SetFont(title_font)
-        sizer.Add(title, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(ui_helpers.hint(
+            self, _("1. Create or preview  →  2. Accept  →  3. Post-process  →  4. Update 3D surface")
+        ), 0, wx.ALL | wx.EXPAND, 5)
 
-        # --- Threshold -> real mask creation ---
+        # Current ROI, repeated here because post-processing, brush and
+        # undo all act on it while the ROI list itself is on "ROI & 3D".
+        current_row = wx.BoxSizer(wx.HORIZONTAL)
+        current_row.Add(wx.StaticText(self, wx.ID_ANY, _("Current ROI:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.lbl_seg_current_roi = wx.StaticText(self, wx.ID_ANY, _("(none)"))
+        current_row.Add(self.lbl_seg_current_roi, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        sizer.Add(current_row, 0, wx.LEFT | wx.RIGHT | wx.EXPAND, 5)
+
+        # --- A. Create: threshold ---
         box_thresh = wx.StaticBox(self, wx.ID_ANY, _("Threshold"))
         thresh_sizer = wx.StaticBoxSizer(box_thresh, wx.VERTICAL)
 
         self.cb_auto_thresh = wx.CheckBox(self, wx.ID_ANY, _("Auto threshold (Otsu)"))
-        thresh_sizer.Add(self.cb_auto_thresh, 0, wx.ALL, 5)
+        thresh_sizer.Add(self.cb_auto_thresh, 0, wx.ALL, 3)
 
         thresh_row = wx.BoxSizer(wx.HORIZONTAL)
-        thresh_row.Add(wx.StaticText(self, wx.ID_ANY, _("Min:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        thresh_row.Add(wx.StaticText(self, wx.ID_ANY, _("From")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         self.spin_min = wx.SpinCtrl(self, wx.ID_ANY, "226", min=-1024, max=8000)
-        thresh_row.Add(self.spin_min, 1, wx.ALL, 5)
-
-        thresh_row.Add(wx.StaticText(self, wx.ID_ANY, _("Max:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        thresh_row.Add(self.spin_min, 1, wx.ALL, 3)
+        thresh_row.Add(wx.StaticText(self, wx.ID_ANY, _("to")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         self.spin_max = wx.SpinCtrl(self, wx.ID_ANY, "3071", min=-1024, max=8000)
-        thresh_row.Add(self.spin_max, 1, wx.ALL, 5)
+        thresh_row.Add(self.spin_max, 1, wx.ALL, 3)
+        thresh_sizer.Add(thresh_row, 0, wx.EXPAND)
 
-        thresh_sizer.Add(thresh_row, 0, wx.EXPAND, 5)
-
-        self.btn_apply_thresh = wx.Button(self, wx.ID_ANY, _("Create Mask from Threshold"))
-        thresh_sizer.Add(self.btn_apply_thresh, 0, wx.ALL | wx.EXPAND, 5)
-
-        # E2 (enhancement/advanced-segmentation branch only): disabled
-        # unless "Enable Preview Workflow" (below) is checked - see
+        self.btn_apply_thresh = wx.Button(self, wx.ID_ANY, _("Create mask"))
+        self.btn_apply_thresh.SetToolTip(_("Creates a real mask from the threshold range immediately."))
+        # E2: enabled only while the preview workflow is on - see
         # _on_enable_preview_toggle().
         self.btn_preview_otsu = wx.Button(self, wx.ID_ANY, _("Preview Otsu"))
         self.btn_preview_otsu.Enable(False)
-        thresh_sizer.Add(self.btn_preview_otsu, 0, wx.ALL | wx.EXPAND, 5)
-
+        thresh_sizer.Add(ui_helpers.button_row(self.btn_apply_thresh, self.btn_preview_otsu), 0, wx.EXPAND)
         sizer.Add(thresh_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
-        # --- Region growing (semi-automatic seed-based segmentation) ---
-        # NOTE: core/segmentation.SegmentationManager.region_growing()
-        # (a real 6-connected BFS flood-fill from a seed voxel, bounded
-        # by an intensity tolerance) already existed but was never
-        # called from anywhere - a real "backend exists, not wired"
-        # gap. Reuses the same real 3D picker as the Interaction tab
-        # (controller.picker) to let the user click the seed point, and
-        # the same real voxel<->world conversion already verified for
-        # 3D pick -> 2D sync (controller.sync_mgr.world_to_voxel).
-        box_rg = wx.StaticBox(self, wx.ID_ANY, _("Region Growing (seed-based)"))
+        # --- A. Create: region growing (seed picked in the 3D view with
+        # the shared controller.picker; see _on_seed_picked()) ---
+        box_rg = wx.StaticBox(self, wx.ID_ANY, _("Region Growing"))
         rg_sizer = wx.StaticBoxSizer(box_rg, wx.VERTICAL)
 
-        rg_row = wx.BoxSizer(wx.HORIZONTAL)
-        rg_row.Add(wx.StaticText(self, wx.ID_ANY, _("Tolerance:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-        # min=0 (not 1): tolerance 0 is a valid, meaningful choice -
-        # "grow only voxels with exactly the seed's value" - see
-        # core/segmentation.py.SegmentationManager.region_growing()'s
-        # validation (Round-2 audit, section C).
+        # min=0: tolerance 0 is valid ("exactly the seed's value").
         self.spin_rg_tolerance = wx.SpinCtrl(self, wx.ID_ANY, "50", min=0, max=2000)
-        rg_row.Add(self.spin_rg_tolerance, 1, wx.ALL, 5)
-        rg_sizer.Add(rg_row, 0, wx.EXPAND, 5)
+        rg_sizer.Add(ui_helpers.labelled_row(self, _("Tolerance:"), self.spin_rg_tolerance), 0, wx.EXPAND)
 
-        self.btn_pick_seed = wx.ToggleButton(self, wx.ID_ANY, _("Pick Seed Point (3D)"))
-        rg_sizer.Add(self.btn_pick_seed, 0, wx.ALL | wx.EXPAND, 5)
+        self.btn_pick_seed = wx.ToggleButton(self, wx.ID_ANY, _("Pick seed point (3D)"))
+        self.btn_pick_seed.SetToolTip(_(
+            "Click a point on the 3D surface. Without preview mode the region "
+            "grows and a real mask is created immediately."
+        ))
+        # E2: enabled only in preview mode after a seed was picked.
+        self.btn_preview_region_growing = wx.Button(self, wx.ID_ANY, _("Preview"))
+        self.btn_preview_region_growing.Enable(False)
+        # Stacked, not side by side: an equal-width row is twice as wide as
+        # its longest label, which overflowed narrow windows.
+        rg_sizer.Add(self.btn_pick_seed, 0, wx.ALL | wx.EXPAND, 2)
+        rg_sizer.Add(self.btn_preview_region_growing, 0, wx.ALL | wx.EXPAND, 2)
 
         self.rg_status = wx.StaticText(self, wx.ID_ANY, "")
-        rg_sizer.Add(self.rg_status, 0, wx.ALL | wx.EXPAND, 5)
-
-        # E2: disabled unless Preview Workflow is enabled AND a seed has
-        # already been picked while in that mode (see _on_seed_picked()'s
-        # preview branch) - see _on_enable_preview_toggle() and
-        # _on_preview_region_growing()'s own guard.
-        self.btn_preview_region_growing = wx.Button(self, wx.ID_ANY, _("Preview Region Growing"))
-        self.btn_preview_region_growing.Enable(False)
-        rg_sizer.Add(self.btn_preview_region_growing, 0, wx.ALL | wx.EXPAND, 5)
-
+        rg_sizer.Add(self.rg_status, 0, wx.ALL | wx.EXPAND, 3)
         sizer.Add(rg_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
-        # --- E2 (Advanced Segmentation Enhancement Track, enhancement/
-        # advanced-segmentation branch ONLY - never present on
-        # thesis-ct-roi-tools/ct3d-rc1): Preview -> Accept/Cancel
-        # workflow. Off by default (ENABLE_PREVIEW_SEGMENTATION default
-        # OFF) - with the checkbox unchecked, "Preview Otsu"/"Preview
-        # Region Growing" above stay disabled and the classic
-        # immediate-commit behavior (Create Mask from Threshold /
-        # seed-pick auto-grows-and-creates-a-mask) is 100% unchanged.
-        # See docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md and
-        # docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md's "E2 Preview
-        # Architecture" section for the full design.
-        box_preview = wx.StaticBox(self, wx.ID_ANY, _("Preview Segmentation (E2, enhancement branch)"))
+        # --- B. Preview -> Accept / Cancel (E2). Off by default: with the
+        # checkbox off the classic immediate-commit behaviour is unchanged.
+        box_preview = wx.StaticBox(self, wx.ID_ANY, _("Preview"))
         preview_sizer = wx.StaticBoxSizer(box_preview, wx.VERTICAL)
 
-        self.cb_enable_preview = wx.CheckBox(self, wx.ID_ANY, _("Enable Preview Workflow"))
-        preview_sizer.Add(self.cb_enable_preview, 0, wx.ALL, 5)
+        self.cb_enable_preview = wx.CheckBox(self, wx.ID_ANY, _("Enable preview mode"))
+        self.cb_enable_preview.SetToolTip(_(
+            "Otsu and Region Growing show a temporary overlay first. No real "
+            "mask is created until you click Accept."
+        ))
+        preview_sizer.Add(self.cb_enable_preview, 0, wx.ALL, 3)
 
         preview_status_row = wx.BoxSizer(wx.HORIZONTAL)
-        preview_status_row.Add(wx.StaticText(self, wx.ID_ANY, _("Preview status:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+        preview_status_row.Add(wx.StaticText(self, wx.ID_ANY, _("State:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         self.lbl_preview_status = wx.StaticText(self, wx.ID_ANY, _("Idle"))
-        preview_status_row.Add(self.lbl_preview_status, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
-        preview_sizer.Add(preview_status_row, 0, wx.EXPAND, 3)
+        preview_status_row.Add(self.lbl_preview_status, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        preview_sizer.Add(preview_status_row, 0, wx.EXPAND)
 
-        preview_btn_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_preview_accept = wx.Button(self, wx.ID_ANY, _("Accept Preview"))
+        self.btn_preview_accept = wx.Button(self, wx.ID_ANY, _("Accept"))
         self.btn_preview_accept.Enable(False)
-        preview_btn_row.Add(self.btn_preview_accept, 1, wx.ALL, 2)
-        self.btn_preview_cancel = wx.Button(self, wx.ID_ANY, _("Cancel Preview"))
+        self.btn_preview_cancel = wx.Button(self, wx.ID_ANY, _("Cancel preview"))
         self.btn_preview_cancel.Enable(False)
-        preview_btn_row.Add(self.btn_preview_cancel, 1, wx.ALL, 2)
-        preview_sizer.Add(preview_btn_row, 0, wx.EXPAND, 3)
-
+        preview_sizer.Add(ui_helpers.button_row(self.btn_preview_accept, self.btn_preview_cancel), 0, wx.EXPAND)
         sizer.Add(preview_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
-        # --- ROI management (core/roi_manager.ROIManager) ---
-        # NOTE: this is the "quản lý segmentation" piece - a named,
-        # organized view over the masks this panel has created, backed
-        # by real InVesalius operations (Change mask selected / Show
-        # mask / Change mask name / Remove masks), not a disconnected
-        # bookkeeping list.
-        box_roi = wx.StaticBox(self, wx.ID_ANY, _("Segmentation Set (Advanced ROI Manager)"))
-        roi_sizer = wx.StaticBoxSizer(box_roi, wx.VERTICAL)
+        # --- C. Post-processing on the current ROI (E3), collapsed ---
+        pane_cleanup, p = ui_helpers.collapsible(self, _("Post-processing (current ROI)"), self._on_section_toggled)
+        cleanup_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # E1 (Advanced ROI Manager): "Advanced ROI Manager"/"Segmentation
-        # Set" is the honest name for this - the real backend is still
-        # InVesalius's independent per-ROI masks (Project().mask_dict),
-        # NOT a single shared multi-label voxel volume. See
-        # docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md for why this
-        # is not called "true multilabel" and never claims to be.
-        active_row = wx.BoxSizer(wx.HORIZONTAL)
-        active_row.Add(wx.StaticText(self, wx.ID_ANY, _("Active ROI:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        self.lbl_active_roi = wx.StaticText(self, wx.ID_ANY, _("(none)"))
-        active_row.Add(self.lbl_active_roi, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        # Read-only colour indicator (mirrors the real Mask.colour this
-        # ROI wraps - see core/roi_manager.py's ROI class docstring).
-        # Not an editable colour picker - E1's feature list only asks
-        # for an indicator, and inventing a new "change colour" control
-        # beyond what was actually requested is exactly the kind of
-        # unrequested scope this track's own architecture rules warn
-        # against.
-        self.roi_color_swatch = wx.Panel(self, wx.ID_ANY, size=(18, 18))
-        self.roi_color_swatch.SetBackgroundColour(wx.Colour(200, 200, 200))
-        active_row.Add(self.roi_color_swatch, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        roi_sizer.Add(active_row, 0, wx.EXPAND, 3)
+        self.btn_cleanup_keep_largest = wx.Button(p, wx.ID_ANY, _("Keep largest connected component"))
+        cleanup_sizer.Add(self.btn_cleanup_keep_largest, 0, wx.ALL | wx.EXPAND, 2)
 
-        self.roi_list = wx.CheckListBox(self, wx.ID_ANY, size=(-1, 90))
-        self.roi_list.Bind(wx.EVT_CHECKLISTBOX, self._on_roi_visibility_toggled)
-        self.roi_list.Bind(wx.EVT_LISTBOX, self._on_roi_selected)
-        roi_sizer.Add(self.roi_list, 1, wx.ALL | wx.EXPAND, 5)
+        self.spin_min_component_size = wx.SpinCtrl(p, wx.ID_ANY, "100", min=1, max=10_000_000)
+        cleanup_sizer.Add(ui_helpers.labelled_row(p, _("Minimum size:"), self.spin_min_component_size, "voxel"),
+                          0, wx.EXPAND)
+        self.btn_cleanup_remove_small = wx.Button(p, wx.ID_ANY, _("Remove small islands"))
+        self.btn_cleanup_fill_holes = wx.Button(p, wx.ID_ANY, _("Fill holes"))
+        cleanup_sizer.Add(ui_helpers.button_row(self.btn_cleanup_remove_small, self.btn_cleanup_fill_holes),
+                          0, wx.EXPAND)
 
-        roi_btn_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_roi_rename = wx.Button(self, wx.ID_ANY, _("Rename"))
-        roi_btn_row.Add(self.btn_roi_rename, 1, wx.ALL, 2)
-        self.btn_roi_delete = wx.Button(self, wx.ID_ANY, _("Delete"))
-        roi_btn_row.Add(self.btn_roi_delete, 1, wx.ALL, 2)
-        roi_sizer.Add(roi_btn_row, 0, wx.EXPAND, 3)
-
-        # E1: lock/solo/bulk-visibility - all real backend logic lives in
-        # core/roi_manager.ROIManager (pure, unit-tested without wx/
-        # pubsub); this panel only calls it and replays the resulting
-        # visibility changes onto the real "Show mask" topic (see
-        # _apply_visibility_changes() below).
-        roi_btn_row2 = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_roi_lock = wx.Button(self, wx.ID_ANY, _("Lock"))
-        roi_btn_row2.Add(self.btn_roi_lock, 1, wx.ALL, 2)
-        self.btn_roi_unlock = wx.Button(self, wx.ID_ANY, _("Unlock"))
-        roi_btn_row2.Add(self.btn_roi_unlock, 1, wx.ALL, 2)
-        self.btn_roi_solo = wx.ToggleButton(self, wx.ID_ANY, _("Solo"))
-        roi_btn_row2.Add(self.btn_roi_solo, 1, wx.ALL, 2)
-        roi_sizer.Add(roi_btn_row2, 0, wx.EXPAND, 3)
-
-        roi_btn_row3 = wx.BoxSizer(wx.HORIZONTAL)
-        self.btn_roi_show_all = wx.Button(self, wx.ID_ANY, _("Show All"))
-        roi_btn_row3.Add(self.btn_roi_show_all, 1, wx.ALL, 2)
-        self.btn_roi_hide_all = wx.Button(self, wx.ID_ANY, _("Hide All"))
-        roi_btn_row3.Add(self.btn_roi_hide_all, 1, wx.ALL, 2)
-        roi_sizer.Add(roi_btn_row3, 0, wx.EXPAND, 3)
-
-        # NOTE: closes a real gap found by auditing the mask -> surface
-        # chain: invesalius/data/surface.py does not subscribe to any
-        # mask-edit topic ("Reload actual slice", "Create new mask",
-        # etc.), so an already-created 3D surface does NOT update
-        # automatically after brush/undo/region-growing edits. Auto-
-        # rebuilding on every single edit would be the "incremental
-        # remesh" research problem the project's own planning doc flags
-        # as an advanced, optional contribution (and a real perf risk -
-        # rebuilding a full-volume mesh per brush stroke can freeze the
-        # UI) - a manual, on-demand rebuild button is the safe, correct
-        # middle ground: it genuinely closes the loop (edit -> visible
-        # in 3D) without that risk.
-        self.btn_update_surface = wx.Button(self, wx.ID_ANY, _("Update 3D Surface from Selected ROI"))
-        roi_sizer.Add(self.btn_update_surface, 0, wx.ALL | wx.EXPAND, 3)
-
-        sizer.Add(roi_sizer, 0, wx.ALL | wx.EXPAND, 5)
-
-        # --- E3 (Advanced Segmentation Enhancement Track, enhancement/
-        # advanced-segmentation branch ONLY): post-processing / cleanup
-        # on the real current mask (Current ROI target only this
-        # milestone - Active Preview cleanup is deferred, see
-        # docs/CT3D_ADVANCED_E3_CLEANUP_REPORT.md's "Cleanup targets"
-        # section for the real correctness reason: Otsu's Accept path
-        # recreates a mask from its threshold, not from an array, so a
-        # cleaned-then-accepted Otsu preview would silently discard the
-        # cleanup - not safe to ship this milestone). All 4 operations
-        # are pure functions in core/segmentation_cleanup.py, wired here
-        # to the real current mask + the existing UndoRedoManager (same
-        # one Save Checkpoint/Undo/Redo above already use) + E1's lock
-        # guard.
-        box_cleanup = wx.StaticBox(self, wx.ID_ANY, _("Post-processing / Cleanup (Current ROI)"))
-        cleanup_sizer = wx.StaticBoxSizer(box_cleanup, wx.VERTICAL)
-
-        self.btn_cleanup_keep_largest = wx.Button(self, wx.ID_ANY, _("Keep Largest Component"))
-        cleanup_sizer.Add(self.btn_cleanup_keep_largest, 0, wx.ALL | wx.EXPAND, 3)
-
-        remove_small_row = wx.BoxSizer(wx.HORIZONTAL)
-        remove_small_row.Add(wx.StaticText(self, wx.ID_ANY, _("Min component size (voxels):")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        self.spin_min_component_size = wx.SpinCtrl(self, wx.ID_ANY, "100", min=1, max=10_000_000)
-        remove_small_row.Add(self.spin_min_component_size, 1, wx.ALL, 3)
-        cleanup_sizer.Add(remove_small_row, 0, wx.EXPAND, 3)
-        self.btn_cleanup_remove_small = wx.Button(self, wx.ID_ANY, _("Remove Small Islands"))
-        cleanup_sizer.Add(self.btn_cleanup_remove_small, 0, wx.ALL | wx.EXPAND, 3)
-
-        self.btn_cleanup_fill_holes = wx.Button(self, wx.ID_ANY, _("Fill Holes"))
-        cleanup_sizer.Add(self.btn_cleanup_fill_holes, 0, wx.ALL | wx.EXPAND, 3)
-
-        smooth_row = wx.BoxSizer(wx.HORIZONTAL)
-        smooth_row.Add(wx.StaticText(self, wx.ID_ANY, _("Smooth iterations:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        # max bounded to segmentation_cleanup.MAX_SMOOTH_ITERATIONS - real,
-        # source-justified (not an arbitrary UI cap) - see that module's
-        # own comment on why unbounded iterations are refused.
+        # max bounded to MAX_SMOOTH_ITERATIONS - see segmentation_cleanup.
         self.spin_smooth_iterations = wx.SpinCtrl(
-            self, wx.ID_ANY, "1", min=1, max=segmentation_cleanup.MAX_SMOOTH_ITERATIONS
+            p, wx.ID_ANY, "1", min=1, max=segmentation_cleanup.MAX_SMOOTH_ITERATIONS
         )
-        smooth_row.Add(self.spin_smooth_iterations, 1, wx.ALL, 3)
-        cleanup_sizer.Add(smooth_row, 0, wx.EXPAND, 3)
-        self.btn_cleanup_smooth = wx.Button(self, wx.ID_ANY, _("Smooth Mask"))
-        # Real, measured warning (Section 3C re-audit) - see
-        # core/segmentation_cleanup.py's own module-level comment and
-        # docs/CT3D_ADVANCED_E3_CLEANUP_REPORT.md's "Smooth algorithm
-        # selection" section: both candidate algorithms compared
-        # completely destroyed a 1-voxel-thin synthetic phantom at
-        # iterations=1.
-        self.btn_cleanup_smooth.SetToolTip(
-            _(
-                "Binary smoothing can remove very thin structures. The synthetic E3 "
-                "audit showed a 1-voxel-thick structure can disappear entirely. "
-                "Use a low iteration count and verify the result."
-            )
-        )
-        cleanup_sizer.Add(self.btn_cleanup_smooth, 0, wx.ALL | wx.EXPAND, 3)
+        cleanup_sizer.Add(ui_helpers.labelled_row(p, _("Smoothing passes:"), self.spin_smooth_iterations),
+                          0, wx.EXPAND)
+        self.btn_cleanup_smooth = wx.Button(p, wx.ID_ANY, _("Smooth mask"))
+        # Measured E3 finding: a 1-voxel-thick structure disappeared
+        # entirely at iterations=1 with both candidate algorithms.
+        self.btn_cleanup_smooth.SetToolTip(_(
+            "Edits the real mask (undoable). Can remove very thin structures - "
+            "use few passes and check the result. The 3D surface is not rebuilt."
+        ))
+        cleanup_sizer.Add(self.btn_cleanup_smooth, 0, wx.ALL | wx.EXPAND, 2)
 
-        self.lbl_cleanup_status = wx.StaticText(self, wx.ID_ANY, "")
+        self.lbl_cleanup_status = wx.StaticText(p, wx.ID_ANY, "")
         cleanup_sizer.Add(self.lbl_cleanup_status, 0, wx.ALL | wx.EXPAND, 3)
+        p.SetSizer(cleanup_sizer)
+        sizer.Add(pane_cleanup, 0, wx.ALL | wx.EXPAND, 5)
 
-        sizer.Add(cleanup_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        # --- Manual editing: InVesalius's own 2D brush, driven through its
+        # real pubsub topics (this panel never captures mouse events). ---
+        pane_brush, p = ui_helpers.collapsible(self, _("Manual editing (brush)"), self._on_section_toggled)
+        brush_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # --- E4 (Advanced Segmentation Enhancement Track, enhancement/
-        # advanced-segmentation branch ONLY - never present on
-        # thesis-ct-roi-tools/ct3d-rc1): fast, non-authoritative live 3D
-        # preview mesh. Off by default. Source priority: E2 preview (if
-        # PREVIEW_READY) over Current ROI - see
-        # docs/CT3D_ADVANCED_E4_LIVE_3D_PREVIEW_REPORT.md.
-        box_preview3d = wx.StaticBox(self, wx.ID_ANY, _("3D Preview (E4, enhancement branch)"))
-        preview3d_sizer = wx.StaticBoxSizer(box_preview3d, wx.VERTICAL)
-
-        self.cb_enable_live_3d_preview = wx.CheckBox(self, wx.ID_ANY, _("Enable Live 3D Preview"))
-        preview3d_sizer.Add(self.cb_enable_live_3d_preview, 0, wx.ALL, 5)
-
-        self.btn_refresh_3d_preview = wx.Button(self, wx.ID_ANY, _("Refresh 3D Preview"))
-        self.btn_refresh_3d_preview.Enable(False)
-        preview3d_sizer.Add(self.btn_refresh_3d_preview, 0, wx.ALL | wx.EXPAND, 3)
-
-        e4_source_row = wx.BoxSizer(wx.HORIZONTAL)
-        e4_source_row.Add(wx.StaticText(self, wx.ID_ANY, _("Source:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        self.lbl_e4_source = wx.StaticText(self, wx.ID_ANY, _("-"))
-        e4_source_row.Add(self.lbl_e4_source, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        preview3d_sizer.Add(e4_source_row, 0, wx.EXPAND, 3)
-
-        e4_state_row = wx.BoxSizer(wx.HORIZONTAL)
-        e4_state_row.Add(wx.StaticText(self, wx.ID_ANY, _("State:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        self.lbl_e4_state = wx.StaticText(self, wx.ID_ANY, _("Idle"))
-        e4_state_row.Add(self.lbl_e4_state, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        preview3d_sizer.Add(e4_state_row, 0, wx.EXPAND, 3)
-
-        self.lbl_e4_mesh_info = wx.StaticText(self, wx.ID_ANY, "")
-        preview3d_sizer.Add(self.lbl_e4_mesh_info, 0, wx.ALL | wx.EXPAND, 3)
-
-        sizer.Add(preview3d_sizer, 0, wx.ALL | wx.EXPAND, 5)
-
-        # --- Brush tools ---
-        # NOTE: this does NOT capture mouse events itself (that would
-        # fight InVesalius's own 2D canvas interactor). Instead it
-        # drives InVesalius's real, already-working brush editor through
-        # the exact pubsub topics its own toolbar/task panel use (see
-        # invesalius/gui/task_slice.py and invesalius/data/styles.py):
-        # "Enable style"/"Disable style" (style=SLICE_STATE_EDITOR) to
-        # toggle edit mode on the real 2D canvas, and "Set edition brush
-        # size"/"Set brush format"/"Set edition operation" to configure
-        # it. The actual mouse-drag painting is InVesalius's own,
-        # unmodified - this panel is just a remote control for it.
-        box_brush = wx.StaticBox(self, wx.ID_ANY, _("Brush Tools (real 2D editor)"))
-        brush_sizer = wx.StaticBoxSizer(box_brush, wx.VERTICAL)
-
-        op_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.rb_brush_draw = wx.RadioButton(self, wx.ID_ANY, _("Draw"), style=wx.RB_GROUP)
+        mode_row = wx.BoxSizer(wx.HORIZONTAL)
+        self.rb_brush_draw = wx.RadioButton(p, wx.ID_ANY, _("Draw"), style=wx.RB_GROUP)
         self.rb_brush_draw.SetValue(True)
-        op_row.Add(self.rb_brush_draw, 0, wx.ALL, 3)
-
-        self.rb_brush_erase = wx.RadioButton(self, wx.ID_ANY, _("Erase"))
-        op_row.Add(self.rb_brush_erase, 0, wx.ALL, 3)
-        brush_sizer.Add(op_row, 0, wx.EXPAND, 3)
+        mode_row.Add(self.rb_brush_draw, 1, wx.ALL, 3)
+        self.rb_brush_erase = wx.RadioButton(p, wx.ID_ANY, _("Erase"))
+        mode_row.Add(self.rb_brush_erase, 1, wx.ALL, 3)
+        brush_sizer.Add(mode_row, 0, wx.EXPAND)
 
         shape_row = wx.BoxSizer(wx.HORIZONTAL)
-        self.rb_brush_circle = wx.RadioButton(self, wx.ID_ANY, _("Circle"), style=wx.RB_GROUP)
+        self.rb_brush_circle = wx.RadioButton(p, wx.ID_ANY, _("Circle"), style=wx.RB_GROUP)
         self.rb_brush_circle.SetValue(True)
-        shape_row.Add(self.rb_brush_circle, 0, wx.ALL, 3)
+        shape_row.Add(self.rb_brush_circle, 1, wx.ALL, 3)
+        self.rb_brush_square = wx.RadioButton(p, wx.ID_ANY, _("Square"))
+        shape_row.Add(self.rb_brush_square, 1, wx.ALL, 3)
+        brush_sizer.Add(shape_row, 0, wx.EXPAND)
 
-        self.rb_brush_square = wx.RadioButton(self, wx.ID_ANY, _("Square"))
-        shape_row.Add(self.rb_brush_square, 0, wx.ALL, 3)
-        brush_sizer.Add(shape_row, 0, wx.EXPAND, 3)
+        self.slider_brush_size = wx.Slider(p, wx.ID_ANY, 30, 1, 100, style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        brush_sizer.Add(ui_helpers.labelled_row(p, _("Brush size:"), self.slider_brush_size), 0, wx.EXPAND)
 
-        brush_sizer.Add(wx.StaticText(self, wx.ID_ANY, _("Brush size:")), 0, wx.ALL, 3)
-        self.slider_brush_size = wx.Slider(
-            self, wx.ID_ANY, 30, 1, 100, style=wx.SL_HORIZONTAL | wx.SL_LABELS
-        )
-        brush_sizer.Add(self.slider_brush_size, 0, wx.ALL | wx.EXPAND, 3)
+        self.btn_toggle_brush = wx.ToggleButton(p, wx.ID_ANY, _("Enable brush"))
+        self.btn_toggle_brush.SetToolTip(_("Paint directly on the 2D slice views. Edits the real mask."))
+        brush_sizer.Add(self.btn_toggle_brush, 0, wx.ALL | wx.EXPAND, 3)
+        p.SetSizer(brush_sizer)
+        sizer.Add(pane_brush, 0, wx.ALL | wx.EXPAND, 5)
 
-        self.btn_toggle_brush = wx.ToggleButton(self, wx.ID_ANY, _("Enable Brush Tool"))
-        brush_sizer.Add(self.btn_toggle_brush, 0, wx.ALL | wx.EXPAND, 5)
-
-        sizer.Add(brush_sizer, 0, wx.ALL | wx.EXPAND, 5)
-
-        # --- Undo/Redo of the REAL current mask ---
-        box_undo = wx.StaticBox(self, wx.ID_ANY, _("Undo / Redo (current mask)"))
-        undo_box_sizer = wx.StaticBoxSizer(box_undo, wx.VERTICAL)
-
-        self.btn_checkpoint = wx.Button(self, wx.ID_ANY, _("Save Checkpoint"))
-        undo_box_sizer.Add(self.btn_checkpoint, 0, wx.ALL | wx.EXPAND, 5)
-
-        undo_row = wx.BoxSizer(wx.HORIZONTAL)
+        # --- Undo / redo of the real current mask ---
+        box_undo = wx.StaticBox(self, wx.ID_ANY, _("Edit history (current ROI)"))
+        undo_sizer = wx.StaticBoxSizer(box_undo, wx.VERTICAL)
+        self.btn_checkpoint = wx.Button(self, wx.ID_ANY, _("Save restore point"))
         self.btn_undo = wx.Button(self, wx.ID_ANY, _("Undo"))
-        undo_row.Add(self.btn_undo, 1, wx.ALL, 5)
-
         self.btn_redo = wx.Button(self, wx.ID_ANY, _("Redo"))
-        undo_row.Add(self.btn_redo, 1, wx.ALL, 5)
+        undo_sizer.Add(self.btn_checkpoint, 0, wx.ALL | wx.EXPAND, 2)
+        undo_sizer.Add(ui_helpers.button_row(self.btn_undo, self.btn_redo), 0, wx.EXPAND)
+        sizer.Add(undo_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
-        undo_box_sizer.Add(undo_row, 0, wx.EXPAND, 5)
-
-        sizer.Add(undo_box_sizer, 0, wx.ALL | wx.EXPAND, 5)
-
-        # Status
-        self.status_text = wx.StaticText(self, wx.ID_ANY, _("Status: Ready"))
+        self.status_text = wx.StaticText(self, wx.ID_ANY, _("Ready."), style=wx.ST_NO_AUTORESIZE)
         sizer.Add(self.status_text, 0, wx.ALL | wx.EXPAND, 5)
-
         self.SetSizer(sizer)
+
+        self._build_roi_3d_page()
 
         self.cb_auto_thresh.Bind(wx.EVT_CHECKBOX, self._on_auto_thresh_toggle)
         self.btn_apply_thresh.Bind(wx.EVT_BUTTON, self._on_apply_threshold)
@@ -522,6 +351,104 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # with no visible way to turn it back off.
         self.Bind(wx.EVT_WINDOW_DESTROY, self._on_destroy)
 
+    def _build_roi_3d_page(self):
+        """ROI management (E1) and the 3D surface controls (final surface
+        + E4 live preview) - on self.roi_page when the frame gave one."""
+        page = self.roi_page
+        sizer = wx.BoxSizer(wx.VERTICAL) if page is not self else self.GetSizer()
+
+        # --- D. ROI management. Backed by the real InVesalius masks
+        # (Project().mask_dict) - not a multi-label volume. ---
+        box_roi = wx.StaticBox(page, wx.ID_ANY, _("ROI management"))
+        roi_sizer = wx.StaticBoxSizer(box_roi, wx.VERTICAL)
+
+        active_row = wx.BoxSizer(wx.HORIZONTAL)
+        active_row.Add(wx.StaticText(page, wx.ID_ANY, _("Current ROI:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.lbl_active_roi = wx.StaticText(page, wx.ID_ANY, _("(none)"))
+        active_row.Add(self.lbl_active_roi, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        # Read-only colour indicator of the real Mask.colour.
+        self.roi_color_swatch = wx.Panel(page, wx.ID_ANY, size=(18, 18))
+        self.roi_color_swatch.SetBackgroundColour(wx.Colour(200, 200, 200))
+        active_row.Add(self.roi_color_swatch, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        roi_sizer.Add(active_row, 0, wx.EXPAND)
+
+        self.roi_list = wx.CheckListBox(page, wx.ID_ANY, size=(-1, 110))
+        self.roi_list.SetToolTip(_("Click a row to make it the current ROI; the checkbox shows or hides it."))
+        self.roi_list.Bind(wx.EVT_CHECKLISTBOX, self._on_roi_visibility_toggled)
+        self.roi_list.Bind(wx.EVT_LISTBOX, self._on_roi_selected)
+        roi_sizer.Add(self.roi_list, 1, wx.ALL | wx.EXPAND, 3)
+
+        self.btn_roi_rename = wx.Button(page, wx.ID_ANY, _("Rename"))
+        self.btn_roi_delete = wx.Button(page, wx.ID_ANY, _("Delete"))
+        roi_sizer.Add(ui_helpers.button_row(self.btn_roi_rename, self.btn_roi_delete), 0, wx.EXPAND)
+
+        self.btn_roi_lock = wx.Button(page, wx.ID_ANY, _("Lock"))
+        self.btn_roi_lock.SetToolTip(_("Blocks brush, undo/redo, post-processing and delete on this ROI. "
+                                       "Session only - not saved in the project."))
+        self.btn_roi_unlock = wx.Button(page, wx.ID_ANY, _("Unlock"))
+        roi_sizer.Add(ui_helpers.button_row(self.btn_roi_lock, self.btn_roi_unlock), 0, wx.EXPAND)
+
+        self.btn_roi_solo = wx.ToggleButton(page, wx.ID_ANY, _("Show only this ROI"))
+        self.btn_roi_solo.SetToolTip(_("Hides every other ROI; click again to restore the previous visibility. "
+                                       "Does not edit any mask."))
+        roi_sizer.Add(self.btn_roi_solo, 0, wx.ALL | wx.EXPAND, 2)
+
+        self.btn_roi_show_all = wx.Button(page, wx.ID_ANY, _("Show all"))
+        self.btn_roi_hide_all = wx.Button(page, wx.ID_ANY, _("Hide all"))
+        roi_sizer.Add(ui_helpers.button_row(self.btn_roi_show_all, self.btn_roi_hide_all), 0, wx.EXPAND)
+        sizer.Add(roi_sizer, 0, wx.ALL | wx.EXPAND, 5)
+
+        # --- E. 3D surface. The final surface is only rebuilt on demand
+        # (an automatic rebuild per edit would freeze the UI on large
+        # volumes - see _on_update_surface()). ---
+        box_surface = wx.StaticBox(page, wx.ID_ANY, _("3D surface"))
+        surface_sizer = wx.StaticBoxSizer(box_surface, wx.VERTICAL)
+        self.btn_update_surface = wx.Button(page, wx.ID_ANY, _("Update 3D surface from current ROI"))
+        self.btn_update_surface.SetToolTip(_("Rebuilds the final 3D surface from the current ROI's mask. "
+                                             "Edits do not update the final surface automatically."))
+        surface_sizer.Add(self.btn_update_surface, 0, wx.ALL | wx.EXPAND, 3)
+
+        # E4 live preview mesh - never the final surface; off by default.
+        pane_live, p = ui_helpers.collapsible(page, _("Live 3D preview (experimental)"), self._on_section_toggled)
+        live_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.cb_enable_live_3d_preview = wx.CheckBox(p, wx.ID_ANY, _("Enable live 3D preview"))
+        self.cb_enable_live_3d_preview.SetToolTip(_(
+            "Shows a temporary 3D mesh of the preview or current ROI that follows your edits. "
+            "It is not the final surface and is never saved."
+        ))
+        live_sizer.Add(self.cb_enable_live_3d_preview, 0, wx.ALL, 3)
+        self.btn_refresh_3d_preview = wx.Button(p, wx.ID_ANY, _("Refresh 3D preview"))
+        self.btn_refresh_3d_preview.Enable(False)
+        live_sizer.Add(self.btn_refresh_3d_preview, 0, wx.ALL | wx.EXPAND, 3)
+
+        e4_row = wx.BoxSizer(wx.HORIZONTAL)
+        e4_row.Add(wx.StaticText(p, wx.ID_ANY, _("Source:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.lbl_e4_source = wx.StaticText(p, wx.ID_ANY, "-")
+        e4_row.Add(self.lbl_e4_source, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        live_sizer.Add(e4_row, 0, wx.EXPAND)
+        e4_state_row = wx.BoxSizer(wx.HORIZONTAL)
+        e4_state_row.Add(wx.StaticText(p, wx.ID_ANY, _("State:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.lbl_e4_state = wx.StaticText(p, wx.ID_ANY, _("Idle"))
+        e4_state_row.Add(self.lbl_e4_state, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        live_sizer.Add(e4_state_row, 0, wx.EXPAND)
+        self.lbl_e4_mesh_info = wx.StaticText(p, wx.ID_ANY, "")
+        live_sizer.Add(self.lbl_e4_mesh_info, 0, wx.ALL | wx.EXPAND, 3)
+        p.SetSizer(live_sizer)
+        surface_sizer.Add(pane_live, 0, wx.ALL | wx.EXPAND, 2)
+        sizer.Add(surface_sizer, 0, wx.ALL | wx.EXPAND, 5)
+
+        self.roi_status = wx.StaticText(page, wx.ID_ANY, _("Ready."), style=wx.ST_NO_AUTORESIZE)
+        sizer.Add(self.roi_status, 0, wx.ALL | wx.EXPAND, 5)
+
+        if page is not self:
+            page.SetSizer(sizer)
+            page.SetupScrolling(scroll_x=False)
+
+    def _on_section_toggled(self, event):
+        for panel in {self, self.roi_page}:
+            ui_helpers.relayout_scrolled(panel)
+        event.Skip()
+
     def _brush_enabled(self):
         return self.btn_toggle_brush.GetValue()
 
@@ -536,14 +463,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
             volume = ProjectInterface().get_volume_data()
             if volume is None:
-                self.status_text.SetLabel(_("Status: No project loaded"))
+                self.status_text.SetLabel(_("No project loaded."))
                 return
             lo, hi = self.controller.seg_mgr.auto_threshold_otsu(volume)
             self.spin_min.SetValue(int(lo))
             self.spin_max.SetValue(int(hi))
-            self.status_text.SetLabel(_("Status: Auto threshold computed"))
+            self.status_text.SetLabel(_("Otsu threshold: {lo} to {hi}.").format(lo=int(lo), hi=int(hi)))
         except Exception as e:
-            self.status_text.SetLabel(_("Status: Auto threshold failed"))
+            self.status_text.SetLabel(_("Could not compute the Otsu threshold."))
             print(f"ROI Viewer: auto threshold failed - {e}")
 
     def _commit_threshold_mask(self, lo, hi) -> Optional[str]:
@@ -594,7 +521,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         if lo > hi:
             wx.MessageBox(
-                _("Min threshold must be <= Max threshold."), _("Error"), wx.OK | wx.ICON_ERROR
+                _("The lower threshold must not exceed the upper threshold."), _("Error"), wx.OK | wx.ICON_ERROR
             )
             return
 
@@ -602,7 +529,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         name = self._commit_threshold_mask(lo, hi)
         if name is not None:
-            self.status_text.SetLabel(_(f"Status: Created mask '{name}'"))
+            self.status_text.SetLabel(_("Created mask '{name}'.").format(name=name))
             self._mark_preview_3d_dirty("new mask created")
         else:
             wx.MessageBox(_("Segmentation not available."), _("Error"), wx.OK | wx.ICON_ERROR)
@@ -650,7 +577,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             pi = ProjectInterface()
             volume = pi.get_volume_data()
             if volume is None:
-                wx.CallAfter(self.rg_status.SetLabel, _("No project loaded"))
+                wx.CallAfter(self.rg_status.SetLabel, _("No project loaded."))
                 return
 
             # The 3D pick is in the y-flipped view frame; convert to the
@@ -666,7 +593,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
             seed_error = self.controller.seg_mgr.validate_seed(seed, volume.shape)
             if seed_error is not None:
-                self.rg_status.SetLabel(_(f"Region growing: {seed_error}"))
+                self.rg_status.SetLabel(_("Invalid seed point."))
+                print(f"ROI Viewer: invalid seed - {seed_error}")
                 return
 
             # E2 (enhancement/advanced-segmentation branch only): with
@@ -683,11 +611,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 wx.CallAfter(self.btn_preview_region_growing.Enable, True)
                 wx.CallAfter(
                     self.rg_status.SetLabel,
-                    _(f"Seed picked at voxel {seed} - click 'Preview Region Growing'"),
+                    _("Seed at voxel {seed}. Click Preview.").format(seed=seed),
                 )
                 return
 
-            wx.CallAfter(self.rg_status.SetLabel, _(f"Growing from voxel {seed}..."))
+            wx.CallAfter(self.rg_status.SetLabel, _("Growing from voxel {seed}…").format(seed=seed))
             # scipy/numpy BFS over a full CT volume can take real time
             # (see the performance note on SegmentationManager.
             # region_growing() itself) - run off the UI thread so the
@@ -715,7 +643,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     # Invalid input (e.g. a negative tolerance somehow
                     # reaching here) - a clear, specific message rather
                     # than the generic "failed" below.
-                    wx.CallAfter(self.rg_status.SetLabel, _(f"Region growing: {e}"))
+                    wx.CallAfter(self.rg_status.SetLabel, _("Invalid region growing parameters."))
+                    print(f"ROI Viewer: region growing rejected - {e}")
                 except Exception:
                     import traceback
 
@@ -843,43 +772,35 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
             if voxel_count == 0:
                 self.rg_status.SetLabel(
-                    _(f"No region found from seed {seed} (tolerance {tolerance}) - try a higher tolerance")
+                    _("No region found (tolerance {tolerance}). Try a higher tolerance.").format(tolerance=tolerance)
                 )
                 return
 
-            seed_value = pi.get_volume_data()[seed] if pi.get_volume_data() is not None else "?"
-            info = _(
-                f"seed value {seed_value}, tolerance {tolerance}, "
-                f"{voxel_count} voxels ({stats['fraction'] * 100:.1f}% of volume)"
-            )
-            if "volume_mm3" in stats:
-                info += _(f", {stats['volume_mm3']:.1f} mm3")
+            info = self._region_info(stats)
 
             if stats["exceeds_limit"]:
                 limit_pct = self.controller.seg_mgr.max_region_fraction * 100
                 proceed = wx.MessageBox(
                     _(
-                        f"This region covers {stats['fraction'] * 100:.1f}% of the volume "
-                        f"({voxel_count} voxels) - larger than the {limit_pct:.0f}% safety "
-                        f"threshold and likely not a meaningful region of interest.\n\n"
-                        f"{info}\n\nCreate it anyway?"
-                    ),
-                    _("Region growing: large region"),
+                        "This region covers {percent}% of the volume - more than the {limit}% safety "
+                        "limit, so it is probably not a meaningful ROI.\n\n{info}\n\nCreate it anyway?"
+                    ).format(percent=fmt_float(stats["fraction"] * 100, 1), limit=fmt_float(limit_pct, 0), info=info),
+                    _("Large region"),
                     wx.YES_NO | wx.ICON_WARNING,
                 )
                 if proceed != wx.YES:
-                    self.rg_status.SetLabel(_(f"Region growing cancelled ({info})"))
+                    self.rg_status.SetLabel(_("Region growing cancelled."))
                     return
 
             name = self._commit_region_growing_result(result_mask, seed, tolerance)
             if name is None:
-                self.rg_status.SetLabel(_("Region growing: failed to create/apply mask"))
+                self.rg_status.SetLabel(_("Could not create the mask."))
                 return
 
             self._refresh_after_edit()
-            self.rg_status.SetLabel(_(f"Status: grown '{name}' - {info}"))
+            self.rg_status.SetLabel(_("Created '{name}': {info}.").format(name=name, info=info))
         except Exception as e:
-            self.rg_status.SetLabel(_("Region growing: failed to apply result"))
+            self.rg_status.SetLabel(_("Could not apply the region growing result."))
             print(f"ROI Viewer: applying region growing result failed - {e}")
 
     # ------------------------------------------------------------------
@@ -1021,7 +942,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # existing "no mask selected" check.
             if sl.Slice().current_mask is None:
                 wx.MessageBox(
-                    _("Create or select a mask first (see Threshold above) so the preview can be shown."),
+                    _("Create or select a mask first - the preview overlay needs a current mask."),
                     _("No mask selected"), wx.OK | wx.ICON_WARNING,
                 )
                 return
@@ -1029,7 +950,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             pi = ProjectInterface()
             volume = pi.get_volume_data()
             if volume is None:
-                self.lbl_preview_status.SetLabel(_("No project loaded"))
+                self.lbl_preview_status.SetLabel(_("No project loaded."))
                 return
 
             lo, hi = self.controller.seg_mgr.auto_threshold_otsu(volume)
@@ -1059,7 +980,10 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self._preview_temp_file = temp_file
             self._show_preview_overlay(array)
             voxel_count = int(candidate01.sum())
-            self.lbl_preview_status.SetLabel(_(f"Ready: Otsu threshold ({lo}, {hi}), {voxel_count} voxels"))
+            self.lbl_preview_status.SetLabel(
+                _("Otsu preview: {voxels} voxels ({lo} to {hi}).").format(
+                    voxels=fmt_int(voxel_count), lo=int(lo), hi=int(hi))
+            )
             self._update_preview_buttons()
             self._mark_preview_3d_dirty("Otsu preview ready")
         except Exception as e:
@@ -1076,7 +1000,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
             if sl.Slice().current_mask is None:
                 wx.MessageBox(
-                    _("Create or select a mask first (see Threshold above) so the preview can be shown."),
+                    _("Create or select a mask first - the preview overlay needs a current mask."),
                     _("No mask selected"), wx.OK | wx.ICON_WARNING,
                 )
                 return
@@ -1084,14 +1008,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             pi = ProjectInterface()
             volume = pi.get_volume_data()
             if volume is None:
-                self.lbl_preview_status.SetLabel(_("No project loaded"))
+                self.lbl_preview_status.SetLabel(_("No project loaded."))
                 return
 
             seed = self._preview_seed_voxel
             seed_world = self._preview_seed_world
             tolerance = self.spin_rg_tolerance.GetValue()
             gen = self.preview_mgr.new_generation()
-            self.lbl_preview_status.SetLabel(_(f"Computing (voxel {seed}, tolerance {tolerance})..."))
+            self.lbl_preview_status.SetLabel(_("Computing…"))
             self.btn_preview_region_growing.Enable(False)
 
             # Same real background-thread + wx.CallAfter pattern as the
@@ -1147,7 +1071,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             if voxel_count == 0:
                 self.preview_mgr.cancel()
                 self.lbl_preview_status.SetLabel(
-                    _(f"No region found from seed {seed_voxel} (tolerance {tolerance}) - try a higher tolerance")
+                    _("No region found (tolerance {tolerance}). Try a higher tolerance.").format(tolerance=tolerance)
                 )
                 self._update_preview_buttons()
                 return
@@ -1166,9 +1090,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 return
             self._preview_temp_file = temp_file
 
-            info = f"{voxel_count} voxels ({stats['fraction'] * 100:.1f}% of volume)"
-            if "volume_mm3" in stats:
-                info += f", {stats['volume_mm3']:.1f} mm3"
+            info = self._region_info(stats)
             if stats["exceeds_limit"]:
                 limit_pct = self.controller.seg_mgr.max_region_fraction * 100
                 # Informational only, non-blocking (instruction section
@@ -1176,8 +1098,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 # may still inspect the candidate preview") - the actual
                 # blocking confirmation happens in _on_preview_accept()
                 # at commit time, same as the classic path.
-                info += f" - WARNING: exceeds {limit_pct:.0f}% safety threshold, confirmation required on Accept"
-            self.lbl_preview_status.SetLabel(_(f"Ready: {info}"))
+                info += " " + _("(over the {limit}% limit - Accept will ask to confirm)").format(
+                    limit=fmt_float(limit_pct, 0))
+            self.lbl_preview_status.SetLabel(_("Region growing preview: {info}.").format(info=info))
             self._show_preview_overlay(array)
             self._update_preview_buttons()
             self._mark_preview_3d_dirty("Region Growing preview ready")
@@ -1205,15 +1128,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     limit_pct = self.controller.seg_mgr.max_region_fraction * 100
                     proceed = wx.MessageBox(
                         _(
-                            f"This region covers {stats.get('fraction', 0) * 100:.1f}% of the volume "
-                            f"- larger than the {limit_pct:.0f}% safety threshold and likely not a "
-                            f"meaningful region of interest.\n\nCreate it anyway?"
-                        ),
-                        _("Region growing: large region"), wx.YES_NO | wx.ICON_WARNING,
+                            "This region covers {percent}% of the volume - more than the {limit}% safety "
+                            "limit, so it is probably not a meaningful ROI.\n\nCreate it anyway?"
+                        ).format(percent=fmt_float(stats.get("fraction", 0) * 100, 1), limit=fmt_float(limit_pct, 0)),
+                        _("Large region"), wx.YES_NO | wx.ICON_WARNING,
                     )
                     if proceed != wx.YES:
                         self.preview_mgr.revert_accept()
-                        self.lbl_preview_status.SetLabel(_("Accept cancelled (oversized region) - preview still active"))
+                        self.lbl_preview_status.SetLabel(_("Accept cancelled - the preview is still shown."))
                         self._update_preview_buttons()
                         return
                 # preview_array holds 0/255 values (see
@@ -1237,12 +1159,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.btn_preview_region_growing.Enable(False)
             self.controller.on_roi_source_changed()
             self._refresh_after_edit()
-            self.lbl_preview_status.SetLabel(_(f"Idle (accepted '{name}')"))
+            self.lbl_preview_status.SetLabel(_("Accepted as '{name}'.").format(name=name))
             self._update_preview_buttons()
         except Exception as e:
             print(f"ROI Viewer: preview accept failed - {e}")
             self.preview_mgr.revert_accept()
-            self.lbl_preview_status.SetLabel(_("Accept failed - preview still active"))
+            self.lbl_preview_status.SetLabel(_("Accept failed - the preview is still shown."))
             self._update_preview_buttons()
 
     def _on_preview_cancel(self, event):
@@ -1264,14 +1186,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     def _on_checkpoint(self, event):
         mask = self._current_mask()
         if mask is None or mask.matrix is None:
-            self.status_text.SetLabel(_("Status: No mask selected"))
+            self.status_text.SetLabel(_("No mask selected."))
             return
         editor = self.controller.mask_mgr.get_editor(mask.index)
         if editor is None:
             editor = self.controller.mask_mgr.create_editor(mask.index, mask.matrix.shape)
         editor.mask = mask.matrix
         editor.save_state()
-        self.status_text.SetLabel(_("Status: Checkpoint saved"))
+        self.status_text.SetLabel(_("Restore point saved."))
 
     def _roi_locked_for_mask(self, mask_index) -> bool:
         """Thin wx-layer wrapper - the actual decision logic lives in
@@ -1282,38 +1204,38 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     def _on_undo(self, event):
         mask = self._current_mask()
         if mask is None or mask.matrix is None:
-            self.status_text.SetLabel(_("Status: No mask selected"))
+            self.status_text.SetLabel(_("No mask selected."))
             return
         if self._roi_locked_for_mask(mask.index):
-            self.status_text.SetLabel(_("Status: ROI is locked - unlock to undo"))
+            self.status_text.SetLabel(_("ROI is locked."))
             return
         editor = self.controller.mask_mgr.get_editor(mask.index)
         if editor is None or not editor.undo_manager.can_undo():
-            self.status_text.SetLabel(_("Status: Nothing to undo"))
+            self.status_text.SetLabel(_("Nothing to undo."))
             return
         previous = editor.undo_manager.undo(mask.matrix)
         if previous is not None:
             mask.matrix[:] = previous
             self._refresh_after_edit()
-            self.status_text.SetLabel(_("Status: Undone"))
+            self.status_text.SetLabel(_("Undone."))
 
     def _on_redo(self, event):
         mask = self._current_mask()
         if mask is None or mask.matrix is None:
-            self.status_text.SetLabel(_("Status: No mask selected"))
+            self.status_text.SetLabel(_("No mask selected."))
             return
         if self._roi_locked_for_mask(mask.index):
-            self.status_text.SetLabel(_("Status: ROI is locked - unlock to redo"))
+            self.status_text.SetLabel(_("ROI is locked."))
             return
         editor = self.controller.mask_mgr.get_editor(mask.index)
         if editor is None or not editor.undo_manager.can_redo():
-            self.status_text.SetLabel(_("Status: Nothing to redo"))
+            self.status_text.SetLabel(_("Nothing to redo."))
             return
         nxt = editor.undo_manager.redo(mask.matrix)
         if nxt is not None:
             mask.matrix[:] = nxt
             self._refresh_after_edit()
-            self.status_text.SetLabel(_("Status: Redone"))
+            self.status_text.SetLabel(_("Redone."))
 
     def _refresh_after_edit(self):
         # E4: single shared real-mutation refresh point (classic region
@@ -1339,7 +1261,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             if mask is None:
                 self.btn_toggle_brush.SetValue(False)
                 wx.MessageBox(
-                    _("Create or select a mask first (see Threshold above)."),
+                    _("Create or select a mask first."),
                     _("No mask selected"), wx.OK | wx.ICON_WARNING,
                 )
                 return
@@ -1356,10 +1278,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
                 Publisher.sendMessage("Enable style", style=const.SLICE_STATE_EDITOR)
                 self._push_brush_config()
-                self.btn_toggle_brush.SetLabel(_("Disable Brush Tool"))
-                self.status_text.SetLabel(
-                    _("Status: Brush active - paint on the 2D slice views")
-                )
+                self.btn_toggle_brush.SetLabel(_("Disable brush"))
+                self.status_text.SetLabel(_("Brush on - paint on the 2D views."))
             except ImportError as e:
                 self.btn_toggle_brush.SetValue(False)
                 print(f"ROI Viewer: could not enable brush - {e}")
@@ -1374,8 +1294,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             Publisher.sendMessage("Disable style", style=const.SLICE_STATE_EDITOR)
         except ImportError:
             pass
-        self.btn_toggle_brush.SetLabel(_("Enable Brush Tool"))
-        self.status_text.SetLabel(_("Status: Ready"))
+        self.btn_toggle_brush.SetLabel(_("Enable brush"))
+        self.status_text.SetLabel(_("Ready."))
 
     def _push_brush_config(self):
         """Send the panel's current operation/shape/size to the real editor style."""
@@ -1463,10 +1383,10 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             roi = self.controller.roi_mgr.rois[rid]
             prefix = ""
             if roi.locked:
-                prefix += "[LOCKED] "
+                prefix += _("[Locked]") + " "
             if solo_id == rid:
-                prefix += "[SOLO] "
-            labels.append(f"{prefix}{roi.name} (mask #{roi.mask_index})")
+                prefix += _("[Only this]") + " "
+            labels.append(_("{prefix}{name} (mask #{index})").format(prefix=prefix, name=roi.name, index=roi.mask_index))
         self.roi_list.Set(labels)
         for i, rid in enumerate(self._roi_list_ids):
             self.roi_list.Check(i, self.controller.roi_mgr.rois[rid].visible)
@@ -1486,14 +1406,32 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         ROI's own name/colour changed, or it was removed, without a
         selection event firing)."""
         roi = self.controller.roi_mgr.get_current_roi()
+        name = roi.name if roi is not None else _("(none)")
+        # Mirrored on the "Phân đoạn" page, where post-processing, brush
+        # and undo act on this same ROI.
+        self.lbl_active_roi.SetLabel(name)
+        self.lbl_seg_current_roi.SetLabel(name)
         if roi is None:
-            self.lbl_active_roi.SetLabel(_("(none)"))
             self.roi_color_swatch.SetBackgroundColour(wx.Colour(200, 200, 200))
         else:
-            self.lbl_active_roi.SetLabel(roi.name)
             r, g, b = (int(c) for c in roi.color[:3])
             self.roi_color_swatch.SetBackgroundColour(wx.Colour(r, g, b))
         self.roi_color_swatch.Refresh()
+
+    def _region_info(self, stats) -> str:
+        """Short, localized region summary: '12.345 voxels (3,2% of volume), 1.234,5 mm³'."""
+        info = _("{voxels} voxels ({percent}% of volume)").format(
+            voxels=fmt_int(stats["voxel_count"]), percent=fmt_float(stats["fraction"] * 100, 1))
+        if "volume_mm3" in stats:
+            info += ", " + fmt_float(stats["volume_mm3"], 1) + " mm³"
+        return info
+
+    def _e4_source_label(self, kind) -> str:
+        if kind == "otsu_preview":
+            return _("Otsu preview")
+        if kind == "region_growing_preview":
+            return _("Region growing preview")
+        return _("Current ROI")
 
     def _apply_visibility_changes(self, changes):
         """Replay a {roi_id: new_visible} dict (as returned by
@@ -1530,7 +1468,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # mask) - see invesalius/data/slice_.py's
             # __select_current_mask, subscribed to "Change mask selected".
             Publisher.sendMessage("Change mask selected", index=roi.mask_index)
-            self.status_text.SetLabel(_(f"Status: Selected '{roi.name}'"))
+            self.roi_status.SetLabel(_("Current ROI: {name}.").format(name=roi.name))
             # E4 (Section 27): switching ROI while live preview is
             # enabled must rebuild for the NEW source, not leave the OLD
             # ROI's mesh attached.
@@ -1602,12 +1540,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         roi = self.controller.roi_mgr.get_roi(rid)
         if roi.locked:
             wx.MessageBox(
-                _(f"ROI '{roi.name}' is locked. Unlock it before deleting."),
+                _("ROI '{name}' is locked. Unlock it before deleting.").format(name=roi.name),
                 _("ROI locked"), wx.OK | wx.ICON_WARNING,
             )
             return
         confirm = wx.MessageBox(
-            _(f"Delete ROI '{roi.name}' and its mask? This cannot be undone."),
+            _("Delete ROI '{name}' and its mask? This cannot be undone.").format(name=roi.name),
             _("Confirm delete"), wx.YES_NO | wx.ICON_WARNING,
         )
         if confirm != wx.YES:
@@ -1620,7 +1558,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             pass
         self.controller.roi_mgr.delete_roi(rid)
         self._refresh_roi_list()
-        self.status_text.SetLabel(_(f"Status: Deleted '{roi.name}'"))
+        self.roi_status.SetLabel(_("Deleted '{name}'.").format(name=roi.name))
 
     # ------------------------------------------------------------------
     # E1 (Advanced ROI Manager): lock / solo / show-all / hide-all
@@ -1633,7 +1571,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.controller.roi_mgr.set_locked(rid, True)
         self._refresh_roi_list()
         roi = self.controller.roi_mgr.get_roi(rid)
-        self.status_text.SetLabel(_(f"Status: Locked '{roi.name}'"))
+        self.roi_status.SetLabel(_("Locked '{name}'.").format(name=roi.name))
 
     def _on_roi_unlock(self, event):
         rid = self._selected_roi_id()
@@ -1643,7 +1581,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.controller.roi_mgr.set_locked(rid, False)
         self._refresh_roi_list()
         roi = self.controller.roi_mgr.get_roi(rid)
-        self.status_text.SetLabel(_(f"Status: Unlocked '{roi.name}'"))
+        self.roi_status.SetLabel(_("Unlocked '{name}'.").format(name=roi.name))
 
     def _on_roi_solo_toggled(self, event):
         if self.btn_roi_solo.GetValue():
@@ -1655,24 +1593,24 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             changes = self.controller.roi_mgr.enter_solo(rid)
             self._apply_visibility_changes(changes)
             roi = self.controller.roi_mgr.get_roi(rid)
-            self.status_text.SetLabel(_(f"Status: Solo '{roi.name}'"))
+            self.roi_status.SetLabel(_("Showing only '{name}'.").format(name=roi.name))
         else:
             changes = self.controller.roi_mgr.exit_solo()
             self._apply_visibility_changes(changes)
-            self.status_text.SetLabel(_("Status: Solo off"))
+            self.roi_status.SetLabel(_("Previous visibility restored."))
         self._refresh_roi_list()
 
     def _on_roi_show_all(self, event):
         changes = self.controller.roi_mgr.show_all()
         self._apply_visibility_changes(changes)
         self._refresh_roi_list()
-        self.status_text.SetLabel(_("Status: All ROIs shown"))
+        self.roi_status.SetLabel(_("All ROIs shown."))
 
     def _on_roi_hide_all(self, event):
         changes = self.controller.roi_mgr.hide_all()
         self._apply_visibility_changes(changes)
         self._refresh_roi_list()
-        self.status_text.SetLabel(_("Status: All ROIs hidden"))
+        self.roi_status.SetLabel(_("All ROIs hidden."))
 
     def _on_update_surface(self, event):
         """
@@ -1745,8 +1683,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # assumed to equal the resulting surface's own index.
             self._pending_surface_build_mask_index = mask_index
             Publisher.sendMessage("Create surface from index", surface_parameters=surface_options)
-            self.status_text.SetLabel(
-                _(f"Status: Rebuilding 3D surface for mask #{mask_index} (method: {algorithm})...")
+            self.roi_status.SetLabel(
+                _("Rebuilding the 3D surface of '{name}'…").format(name=getattr(mask, "name", mask_index))
             )
         except Exception as e:
             wx.MessageBox(_("Surface update failed."), _("Error"), wx.OK | wx.ICON_ERROR)
@@ -1845,7 +1783,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         """
         mask = self._current_mask()
         if mask is None or mask.matrix is None:
-            self.lbl_cleanup_status.SetLabel(_("Status: No mask selected"))
+            self.lbl_cleanup_status.SetLabel(_("No mask selected."))
             return
         if self._roi_locked_for_mask(mask.index):
             wx.MessageBox(
@@ -1862,7 +1800,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             result, op_info = op_callable(before)
 
             if np.array_equal(result > 0, before > 0):
-                self.lbl_cleanup_status.SetLabel(_("Status: No changes were necessary."))
+                self.lbl_cleanup_status.SetLabel(_("No changes were needed."))
                 return
 
             editor = self.controller.mask_mgr.get_editor(mask.index)
@@ -1878,47 +1816,48 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
             pi = ProjectInterface()
             stats = segmentation_cleanup.cleanup_stats(before, result, pi.get_spacing())
-            extra = ", ".join(f"{k}={v}" for k, v in op_info.items())
-            msg = (
-                f"Status: {op_label} — {stats['before_voxels']} -> {stats['after_voxels']} voxels "
-                f"({stats['delta_percent']:+.2f}%) [{extra}]. Mask updated. 3D surface has NOT been "
-                f"rebuilt — use 'Update 3D Surface from Selected ROI' to refresh it."
+            delta = stats["delta_percent"]
+            self.lbl_cleanup_status.SetLabel(
+                _("{operation}: {before} → {after} voxels ({sign}{delta}%). 3D surface not rebuilt.").format(
+                    operation=op_label, before=fmt_int(stats["before_voxels"]), after=fmt_int(stats["after_voxels"]),
+                    sign="+" if delta >= 0 else "−", delta=fmt_float(abs(delta), 2))
             )
-            self.lbl_cleanup_status.SetLabel(_(msg))
+            print(f"ROI Viewer: {op_label} - {op_info}")
             self._refresh_after_edit()
         except ValueError as e:
             # Real input-validation rejection (e.g. remove_small_components's
             # min_voxels<1, smooth_binary_mask's out-of-range iterations) -
             # a clear, specific message rather than the generic one below.
-            self.lbl_cleanup_status.SetLabel(_(f"Cleanup: {e}"))
+            self.lbl_cleanup_status.SetLabel(_("Invalid post-processing parameters."))
+            print(f"ROI Viewer: post-processing rejected - {e}")
         except Exception as e:
-            self.lbl_cleanup_status.SetLabel(_("Cleanup failed"))
+            self.lbl_cleanup_status.SetLabel(_("Post-processing failed."))
             print(f"ROI Viewer: {op_label} failed - {e}")
 
     def _on_cleanup_keep_largest(self, event):
         self._run_cleanup(
             lambda region: segmentation_cleanup.keep_largest_component(region),
-            "Keep Largest Component",
+            _("Keep largest connected component"),
         )
 
     def _on_cleanup_remove_small(self, event):
         min_voxels = self.spin_min_component_size.GetValue()
         self._run_cleanup(
             lambda region: segmentation_cleanup.remove_small_components(region, min_voxels=min_voxels),
-            "Remove Small Islands",
+            _("Remove small islands"),
         )
 
     def _on_cleanup_fill_holes(self, event):
         self._run_cleanup(
             lambda region: segmentation_cleanup.fill_holes(region),
-            "Fill Holes",
+            _("Fill holes"),
         )
 
     def _on_cleanup_smooth(self, event):
         iterations = self.spin_smooth_iterations.GetValue()
         self._run_cleanup(
             lambda region: segmentation_cleanup.smooth_binary_mask(region, iterations=iterations),
-            "Smooth Mask",
+            _("Smooth mask"),
         )
 
     # ------------------------------------------------------------------
@@ -1982,7 +1921,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._ensure_modified_callback_registered_for_current_mask()
         self._e4_debounce_timer.Stop()
         self._e4_debounce_timer.StartOnce(self.E4_DEBOUNCE_MS)
-        self.lbl_e4_state.SetLabel(_(f"Waiting... ({reason})"))
+        self.lbl_e4_state.SetLabel(_("Waiting for update…"))
 
     def _on_enable_live_3d_preview_toggle(self, event):
         enabled = self._e4_enabled()
@@ -2001,7 +1940,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self._e4_pending_reason = None
             self.controller.preview_surface_3d.clear()
             self.lbl_e4_state.SetLabel(_("Idle"))
-            self.lbl_e4_source.SetLabel(_("-"))
+            self.lbl_e4_source.SetLabel("-")
             self.lbl_e4_mesh_info.SetLabel("")
             self.controller.request_render()
 
@@ -2082,7 +2021,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         if array is None:
             self.controller.preview_surface_3d.clear()
             self.lbl_e4_state.SetLabel(_("No foreground voxels for 3D preview."))
-            self.lbl_e4_source.SetLabel(_("-"))
+            self.lbl_e4_source.SetLabel("-")
             self.lbl_e4_mesh_info.SetLabel("")
             self.controller.request_render()
             self._finish_preview_3d_build()
@@ -2106,8 +2045,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             return
 
         gen = self.controller.preview_surface_3d.new_generation()
-        self.lbl_e4_source.SetLabel(_(kind))
-        self.lbl_e4_state.SetLabel(_(f"Building ({reason})..."))
+        self.lbl_e4_source.SetLabel(self._e4_source_label(kind))
+        self.lbl_e4_state.SetLabel(_("Building mesh…"))
 
         # Same real background-thread + wx.CallAfter pattern already
         # proven by Region Growing/E2 (Section 21). STRICT rule
@@ -2182,10 +2121,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 self.lbl_e4_state.SetLabel(_("No foreground voxels for 3D preview."))
                 self.lbl_e4_mesh_info.SetLabel("")
             else:
-                self.lbl_e4_state.SetLabel(_("Ready"))
+                self.lbl_e4_state.SetLabel(
+                    _("Updated in {seconds} s.").format(seconds=fmt_float(elapsed_seconds, 2)))
                 self.lbl_e4_mesh_info.SetLabel(
-                    _(f"{polydata.GetNumberOfPoints()} points / {polydata.GetNumberOfCells()} cells "
-                      f"- build {elapsed_seconds:.3f}s")
+                    _("{points} points, {cells} cells").format(
+                        points=fmt_int(polydata.GetNumberOfPoints()), cells=fmt_int(polydata.GetNumberOfCells()))
                 )
             self.controller.request_render()
         except RuntimeError as e:

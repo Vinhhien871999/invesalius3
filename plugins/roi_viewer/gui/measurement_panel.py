@@ -5,11 +5,7 @@
 
 import wx
 
-try:
-    from invesalius.i18n import tr as _
-except ImportError:
-    def _(s):
-        return s
+from ..i18n import _, fmt_float
 
 
 class MeasurementPanel(wx.Panel):
@@ -259,7 +255,7 @@ class MeasurementPanel(wx.Panel):
             measurement = self.controller.measure_mgr.add_volume_measurement(
                 name="", mask_index=mask.index, mask=mask.matrix[1:, 1:, 1:]
             )
-            self.txt_volume.SetValue(f"{measurement.volume:.2f} {measurement.unit}")
+            self.txt_volume.SetValue(f"{fmt_float(measurement.volume)} {measurement.unit}")
             self.add_measurement(measurement.name, measurement.volume, measurement.unit)
         except Exception as e:
             self.txt_volume.SetValue(_("Volume measurement failed"))
@@ -279,4 +275,4 @@ class MeasurementPanel(wx.Panel):
         
     def set_distance_result(self, distance):
         """Set the distance measurement result."""
-        self.txt_distance.SetValue(f"{distance:.2f} mm")
+        self.txt_distance.SetValue(f"{fmt_float(distance)} mm")
