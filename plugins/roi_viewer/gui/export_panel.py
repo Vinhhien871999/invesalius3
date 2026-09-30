@@ -29,7 +29,7 @@ class ExportPanel(wx.Panel):
     """
     Panel for export tools.
 
-    `controller` is the owning ROIViewerFrame, giving access to the
+    `controller` is the owning ROIViewerPanel, giving access to the
     shared core/exporters.ExporterManager (controller.exporter) used for
     the VTK PolyData surface format and current-slice image export
     (mask/STL/PLY/OBJ export instead delegate to InVesalius's own real
@@ -47,7 +47,7 @@ class ExportPanel(wx.Panel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         
         # Title
-        title = wx.StaticText(self, wx.ID_ANY, _("Export Options"))
+        title = wx.StaticText(self, wx.ID_ANY, _("Export"))
         title_font = wx.Font(wx.FontInfo(10).Bold())
         title.SetFont(title_font)
         sizer.Add(title, 0, wx.ALL | wx.EXPAND, 5)

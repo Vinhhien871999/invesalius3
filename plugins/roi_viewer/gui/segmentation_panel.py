@@ -31,6 +31,17 @@ from . import ui_helpers
 PREVIEW_AUX_KEY = "roi_viewer_preview"
 
 
+def mask_colour_to_wx(colour) -> "wx.Colour":
+    """InVesalius mask colours are floats in 0..1 (constants.MASK_COLOUR);
+    0..255 tuples are accepted too. Before 30/09/2026 the swatch did
+    int(c) on the 0..1 floats and showed every real mask as black."""
+    rgb = [float(c) for c in tuple(colour)[:3]]
+    if all(0.0 <= c <= 1.0 for c in rgb):
+        rgb = [c * 255.0 for c in rgb]
+    r, g, b = (max(0, min(255, int(round(c)))) for c in rgb)
+    return wx.Colour(r, g, b)
+
+
 def choose_surface_algorithm(mask) -> str:
     """
     Phase 08 (CT3D_P08_ROI3D_CLOSURE) surface-rebuild policy, extracted
@@ -58,7 +69,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     Panel for segmentation tools (threshold-based mask creation, plus
     undo/redo of the current mask's voxel data).
 
-    `controller` is the owning ROIViewerFrame - it holds the shared
+    `controller` is the owning ROIViewerPanel - it holds the shared
     core/ manager instances (seg_mgr, mask_mgr) created once per plugin
     session, so state (like undo history) survives switching tabs.
     """
@@ -86,7 +97,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # E4 (Advanced Segmentation Enhancement Track, enhancement/
         # advanced-segmentation branch ONLY): the actual renderer-
         # attached manager (core/preview_surface_3d.PreviewSurfaceManager3D)
-        # lives on self.controller (ROIViewerFrame), mirroring marker_3d/
+        # lives on self.controller (ROIViewerPanel), mirroring marker_3d/
         # slice_planes_3d - this panel only owns the debounce timer and
         # the real Mask.add_modified_callback() registration bookkeeping.
         self.E4_DEBOUNCE_MS = 400  # within the 300-500ms range Section 19 suggested
@@ -146,6 +157,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._subscribe_surface_info_once()
         self._init_ui()
         self.SetupScrolling(scroll_x=False)
+        ui_helpers.follow_width(self)
 
     def _init_ui(self):
         """
@@ -247,13 +259,17 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.combo_ai_structure = wx.ComboBox(p, wx.ID_ANY, choices=[], style=wx.CB_DROPDOWN)
         self.combo_ai_structure.SetToolTip(_(
             "Type to search. One structure per preview - the model's other classes are not used."))
-        ai_sizer.Add(ui_helpers.labelled_row(p, _("Structure:"), self.combo_ai_structure), 0, wx.EXPAND)
+        self._ai_structure_row = ui_helpers.labelled_row(p, _("Structure:"), self.combo_ai_structure)
+        ai_sizer.Add(self._ai_structure_row, 0, wx.EXPAND)
         self.choice_ai_mode = wx.Choice(p, wx.ID_ANY, choices=[_("Standard accuracy")])
         self.choice_ai_mode.SetSelection(0)
         self.choice_ai_mode.SetToolTip(_(
             "Fast uses the model's lower-resolution version: less time and memory, less accurate."))
-        ai_sizer.Add(ui_helpers.labelled_row(p, _("Mode:"), self.choice_ai_mode), 0, wx.EXPAND)
+        self._ai_mode_row = ui_helpers.labelled_row(p, _("Mode:"), self.choice_ai_mode)
+        ai_sizer.Add(self._ai_mode_row, 0, wx.EXPAND)
 
+        # Point/box prompts: shown only for a model that uses them.
+        self._ai_prompt_sizer = wx.BoxSizer(wx.VERTICAL)
         kind_row = wx.BoxSizer(wx.HORIZONTAL)
         kind_row.Add(wx.StaticText(p, wx.ID_ANY, _("Point type:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         self.rb_ai_positive = wx.RadioButton(p, wx.ID_ANY, _("Inside region"), style=wx.RB_GROUP)
@@ -261,19 +277,22 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.rb_ai_negative = wx.RadioButton(p, wx.ID_ANY, _("Exclude"))
         kind_row.Add(self.rb_ai_positive, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         kind_row.Add(self.rb_ai_negative, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        ai_sizer.Add(kind_row, 0, wx.EXPAND)
+        self._ai_prompt_sizer.Add(kind_row, 0, wx.EXPAND)
 
         self.btn_ai_pick_point = wx.ToggleButton(p, wx.ID_ANY, _("Pick point (3D)"))
         self.btn_ai_cursor_point = wx.Button(p, wx.ID_ANY, _("Point at 2D cursor"))
-        ai_sizer.Add(ui_helpers.button_row(self.btn_ai_pick_point, self.btn_ai_cursor_point), 0, wx.EXPAND)
-        ai_sizer.Add(ui_helpers.hint(p, _("Bounding box: move the 2D cursor to each corner.")), 0, wx.ALL, 3)
+        self._ai_prompt_sizer.Add(ui_helpers.button_row(self.btn_ai_pick_point, self.btn_ai_cursor_point),
+                                  0, wx.EXPAND)
+        self._ai_prompt_sizer.Add(ui_helpers.hint(p, _("Bounding box: move the 2D cursor to each corner.")),
+                                  0, wx.ALL, 3)
         self.btn_ai_corner1 = wx.Button(p, wx.ID_ANY, _("Set corner 1"))
         self.btn_ai_corner2 = wx.Button(p, wx.ID_ANY, _("Set corner 2"))
-        ai_sizer.Add(ui_helpers.button_row(self.btn_ai_corner1, self.btn_ai_corner2), 0, wx.EXPAND)
+        self._ai_prompt_sizer.Add(ui_helpers.button_row(self.btn_ai_corner1, self.btn_ai_corner2), 0, wx.EXPAND)
         self.lbl_ai_prompts = wx.StaticText(p, wx.ID_ANY, "")
-        ai_sizer.Add(self.lbl_ai_prompts, 0, wx.ALL | wx.EXPAND, 3)
+        self._ai_prompt_sizer.Add(self.lbl_ai_prompts, 0, wx.ALL | wx.EXPAND, 3)
         self.btn_ai_clear = wx.Button(p, wx.ID_ANY, _("Clear AI points"))
-        ai_sizer.Add(self.btn_ai_clear, 0, wx.ALL | wx.EXPAND, 2)
+        self._ai_prompt_sizer.Add(self.btn_ai_clear, 0, wx.ALL | wx.EXPAND, 2)
+        ai_sizer.Add(self._ai_prompt_sizer, 0, wx.EXPAND)
         self.btn_ai_run = wx.Button(p, wx.ID_ANY, _("Preview with AI"))
         self.btn_ai_run.SetToolTip(_(
             "Shows the AI result as a preview overlay (and in the live 3D preview if on). "
@@ -286,7 +305,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.lbl_ai_status = wx.StaticText(p, wx.ID_ANY, _("Off"))
         ai_state_row.Add(self.lbl_ai_status, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         ai_sizer.Add(ai_state_row, 0, wx.EXPAND)
+        self.lbl_ai_help = ui_helpers.hint(p, _(
+            "AI models are not bundled with the plugin. See the user guide to install TotalSegmentator."))
+        ai_sizer.Add(self.lbl_ai_help, 0, wx.ALL, 3)
         p.SetSizer(ai_sizer)
+        self._ai_pane, self._ai_sizer = pane_ai, ai_sizer
         sizer.Add(pane_ai, 0, wx.ALL | wx.EXPAND, 3)
 
         # --- B. Preview -> Accept / Cancel (E2). Off by default: with the
@@ -540,7 +563,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     def _on_section_toggled(self, event):
         for panel in {self, self.roi_page}:
             ui_helpers.relayout_scrolled(panel)
-        event.Skip()
+        if event is not None:
+            event.Skip()
 
     def _brush_enabled(self):
         return self.btn_toggle_brush.GetValue()
@@ -1370,9 +1394,25 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.choice_ai_device.Enable(has_model)
         self.combo_ai_structure.Enable(has_model and bool(self._ai_structures))
         self.choice_ai_mode.Enable(has_model and len(self._ai_modes) > 1)
+        # Only what the selected model really uses is shown (E6b review):
+        # prompts for prompt-driven models, structure/mode where declared,
+        # the install hint while no model is available.
+        self._ai_show(self._ai_prompt_sizer, has_model and uses_prompts)
+        self._ai_show(self._ai_structure_row, has_model and bool(self._ai_structures))
+        self._ai_show(self._ai_mode_row, has_model and len(self._ai_modes) > 1)
+        self._ai_show(self.lbl_ai_help, enabled and not has_model)
         self.btn_ai_run.Enable(has_model and not busy)
         self.btn_ai_cancel.Enable(running)
         self._update_ai_prompt_label()
+
+    def _ai_show(self, item, show: bool):
+        if bool(self._ai_sizer.IsShown(item)) == bool(show):
+            return
+        self._ai_sizer.Show(item, bool(show), recursive=True)
+        self._ai_sizer.Layout()
+        self._ai_pane.InvalidateBestSize()
+        if not self._ai_pane.IsCollapsed():
+            self._on_section_toggled(None)
 
     def _update_ai_prompt_label(self):
         prompts = self._ai_prompts
@@ -1857,7 +1897,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         if event.GetEventObject() is not self:
             return
         # Same leak class fixed for the 3D-pick observer in
-        # roi_panel.ROIViewerFrame._on_close(): don't leave an armed
+        # roi_panel.ROIViewerPanel.shutdown(): don't leave an armed
         # seed-pick callback registered on the shared picker pointing
         # back into this (about to be destroyed) panel.
         self.controller.picker.remove_callback(self._on_seed_picked)
@@ -1870,7 +1910,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # E4: stop the debounce timer and unregister the real
         # Mask.add_modified_callback() - the renderer-attached actor
         # itself is detached separately by
-        # roi_panel.ROIViewerFrame._on_close() (mirrors marker_3d/
+        # roi_panel.ROIViewerPanel.shutdown() (mirrors marker_3d/
         # slice_planes_3d exactly).
         self.cancel_live_preview_3d()
         if not self._brush_enabled():
@@ -1944,8 +1984,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         if roi is None:
             self.roi_color_swatch.SetBackgroundColour(wx.Colour(200, 200, 200))
         else:
-            r, g, b = (int(c) for c in roi.color[:3])
-            self.roi_color_swatch.SetBackgroundColour(wx.Colour(r, g, b))
+            self.roi_color_swatch.SetBackgroundColour(mask_colour_to_wx(roi.color))
         self.roi_color_swatch.Refresh()
 
     def _region_info(self, stats) -> str:

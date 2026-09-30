@@ -2,7 +2,7 @@
 # ROI Viewer UI: Vietnamese localization + layout regression (30/09/2026).
 #
 # Static checks run on the plugin source (AST) and the catalog. UI checks
-# build the REAL ROIViewerFrame headlessly and walk its actual widget tree -
+# build the REAL ROIViewerPanel headlessly and walk its actual widget tree -
 # labels, tooltips, defaults, sizes - rather than trusting source text. No
 # screenshots are produced or compared.
 # --------------------------------------------------------------------------
@@ -16,7 +16,7 @@ from plugins.roi_viewer import i18n
 from plugins.roi_viewer.locale_vi import CATALOG
 
 _PLUGIN = pathlib.Path(__file__).resolve().parents[2] / "plugins" / "roi_viewer"
-_NEUTRAL = {"-", "voxel", "x", "X: -, Y: -, Z: -", "2D", "3D", "1", "2", "3", "4", "5"}
+_NEUTRAL = {"-", "voxel", "x", "X: -, Y: -, Z: -", "2D", "3D"}
 _FORMAT = re.compile(r"\(\.\w+(\.\w+)?\)$")  # "NIfTI (.nii.gz)", "PNG (.png)" ...
 
 
@@ -95,10 +95,10 @@ def _frame_module(real_slice_and_project_singleton):
 
     s, proj, Project, Slice = real_slice_and_project_singleton
     Slice.instance, Project.instance = s, proj  # never construct a second real Slice()
-    from plugins.roi_viewer.gui.roi_panel import ROIViewerFrame
+    from plugins.roi_viewer.gui.roi_panel import ROIViewerPanel
 
     top = wx.Frame(None)
-    frame = ROIViewerFrame(top)
+    frame = ROIViewerPanel(top)
     yield frame
     frame.Destroy()
     top.Destroy()
@@ -117,6 +117,20 @@ def _walk(window):
         yield from _walk(child)
 
 
+def _displayed(window):
+    import wx
+
+    w = window
+    while w is not None:
+        if not w.IsShown():
+            return False
+        parent = w.GetParent()
+        if isinstance(parent, wx.CollapsiblePane) and parent.IsCollapsed() and w is parent.GetPane():
+            return False
+        w = parent
+    return True
+
+
 def _layout(frame, width, expanded):
     import wx
 
@@ -133,9 +147,17 @@ def _layout(frame, width, expanded):
 
 
 def test_tabs_are_vietnamese_in_workflow_order(frame):
-    tabs = [frame.notebook.GetPageText(i) for i in range(frame.notebook.GetPageCount())]
-    assert tabs == ["Phân đoạn", "ROI & 3D", "Tương tác & Hiển thị", "Đo lường", "Ghi chú", "Xuất dữ liệu"]
-    assert frame.GetTitle() == "ROI Viewer – Trực quan hóa CT 3D"
+    """Four tabs so they fit a ~400 px sidebar (six did not - the last ones
+    needed the tab-scroll arrows). '&' is doubled so wx does not swallow
+    it as a mnemonic ("ROI & 3D" was rendered "ROI 3D")."""
+    raw = [frame.notebook.GetPageText(i) for i in range(frame.notebook.GetPageCount())]
+    assert raw == ["Phân đoạn", "ROI && 3D", "Hiển thị", "Công cụ"]
+
+
+def test_tools_page_holds_measurements_annotations_export(frame):
+    tools = frame.notebook.GetPage(3)
+    for panel in (frame.measurement_panel, frame.annotation_panel, frame.export_panel):
+        assert panel.GetParent() is tools
 
 
 def test_all_visible_labels_are_vietnamese(frame):
@@ -167,10 +189,10 @@ def test_advanced_sections_collapsed_by_default():
     """Fresh frame (not the shared one other tests expand)."""
     import wx
 
-    from plugins.roi_viewer.gui.roi_panel import ROIViewerFrame
+    from plugins.roi_viewer.gui.roi_panel import ROIViewerPanel
 
     top = wx.Frame(None)
-    fresh = ROIViewerFrame(top)
+    fresh = ROIViewerPanel(top)
     try:
         panes = {w.GetLabel(): w.IsCollapsed() for w in _walk(fresh) if isinstance(w, wx.CollapsiblePane)}
         assert panes == {
@@ -253,6 +275,8 @@ def test_no_clipped_controls_or_horizontal_overflow(frame, width, expanded):
 
     clipped = []
     for w in _walk(frame):
+        if not _displayed(w):  # inside a collapsed section or hidden: cannot be clipped
+            continue
         if isinstance(w, (wx.Button, wx.ToggleButton)):
             need = w.GetTextExtent(w.GetLabel()).width + 8
         elif isinstance(w, (wx.CheckBox, wx.RadioButton)):

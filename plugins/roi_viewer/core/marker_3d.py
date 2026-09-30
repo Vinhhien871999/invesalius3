@@ -19,7 +19,7 @@ class CrosshairMarker3D:
 
     Lifecycle (mirrors core/picker_3d.PointPicker3D's pattern for the
     same reason - the real 3D renderer is a singleton that outlives any
-    single ROIViewerFrame):
+    single ROIViewerPanel):
       - attach(renderer): create the actor once and add it to the
         renderer. Calling this again (e.g. the ROI Viewer window was
         closed and reopened) first detaches any previous actor from
@@ -29,8 +29,8 @@ class CrosshairMarker3D:
         new one - so scrolling through many slices never grows the
         renderer's actor count (SYNC-T5).
       - detach(): remove the actor from its renderer. Must be called
-        when the owning ROIViewerFrame closes (see roi_panel.py's
-        _on_close(), same place PointPicker3D.cleanup() is called) so a
+        when the owning ROIViewerPanel closes (see roi_panel.py's
+        shutdown(), same place PointPicker3D.cleanup() is called) so a
         stale marker never lingers in the shared, persistent 3D scene
         after the plugin window that created it is gone.
     """

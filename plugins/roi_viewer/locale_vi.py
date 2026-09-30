@@ -12,7 +12,8 @@ CATALOG = {
     "ROI Viewer - CT 3D Visualization": "ROI Viewer – Trực quan hóa CT 3D",
     "Segmentation": "Phân đoạn",
     "ROI & 3D": "ROI & 3D",
-    "Interaction & display": "Tương tác & Hiển thị",
+    "Display": "Hiển thị",
+    "Tools": "Công cụ",
     "Measurements": "Đo lường",
     "Annotations": "Ghi chú",
     "Export": "Xuất dữ liệu",
@@ -201,6 +202,9 @@ CATALOG = {
     "Cancel requested - the running model finishes in the background and its result is discarded.":
         "Đã yêu cầu hủy - mô hình đang chạy sẽ tự kết thúc ở chế độ nền, kết quả sẽ bị bỏ qua.",
 
+    "AI models are not bundled with the plugin. See the user guide to install TotalSegmentator.":
+        "Plugin không kèm mô hình AI. Xem hướng dẫn sử dụng để cài TotalSegmentator.",
+
     # ---- ROI & 3D ----
     "ROI management": "Quản lý ROI",
     "Click a row to make it the current ROI; the checkbox shows or hides it.":
@@ -292,7 +296,6 @@ CATALOG = {
     "Sync off.": "Đã tắt đồng bộ.",
 
     # ---- Đo lường ----
-    "Measurement Tools": "Công cụ đo lường",
     "Distance Measurement": "Đo khoảng cách",
     "2D": "2D",
     "3D": "3D",
@@ -311,7 +314,12 @@ CATALOG = {
     "Volume measurement failed": "Đo thể tích thất bại",
 
     # ---- Ghi chú ----
-    "Annotation Tools": "Công cụ ghi chú",
+    "Annotation list": "Danh sách ghi chú",
+    "Red": "Đỏ",
+    "Green": "Xanh lá",
+    "Blue": "Xanh dương",
+    "Orange": "Cam",
+    "Purple": "Tím",
     "Add Annotation": "Thêm ghi chú",
     "Text:": "Nội dung:",
     "Color:": "Màu:",
@@ -330,7 +338,6 @@ CATALOG = {
     "Edit Annotation": "Sửa ghi chú",
 
     # ---- Xuất dữ liệu ----
-    "Export Options": "Tùy chọn xuất",
     "Export Mask": "Xuất mặt nạ",
     "Format:": "Định dạng:",
     "NRRD (.nrrd) - library not installed": "NRRD (.nrrd) - chưa cài thư viện",

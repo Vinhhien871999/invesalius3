@@ -12,7 +12,7 @@ class MeasurementPanel(wx.Panel):
     """
     Panel for measurement tools.
 
-    `controller` is the owning ROIViewerFrame, giving access to the
+    `controller` is the owning ROIViewerPanel, giving access to the
     shared picker_3d.PointPicker3D (for picking distance endpoints) and
     core/measurement.MeasurementManager.
     """
@@ -60,7 +60,7 @@ class MeasurementPanel(wx.Panel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         
         # Title
-        title = wx.StaticText(self, wx.ID_ANY, _("Measurement Tools"))
+        title = wx.StaticText(self, wx.ID_ANY, _("Measurements"))
         title_font = wx.Font(wx.FontInfo(10).Bold())
         title.SetFont(title_font)
         sizer.Add(title, 0, wx.ALL | wx.EXPAND, 5)

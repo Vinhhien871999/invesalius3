@@ -2,7 +2,7 @@
 # Persistent tests for C8 (Sync 2D->3D) and F3 (annotation position
 # policy) - CT3D_P11_TEST_AUTOMATION, Sections XIII/XV.
 #
-# roi_panel.ROIViewerFrame.on_cross_focal_point_changed() and
+# roi_panel.ROIViewerPanel.on_cross_focal_point_changed() and
 # .get_current_reference_position() are real bound methods on a wx.Frame
 # subclass, but each only reads/writes a small, fully-enumerated set of
 # `self` attributes (verified by reading the full method body - see the
@@ -149,7 +149,7 @@ def _fake_frame(project_loaded=True, sync_enabled=True, marker=None, planes=None
     fake.marker_3d = marker if marker is not None else _FakeMarker()
     fake.slice_planes_3d = planes if planes is not None else _FakePlanes()
     fake.show_slice_planes = show_slice_planes
-    # E5 state the real ROIViewerFrame.__init__ always creates, at its
+    # E5 state the real ROIViewerPanel.__init__ always creates, at its
     # real defaults (texture mode OFF, clipping inert) - so these C8 tests
     # exercise exactly the pre-E5 behaviour. Without it, the real
     # apply_slice_plane_visibility() raised AttributeError, silently
@@ -157,11 +157,11 @@ def _fake_frame(project_loaded=True, sync_enabled=True, marker=None, planes=None
     fake.show_texture_planes = False
     fake.textured_slice_planes_3d = TexturedSlicePlanes3D()
     fake.surface_clipping_3d = SurfaceClipping3D()
-    fake.apply_slice_plane_visibility = roi_panel.ROIViewerFrame.apply_slice_plane_visibility.__get__(fake)
+    fake.apply_slice_plane_visibility = roi_panel.ROIViewerPanel.apply_slice_plane_visibility.__get__(fake)
     # Bind the REAL _compute_volume_bounds method - it only reads
     # ProjectInterface() (patched per-test below where real bounds
     # matter), no other `self` state.
-    fake._compute_volume_bounds = roi_panel.ROIViewerFrame._compute_volume_bounds.__get__(fake)
+    fake._compute_volume_bounds = roi_panel.ROIViewerPanel._compute_volume_bounds.__get__(fake)
     return fake
 
 
@@ -179,7 +179,7 @@ def _fake_project_interface(shape, spacing):
 
 def test_sync_t1_disabled_does_not_touch_the_marker():
     fake = _fake_frame(sync_enabled=False)
-    roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (1.0, 2.0, 3.0))
+    roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (1.0, 2.0, 3.0))
     assert fake.marker_3d.attach_calls == []
     assert fake.marker_3d.update_calls == []
 
@@ -188,7 +188,7 @@ def test_sync3d_t1_disabled_does_not_touch_the_slice_planes():
     """Phase 13.5: sync OFF -> event -> slice planes unchanged either
     (same guard as the marker, same event)."""
     fake = _fake_frame(sync_enabled=False)
-    roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (1.0, 2.0, 3.0))
+    roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (1.0, 2.0, 3.0))
     assert fake.slice_planes_3d.attach_calls == []
     assert fake.slice_planes_3d.set_bounds_calls == []
     assert fake.slice_planes_3d.update_calls == []
@@ -199,13 +199,13 @@ def test_sync_t1b_disabled_still_tracks_last_cross_focal_point_for_f3():
     is independent of the Sync 2D->3D checkbox - see the method's own
     docstring."""
     fake = _fake_frame(sync_enabled=False)
-    roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (1.0, 2.0, 3.0))
+    roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (1.0, 2.0, 3.0))
     assert fake._last_cross_focal_point == (1.0, 2.0, 3.0)
 
 
 def test_sync_t0_not_project_loaded_is_a_full_noop():
     fake = _fake_frame(project_loaded=False, sync_enabled=True)
-    roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (1.0, 2.0, 3.0))
+    roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (1.0, 2.0, 3.0))
     assert fake._last_cross_focal_point is None  # not even tracked
     assert fake.marker_3d.attach_calls == []
 
@@ -223,7 +223,7 @@ def test_sync_t2_enabled_marker_moves_to_the_real_world_position(vtk_renderer):
 
     with patch("plugins.roi_viewer.interface.view_interface.ViewInterface", fake_view_interface_cls):
         with patch("invesalius.pubsub.pub.sendMessage"):  # don't touch real pubsub subscribers
-            roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (5.0, 6.0, 7.0))
+            roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (5.0, 6.0, 7.0))
 
     # Corrected 30/09/2026: the crosshair position is in the 2D slice
     # frame; the 3D view is y-flipped (surfaces/volume use vtkImageFlip on
@@ -266,7 +266,7 @@ def test_sync3d_t2_enabled_planes_intersect_event_a(vtk_renderer):
     with patch("plugins.roi_viewer.interface.view_interface.ViewInterface", view_cls):
         with patch("plugins.roi_viewer.interface.project_interface.ProjectInterface", pi_cls):
             with patch("invesalius.pubsub.pub.sendMessage"):
-                roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (10.0, 20.0, 30.0))
+                roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (10.0, 20.0, 30.0))
 
     assert real_planes.actor_count == 3
     assert real_planes.get_position() == pytest.approx((10.0, -20.0, 30.0))
@@ -286,9 +286,9 @@ def test_sync3d_t3_event_b_same_actor_ids_new_position(vtk_renderer):
     with patch("plugins.roi_viewer.interface.view_interface.ViewInterface", view_cls):
         with patch("plugins.roi_viewer.interface.project_interface.ProjectInterface", pi_cls):
             with patch("invesalius.pubsub.pub.sendMessage"):
-                roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (10.0, 20.0, 30.0))
+                roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (10.0, 20.0, 30.0))
                 actors_a = {name: e["actor"] for name, e in real_planes._planes.items()}
-                roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (15.0, 25.0, 35.0))
+                roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (15.0, 25.0, 35.0))
                 actors_b = {name: e["actor"] for name, e in real_planes._planes.items()}
 
     for name in actors_a:
@@ -306,7 +306,7 @@ def test_sync3d_t4_many_updates_actor_count_stable(vtk_renderer):
         with patch("plugins.roi_viewer.interface.project_interface.ProjectInterface", pi_cls):
             with patch("invesalius.pubsub.pub.sendMessage"):
                 for i in range(60):
-                    roi_panel.ROIViewerFrame.on_cross_focal_point_changed(
+                    roi_panel.ROIViewerPanel.on_cross_focal_point_changed(
                         fake, (float(i % 30), float(i % 40), float(i % 20))
                     )
 
@@ -324,7 +324,7 @@ def test_sync3d_t5_show_planes_off_marker_continues_planes_invisible(vtk_rendere
     with patch("plugins.roi_viewer.interface.view_interface.ViewInterface", view_cls):
         with patch("plugins.roi_viewer.interface.project_interface.ProjectInterface", pi_cls):
             with patch("invesalius.pubsub.pub.sendMessage"):
-                roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (10.0, 20.0, 30.0))
+                roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (10.0, 20.0, 30.0))
 
     assert real_marker.get_position() == pytest.approx((10.0, -20.0, 30.0))  # marker still updates
     for entry in real_planes._planes.values():
@@ -341,7 +341,7 @@ def test_sync3d_t6_show_planes_on_visible_at_current_position(vtk_renderer):
     with patch("plugins.roi_viewer.interface.view_interface.ViewInterface", view_cls):
         with patch("plugins.roi_viewer.interface.project_interface.ProjectInterface", pi_cls):
             with patch("invesalius.pubsub.pub.sendMessage"):
-                roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (12.0, 22.0, 32.0))
+                roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (12.0, 22.0, 32.0))
 
     for entry in real_planes._planes.values():
         assert entry["actor"].GetVisibility() == 1
@@ -383,7 +383,7 @@ def test_sync3d_t9_slice_planes_do_not_intercept_3d_picking(vtk_renderer):
     with patch("plugins.roi_viewer.interface.view_interface.ViewInterface", view_cls):
         with patch("plugins.roi_viewer.interface.project_interface.ProjectInterface", pi_cls):
             with patch("invesalius.pubsub.pub.sendMessage"):
-                roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (1.0, 1.0, 1.0))
+                roi_panel.ROIViewerPanel.on_cross_focal_point_changed(fake, (1.0, 1.0, 1.0))
 
     assert real_planes.actor_count == 3
     for entry in real_planes._planes.values():
@@ -398,7 +398,7 @@ def test_sync_t5_never_republishes_set_cross_focal_point():
     reading the real method's source (not a mock-call-count trick, which
     only proves it didn't happen in one specific test run).
     """
-    source = inspect.getsource(roi_panel.ROIViewerFrame.on_cross_focal_point_changed)
+    source = inspect.getsource(roi_panel.ROIViewerPanel.on_cross_focal_point_changed)
     assert '"Set cross focal point"' not in source
     assert "'Set cross focal point'" not in source
 
@@ -428,17 +428,17 @@ def test_f3_priority_a_pick_3d_wins_when_present():
     # crosshair, priority B), so y is negated. Before, A and B came back in
     # different frames.
     fake = _fake_frame_for_f3(picked_point=(1.0, -2.0, 3.0), crosshair_point=(9.0, 9.0, 9.0))
-    result = roi_panel.ROIViewerFrame.get_current_reference_position(fake)
+    result = roi_panel.ROIViewerPanel.get_current_reference_position(fake)
     assert result == (1.0, 2.0, 3.0)
 
 
 def test_f3_priority_b_crosshair_used_when_no_pick():
     fake = _fake_frame_for_f3(picked_point=None, crosshair_point=(4.0, 5.0, 6.0))
-    result = roi_panel.ROIViewerFrame.get_current_reference_position(fake)
+    result = roi_panel.ROIViewerPanel.get_current_reference_position(fake)
     assert result == (4.0, 5.0, 6.0)
 
 
 def test_f3_priority_c_none_when_neither_available():
     fake = _fake_frame_for_f3(picked_point=None, crosshair_point=None)
-    result = roi_panel.ROIViewerFrame.get_current_reference_position(fake)
+    result = roi_panel.ROIViewerPanel.get_current_reference_position(fake)
     assert result is None

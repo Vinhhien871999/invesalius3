@@ -8,13 +8,13 @@ import wx
 
 # Phase 11 (CT3D_P11_TEST_AUTOMATION) static-quality audit: only
 # roi_panel is actually referenced by name in this module - it
-# constructs the real ROIViewerFrame, which itself imports
+# constructs the real ROIViewerPanel (via gui/sidebar.py), which imports
 # interaction_panel/measurement_panel/annotation_panel/export_panel and
 # project_interface/view_interface directly (see roi_panel.py's own
 # header note). The extra names main.py used to import here were dead
 # (0 real uses, confirmed via pyflakes + grep) - trimmed to what this
 # module actually needs.
-from .gui import roi_panel
+from .gui import sidebar
 
 # Global reference to the main window
 _main_frame = None
@@ -36,7 +36,7 @@ def load():
     # NOTE: nothing prevented this from running again while a ROI
     # Viewer window was already open (selecting "ROI Viewer" from the
     # Plugins menu more than once) - each call created a whole second
-    # ROIViewerFrame with its own new PointPicker3D, which
+    # ROI Viewer with its own new PointPicker3D, which
     # initialize_picker() then attached to the *same* real, singleton
     # VTK interactor (invesalius.data.viewer_volume.Viewer outlives any
     # single plugin window). Every extra open left one more permanent
@@ -48,24 +48,21 @@ def load():
     # object of type TextCtrl has been deleted" from interaction_panel.
     # py's update_coordinates). Reuse the existing window instead of
     # creating a second one.
-    if _roi_viewer_window is not None:
+    if _roi_viewer_window:  # a destroyed (closed) panel is falsy
         try:
-            _roi_viewer_window.Raise()
-            _roi_viewer_window.SetFocus()
-            print("ROI Viewer: window already open, bringing it to front")
-            return
+            if sidebar.show_viewer(_roi_viewer_window):
+                print("ROI Viewer: already open, bringing it to front")
+                return
         except RuntimeError:
-            # The wx C++ object is gone (window was closed) even though
-            # this module-level reference wasn't cleared - fall through
-            # and create a fresh one.
-            _roi_viewer_window = None
+            pass
+    _roi_viewer_window = None
 
     top_window = wx.GetApp().GetTopWindow()
     _main_frame = top_window
 
-    # Create main ROI Viewer window
-    _roi_viewer_window = roi_panel.ROIViewerFrame(top_window)
-    _roi_viewer_window.Show()
+    # 30/09/2026: docked as a sidebar pane in InVesalius's main window
+    # (gui/sidebar.py) instead of a separate window.
+    _roi_viewer_window = sidebar.open_viewer(top_window)
 
     # Subscribe to pubsub events
     _subscribe_events()
@@ -296,13 +293,9 @@ def unload():
         pass
     
     if _roi_viewer_window:
-        # NOTE: Close() (not Destroy() directly) so ROIViewerFrame's own
-        # EVT_CLOSE handler runs first and detaches the shared picker
-        # from the real VTK interactor - see picker_3d.PointPicker3D.
-        # cleanup()'s docstring and roi_panel.ROIViewerFrame._on_close().
-        # Calling Destroy() here directly used to skip that cleanup
-        # entirely.
-        _roi_viewer_window.Close()
-        _roi_viewer_window = None
+        # shutdown() first (picker observer, 3D actors, AI) - see
+        # roi_panel.ROIViewerPanel.shutdown() - then remove the pane.
+        sidebar.close_viewer(_roi_viewer_window)
+    _roi_viewer_window = None
     
     print("ROI Viewer plugin unloaded")

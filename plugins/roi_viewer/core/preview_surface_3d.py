@@ -5,7 +5,7 @@
 #              core/marker_3d.CrosshairMarker3D's attach()/detach()
 #              lifecycle pattern exactly (same reason: the real 3D
 #              renderer is a singleton that outlives any single
-#              ROIViewerFrame).
+#              ROIViewerPanel).
 #
 # CORE INVARIANT this module exists to protect: a fast preview mesh is
 # NEVER the final surface. Nothing here ever touches Project().

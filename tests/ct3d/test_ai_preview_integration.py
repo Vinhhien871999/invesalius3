@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------------
-# E6 end to end through the REAL ROIViewerFrame/SegmentationPanel on a real
+# E6 end to end through the REAL ROIViewerPanel/SegmentationPanel on a real
 # Slice()/Project(): AI -> E2 preview (2D overlay) -> E4 source -> Accept /
 # Cancel -> real Project().mask_dict. The provider is the TEST-ONLY stub
 # (tests/ct3d/ai_stub_provider.py) - this proves the orchestration, not any
@@ -28,7 +28,7 @@ def env(real_slice_and_project_singleton, monkeypatch):
     import wx
     from invesalius.pubsub import pub as Publisher
 
-    from plugins.roi_viewer.gui.roi_panel import ROIViewerFrame
+    from plugins.roi_viewer.gui.roi_panel import ROIViewerPanel
     from plugins.roi_viewer.gui.segmentation_panel import PREVIEW_AUX_KEY
 
     s, proj, Project, Slice = real_slice_and_project_singleton
@@ -57,7 +57,7 @@ def env(real_slice_and_project_singleton, monkeypatch):
     monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
 
     top = wx.Frame(None)
-    frame = ROIViewerFrame(top)
+    frame = ROIViewerPanel(top)
     panel = frame.segmentation_panel
     panel.cb_enable_ai.SetValue(True)
     panel._on_enable_ai_toggle(None)

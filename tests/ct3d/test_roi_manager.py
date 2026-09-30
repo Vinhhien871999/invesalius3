@@ -168,7 +168,7 @@ def test_rebuild_after_project_load(project):
     # A different project loaded - entirely different masks (simulated
     # by wiping mask_dict as on_project_close()/ROIManager.clear() would
     # do, then rebuilding against the new project's masks, exactly as
-    # ROIViewerFrame.on_project_load() -> on_roi_source_changed() does).
+    # ROIViewerPanel.on_project_load() -> on_roi_source_changed() does).
     mgr.clear()
     assert mgr.solo_roi_id is None
     project.mask_dict = {0: _fake_mask("New X")}
@@ -211,7 +211,7 @@ def test_save_open_metadata_roundtrip_if_metadata_added(project):
     docstring and docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md): it
     is intentionally NEVER written to any real Mask field, so a project
     close+reopen cycle (simulated here the same way
-    ROIViewerFrame.on_project_close()/on_project_load() drive it:
+    ROIViewerPanel.on_project_close()/on_project_load() drive it:
     ROIManager.clear() then rebuild_from_project_masks() again) must
     NOT preserve it. This test exists to make that deliberate
     non-persistence decision an explicit, checked contract rather than

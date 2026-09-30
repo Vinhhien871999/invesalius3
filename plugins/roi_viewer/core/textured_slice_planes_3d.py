@@ -154,7 +154,7 @@ class TexturedSlicePlanes3D:
     per-slice image. Mirrors core/marker_3d.CrosshairMarker3D's/
     core/slice_planes_3d.SlicePlanes3D's attach()/detach() lifecycle
     pattern exactly, for the same reason (the real 3D renderer is a
-    singleton that outlives any single ROIViewerFrame).
+    singleton that outlives any single ROIViewerPanel).
 
     Geometry/texture are both updated IN PLACE on the same 3 actors on
     every update_textures() call - never recreated - so scrolling

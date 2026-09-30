@@ -14,7 +14,7 @@ class InteractionPanel(scrolled.ScrolledPanel):
     """
     Panel for 2D-3D interaction tools.
 
-    `controller` is the owning ROIViewerFrame, giving access to the
+    `controller` is the owning ROIViewerPanel, giving access to the
     shared picker_3d.PointPicker3D and sync_2d3d.SyncManager2D3D
     instances.
     """
@@ -22,6 +22,7 @@ class InteractionPanel(scrolled.ScrolledPanel):
     def __init__(self, parent, controller):
         scrolled.ScrolledPanel.__init__(self, parent)
         self.controller = controller
+        ui_helpers.follow_width(self)
         self._callback_registered = False
 
         # State
@@ -172,7 +173,7 @@ class InteractionPanel(scrolled.ScrolledPanel):
         even while hidden (see core/slice_planes_3d.py's set_visible()
         docstring for why), so toggling this back on shows the planes
         at the CURRENT position immediately, not a stale one. This is the
-        master switch for both plane sets - see ROIViewerFrame.
+        master switch for both plane sets - see ROIViewerPanel.
         apply_slice_plane_visibility().
         """
         self.controller.show_slice_planes = event.IsChecked()
@@ -200,7 +201,7 @@ class InteractionPanel(scrolled.ScrolledPanel):
         Section 8/13: strictly opt-in, default OFF. Chooses which plane
         set "Show slice planes in 3D" draws (never both at once - avoids
         z-fighting); never changes that master checkbox's own state. The
-        actual show/hide is ROIViewerFrame.apply_slice_plane_visibility().
+        actual show/hide is ROIViewerPanel.apply_slice_plane_visibility().
         """
         enabled = self.cb_texture_planes.GetValue()
         self.controller.show_texture_planes = enabled

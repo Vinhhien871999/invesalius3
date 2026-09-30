@@ -185,7 +185,7 @@ def test_camera_unchanged():
     """Source-inspection guarantee (same real technique E4's own
     test_camera_never_touched_by_manager_api/test_gui_layer_never_
     touches_camera already established): neither E5 core module, nor
-    InteractionPanel's/ROIViewerFrame's new E5 methods, contain any
+    InteractionPanel's/ROIViewerPanel's new E5 methods, contain any
     camera-related VTK call."""
     import plugins.roi_viewer.core.surface_clipping_3d as clip_mod
     import plugins.roi_viewer.core.textured_slice_planes_3d as tex_mod
@@ -210,7 +210,7 @@ def test_camera_unchanged():
             "_on_clip_target_changed", "refresh_clipping_target",
         )
     )
-    e5_gui_sources += inspect.getsource(roi_panel_mod.ROIViewerFrame.update_textured_slice_planes)
+    e5_gui_sources += inspect.getsource(roi_panel_mod.ROIViewerPanel.update_textured_slice_planes)
     for call in camera_calls:
         assert call not in e5_gui_sources, f"E5 GUI code unexpectedly references {call}"
 

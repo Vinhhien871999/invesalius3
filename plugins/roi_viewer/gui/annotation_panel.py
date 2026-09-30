@@ -13,7 +13,7 @@ class AnnotationPanel(wx.Panel):
     """
     Panel for annotation tools.
 
-    `controller` is the owning ROIViewerFrame - annotations are stored
+    `controller` is the owning ROIViewerPanel - annotations are stored
     in the shared core/annotation.AnnotationManager (controller.
     annotation_mgr) rather than a panel-local list, so they survive
     switching tabs and stay consistent with anything else that reads
@@ -30,7 +30,7 @@ class AnnotationPanel(wx.Panel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         
         # Title
-        title = wx.StaticText(self, wx.ID_ANY, _("Annotation Tools"))
+        title = wx.StaticText(self, wx.ID_ANY, _("Annotations"))
         title_font = wx.Font(wx.FontInfo(10).Bold())
         title.SetFont(title_font)
         sizer.Add(title, 0, wx.ALL | wx.EXPAND, 5)
@@ -62,16 +62,18 @@ class AnnotationPanel(wx.Panel):
         
         # Preset colors
         preset_colors = [
-            (255, 0, 0),      # Red
-            (0, 128, 0),      # Green
-            (0, 0, 255),      # Blue
-            (255, 165, 0),    # Orange
-            (128, 0, 128),    # Purple
+            ((255, 0, 0), _("Red")),
+            ((0, 128, 0), _("Green")),
+            ((0, 0, 255), _("Blue")),
+            ((255, 165, 0), _("Orange")),
+            ((128, 0, 128), _("Purple")),
         ]
-        
-        for i, color in enumerate(preset_colors):
-            btn = wx.Button(self, wx.ID_ANY, str(i+1), size=(25, -1))
+
+        # Colour swatches named by tooltip (they used to be labelled 1-5).
+        for color, name in preset_colors:
+            btn = wx.Button(self, wx.ID_ANY, "", size=(25, -1))
             btn.SetBackgroundColour(wx.Colour(*color))
+            btn.SetToolTip(name)
             btn.Bind(wx.EVT_BUTTON, lambda e, c=color: self._on_color_preset(c))
             color_row.Add(btn, 0, wx.ALL, 1)
         
@@ -85,7 +87,7 @@ class AnnotationPanel(wx.Panel):
         sizer.Add(add_sizer, 0, wx.ALL | wx.EXPAND, 5)
         
         # Annotation list section
-        box_list = wx.StaticBox(self, wx.ID_ANY, _("Annotations"))
+        box_list = wx.StaticBox(self, wx.ID_ANY, _("Annotation list"))
         list_sizer = wx.StaticBoxSizer(box_list, wx.VERTICAL)
         
         self.annotation_list = wx.ListBox(self, wx.ID_ANY, size=(-1, 120))
@@ -145,7 +147,7 @@ class AnnotationPanel(wx.Panel):
         # wrong data with no indication to the user. Now uses the
         # frame's single real reference-position helper (3D pick, else
         # the last real 2D crosshair position, else refuse - see
-        # roi_panel.py.ROIViewerFrame.get_current_reference_position()'s
+        # roi_panel.py.ROIViewerPanel.get_current_reference_position()'s
         # docstring for the exact priority) and never creates an
         # annotation without a real position behind it.
         position = self.controller.get_current_reference_position()

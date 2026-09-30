@@ -5,7 +5,7 @@
 # update called slice_planes_3d.set_visible(show_slice_planes) without
 # looking at texture mode.
 #
-# Runs the REAL ROIViewerFrame.on_cross_focal_point_changed() /
+# Runs the REAL ROIViewerPanel.on_cross_focal_point_changed() /
 # update_textured_slice_planes() / apply_slice_plane_visibility() and the
 # REAL InteractionPanel checkbox handlers, bound onto SimpleNamespace fakes
 # (same technique as test_preview_surface_integration.py), with real
@@ -23,7 +23,7 @@ from plugins.roi_viewer.core.slice_planes_3d import SlicePlanes3D
 from plugins.roi_viewer.core.surface_clipping_3d import SurfaceClipping3D
 from plugins.roi_viewer.core.textured_slice_planes_3d import TexturedSlicePlanes3D
 from plugins.roi_viewer.gui.interaction_panel import InteractionPanel
-from plugins.roi_viewer.gui.roi_panel import ROIViewerFrame
+from plugins.roi_viewer.gui.roi_panel import ROIViewerPanel
 
 
 @pytest.fixture
@@ -70,7 +70,7 @@ def _make_frame():
         request_render=lambda: None,
     )
     for name in ("on_cross_focal_point_changed", "update_textured_slice_planes", "apply_slice_plane_visibility"):
-        setattr(frame, name, getattr(ROIViewerFrame, name).__get__(frame))
+        setattr(frame, name, getattr(ROIViewerPanel, name).__get__(frame))
     return frame
 
 

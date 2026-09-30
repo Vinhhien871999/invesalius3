@@ -51,7 +51,7 @@ def real_slice_and_project(real_slice_and_project_singleton):
 
 
 class _FakeController:
-    """Stand-in for ROIViewerFrame - SegmentationPanel only reads
+    """Stand-in for ROIViewerPanel - SegmentationPanel only reads
     controller.seg_mgr off it for the methods under test here."""
 
     def __init__(self):
@@ -63,7 +63,7 @@ def _new_panel_like(controller):
     test, bound via __get__ - avoids constructing the real wx.Panel tree
     (ScrolledPanel.__init__ needs a real wx parent window), matching this
     suite's existing "fake the frame, test the real bound method" pattern
-    used by tests/ct3d/test_sync_2d3d.py for ROIViewerFrame methods."""
+    used by tests/ct3d/test_sync_2d3d.py for ROIViewerPanel methods."""
     from plugins.roi_viewer.gui.segmentation_panel import SegmentationPanel
 
     fake = types.SimpleNamespace(controller=controller)

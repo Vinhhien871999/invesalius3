@@ -85,7 +85,7 @@ def _frame(show_texture=False):
     )
     for name in ("on_cross_focal_point_changed", "update_textured_slice_planes",
                  "apply_slice_plane_visibility", "_compute_volume_bounds"):
-        setattr(f, name, getattr(roi_panel.ROIViewerFrame, name).__get__(f))
+        setattr(f, name, getattr(roi_panel.ROIViewerPanel, name).__get__(f))
     return f
 
 

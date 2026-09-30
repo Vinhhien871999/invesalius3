@@ -1,9 +1,11 @@
 # --------------------------------------------------------------------------
 # ROI Viewer - Main Panel
-# Description: Main frame for the ROI Viewer plugin. Hosts the 5 tool
-#              panels (Interaction, Segmentation, Measurements,
-#              Annotations, Export) and owns the shared core/ manager
-#              instances they all operate on.
+# Description: The ROI Viewer's main panel. Hosts the tool pages
+#              (Phân đoạn, ROI & 3D, Hiển thị, Công cụ) and owns the
+#              shared core/ manager instances they all operate on.
+#              Shown docked in InVesalius's main window as a sidebar pane
+#              (gui/sidebar.py); it was a separate wx.Frame
+#              ("ROIViewerFrame") before 30/09/2026.
 #
 # NOTE: this used to define its own local, minimal InteractionPanel /
 # SegmentationPanel / MeasurementPanel / AnnotationPanel / ExportPanel
@@ -48,20 +50,23 @@ from .annotation_panel import AnnotationPanel
 from .export_panel import ExportPanel
 
 
-class ROIViewerFrame(wx.Frame):
+def tab_label(text: str) -> str:
+    """wx treats '&' in a notebook tab label as a keyboard mnemonic and
+    hides it ("ROI & 3D" rendered as "ROI 3D") - double it."""
+    return text.replace("&", "&&")
+
+
+class ROIViewerPanel(wx.Panel):
     """
-    Main frame for the ROI Viewer plugin.
-    This frame contains all the ROI editing tools and visualization controls.
+    The ROI Viewer's main panel: all ROI editing tools and visualization
+    controls, and the `controller` every tool page talks to. Hosted by
+    gui/sidebar.py - docked in InVesalius's main window, floating, or (when
+    the host window has no AUI manager) in a plain frame.
     """
 
     def __init__(self, parent):
-        wx.Frame.__init__(
-            self,
-            parent,
-            id=wx.ID_ANY,
-            title=_("ROI Viewer - CT 3D Visualization"),
-            size=wx.Size(400, 600)
-        )
+        wx.Panel.__init__(self, parent, id=wx.ID_ANY)
+        self._shut_down = False
 
         # Initialize core managers - shared with every tool panel below
         # via `controller` (this frame).
@@ -151,7 +156,6 @@ class ROIViewerFrame(wx.Frame):
 
         # Build UI
         self._init_ui()
-        self.Centre()
 
         # Round-2 audit, section E: a real gap found via
         # test_roi_rebuild_after_project_load.py - if the user imports
@@ -168,24 +172,20 @@ class ROIViewerFrame(wx.Frame):
         # whatever real masks already exist right away.
         self.on_roi_source_changed()
 
-        # Detach the shared picker from the real VTK interactor when
-        # this window closes (e.g. the user hits the [X] button) - see
-        # picker_3d.PointPicker3D.cleanup()'s docstring for the real
-        # crash this prevents (a stale observer from a closed-and-
-        # reopened ROI Viewer window firing into destroyed widgets).
-        #
-        # NOTE: uses EVT_CLOSE, not EVT_WINDOW_DESTROY. EVT_CLOSE is the
-        # event a wx.Frame's own [X] button (and any Close() call)
-        # actually raises, with the default handler then calling
-        # Destroy(). EVT_WINDOW_DESTROY turned out to be unreliable
-        # here in testing - a plain Bind() on the frame did not
-        # consistently fire when the window was torn down, so cleanup()
-        # never ran. Handling EVT_CLOSE ourselves and calling Destroy()
-        # after cleanup covers the real user-facing path (clicking the
-        # window's close button) deterministically.
-        self.Bind(wx.EVT_CLOSE, self._on_close)
+        # Cleanup (picker observer, renderer-attached actors, AI) runs in
+        # shutdown(): gui/sidebar.py calls it when the sidebar pane or the
+        # floating window is closed - see shutdown().
 
-    def _on_close(self, event):
+    def shutdown(self):
+        """Detach everything this panel attached to InVesalius's shared
+        objects - the picker observer on the real VTK interactor, the
+        renderer-attached actors (marker, C8 planes, E4 mesh, E5 textures/
+        clipping) and any AI job - before the panel goes away. Idempotent.
+        The 3D renderer and interactor outlive this panel, so skipping this
+        leaves stale observers/actors (the real crash Phase 09 fixed)."""
+        if self._shut_down:
+            return
+        self._shut_down = True
         try:
             # E6: stop AI before anything else. wx destroys the window at
             # idle time, so the panel's own destroy hook comes too late to
@@ -227,6 +227,10 @@ class ROIViewerFrame(wx.Frame):
             self.surface_clipping_3d.detach()
         except Exception as e:
             print(f"ROI Viewer: E5 surface clipping cleanup on close failed - {e}")
+
+    def _on_close(self, event):
+        """Shut down and destroy the panel (plain-frame host and tests)."""
+        self.shutdown()
         self.Destroy()
 
     def _init_ui(self):
@@ -243,17 +247,26 @@ class ROIViewerFrame(wx.Frame):
         # see SegmentationPanel._init_ui()).
         self.roi_3d_page = scrolled.ScrolledPanel(self.notebook)
         self.segmentation_panel = SegmentationPanel(self.notebook, self, roi_page=self.roi_3d_page)
-        self.measurement_panel = MeasurementPanel(self.notebook, self)
-        self.annotation_panel = AnnotationPanel(self.notebook, self)
-        self.export_panel = ExportPanel(self.notebook, self)
+        # "Công cụ": measurements, annotations and export stacked on one
+        # scrolling page. Six tabs did not fit a sidebar (~400 px): the last
+        # ones were only reachable through the tab-scroll arrows.
+        self.tools_page = scrolled.ScrolledPanel(self.notebook)
+        self.measurement_panel = MeasurementPanel(self.tools_page, self)
+        self.annotation_panel = AnnotationPanel(self.tools_page, self)
+        self.export_panel = ExportPanel(self.tools_page, self)
+        tools_sizer = wx.BoxSizer(wx.VERTICAL)
+        for index, tool in enumerate((self.measurement_panel, self.annotation_panel, self.export_panel)):
+            if index:
+                tools_sizer.Add(wx.StaticLine(self.tools_page), 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
+            tools_sizer.Add(tool, 0, wx.EXPAND | wx.BOTTOM, 4)
+        self.tools_page.SetSizer(tools_sizer)
+        self.tools_page.SetupScrolling(scroll_x=False)
 
-        # Workflow order: segment -> manage ROIs / 3D -> interact / display.
-        self.notebook.AddPage(self.segmentation_panel, _("Segmentation"))
-        self.notebook.AddPage(self.roi_3d_page, _("ROI & 3D"))
-        self.notebook.AddPage(self.interaction_panel, _("Interaction & display"))
-        self.notebook.AddPage(self.measurement_panel, _("Measurements"))
-        self.notebook.AddPage(self.annotation_panel, _("Annotations"))
-        self.notebook.AddPage(self.export_panel, _("Export"))
+        # Workflow order: segment -> manage ROIs / 3D -> display -> tools.
+        self.notebook.AddPage(self.segmentation_panel, tab_label(_("Segmentation")))
+        self.notebook.AddPage(self.roi_3d_page, tab_label(_("ROI & 3D")))
+        self.notebook.AddPage(self.interaction_panel, tab_label(_("Display")))
+        self.notebook.AddPage(self.tools_page, tab_label(_("Tools")))
 
         # Main sizer
         sizer = wx.BoxSizer(wx.VERTICAL)

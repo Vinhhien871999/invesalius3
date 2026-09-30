@@ -69,7 +69,7 @@ class PointPicker3D:
 
         NOTE: the real 3D viewer (invesalius.data.viewer_volume.Viewer)
         and its interactor are singletons that outlive any single
-        ROIViewerFrame - every time the ROI Viewer plugin window is
+        ROIViewerPanel - every time the ROI Viewer plugin window is
         reopened, a brand new PointPicker3D gets initialize_picker()'d
         against the *same* real interactor. Without removing the old
         observer here, each reopen leaves a permanent extra
@@ -80,7 +80,7 @@ class PointPicker3D:
         this for real ("wrapped C/C++ object of type TextCtrl has been
         deleted" from interaction_panel.py's update_coordinates, fired
         from a stale observer after the window that owned it was
-        closed). Must be called when the owning ROIViewerFrame is
+        closed). Must be called when the owning ROIViewerPanel is
         destroyed.
         """
         if self.interactor is not None and self._observer_tag is not None:

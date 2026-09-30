@@ -40,7 +40,7 @@ class SlicePlanes3D:
 
     Lifecycle (mirrors core/marker_3d.CrosshairMarker3D's pattern for the
     same reason - the real 3D renderer is a singleton that outlives any
-    single ROIViewerFrame):
+    single ROIViewerPanel):
       - attach(renderer): create the 3 actors once and add them to the
         renderer. Calling this again (e.g. the ROI Viewer window was
         closed and reopened) first detaches any previous actors from
@@ -60,7 +60,7 @@ class SlicePlanes3D:
         gui/roi_panel.py.on_cross_focal_point_changed()).
       - detach(): remove all 3 actors from their renderer and clear
         cached bounds/position. Must be called when the owning
-        ROIViewerFrame closes (see roi_panel.py's _on_close(), same
+        ROIViewerPanel closes (see roi_panel.py's shutdown(), same
         place CrosshairMarker3D.detach()/PointPicker3D.cleanup() are
         called) so stale actors never linger in the shared, persistent
         3D scene after the plugin window that created them is gone.

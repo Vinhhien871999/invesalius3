@@ -289,7 +289,7 @@ def frame_env(real_slice_and_project_singleton, monkeypatch, tmp_path):
     import wx
     from invesalius.pubsub import pub as Publisher
 
-    from plugins.roi_viewer.gui.roi_panel import ROIViewerFrame
+    from plugins.roi_viewer.gui.roi_panel import ROIViewerPanel
     from plugins.roi_viewer.gui.segmentation_panel import PREVIEW_AUX_KEY
     from plugins.roi_viewer.interface.project_interface import ProjectInterface
 
@@ -312,7 +312,7 @@ def frame_env(real_slice_and_project_singleton, monkeypatch, tmp_path):
     monkeypatch.setattr(wx, "MessageBox", lambda *a, **k: wx.YES)
 
     top = wx.Frame(None)
-    frame = ROIViewerFrame(top)
+    frame = ROIViewerPanel(top)
     panel = frame.segmentation_panel
     panel.cb_enable_ai.SetValue(True)
     panel._on_enable_ai_toggle(None)
@@ -352,6 +352,8 @@ def test_ui_for_totalsegmentator(frame_env):
     assert p.choice_ai_mode.GetStrings() == ["Chính xác tiêu chuẩn", "Nhanh / ít bộ nhớ hơn"]
     for w in (p.btn_ai_pick_point, p.btn_ai_cursor_point, p.btn_ai_corner1, p.btn_ai_corner2, p.rb_ai_positive):
         assert not w.IsEnabled()  # no fake prompts for an automatic model
+    assert not p._ai_sizer.IsShown(p._ai_prompt_sizer)  # ...and not even shown
+    assert p._ai_sizer.IsShown(p._ai_structure_row) and p._ai_sizer.IsShown(p._ai_mode_row)
     assert p.btn_ai_run.IsEnabled()
 
 

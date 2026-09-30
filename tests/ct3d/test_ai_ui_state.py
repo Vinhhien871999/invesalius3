@@ -1,5 +1,5 @@
 # --------------------------------------------------------------------------
-# E6 UI state on the REAL ROIViewerFrame: AI is off by default and loads
+# E6 UI state on the REAL ROIViewerPanel: AI is off by default and loads
 # nothing while off; with no provider the UI says so and cannot run; the
 # classic controls are untouched.
 # --------------------------------------------------------------------------
@@ -15,12 +15,12 @@ from plugins.roi_viewer.core.ai.types import DeviceKind
 def frame(real_slice_and_project_singleton):
     import wx
 
-    from plugins.roi_viewer.gui.roi_panel import ROIViewerFrame
+    from plugins.roi_viewer.gui.roi_panel import ROIViewerPanel
 
     s, proj, Project, Slice = real_slice_and_project_singleton
     Slice.instance, Project.instance = s, proj
     top = wx.Frame(None)
-    f = ROIViewerFrame(top)
+    f = ROIViewerPanel(top)
     yield f
     f.Destroy()
     top.Destroy()
@@ -81,8 +81,28 @@ def test_no_provider_state(frame):
     assert panel.choice_ai_model.GetStrings() == ["(chưa có)"]
     assert panel.choice_ai_device.GetStrings() == ["Tự động"]
     assert not panel.btn_ai_run.IsEnabled() and not panel.btn_ai_cancel.IsEnabled()
-    # prompts can still be collected (for when a model is installed)
-    assert panel.btn_ai_cursor_point.IsEnabled() and panel.btn_ai_clear.IsEnabled()
+    # UI review (30/09/2026): without a model only what helps is shown -
+    # no point/box/structure/mode rows, but the install hint.
+    sizer = panel._ai_sizer
+    assert not sizer.IsShown(panel._ai_prompt_sizer)
+    assert not sizer.IsShown(panel._ai_structure_row) and not sizer.IsShown(panel._ai_mode_row)
+    assert sizer.IsShown(panel.lbl_ai_help)
+    assert panel.lbl_ai_help.GetLabel().startswith("Plugin không kèm mô hình AI.")
+
+
+def test_prompt_rows_shown_for_a_prompt_model(frame):
+    from plugins.roi_viewer.core.ai.registry import AIProviderRegistry
+
+    panel = frame.segmentation_panel
+    _enable(panel)
+    panel._ai_registry = AIProviderRegistry()
+    panel._ai_registry.register(StubAIProvider())
+    panel._ai_registry.probe_all()
+    panel._refresh_ai_models()
+    panel._update_ai_controls()
+    sizer = panel._ai_sizer
+    assert sizer.IsShown(panel._ai_prompt_sizer) and not sizer.IsShown(panel.lbl_ai_help)
+    assert not sizer.IsShown(panel._ai_structure_row)  # the stub declares no structures
     assert panel.lbl_ai_prompts.GetLabel() == "Điểm: 0 thuộc vùng, 0 loại trừ · Hộp: chưa có"
 
 

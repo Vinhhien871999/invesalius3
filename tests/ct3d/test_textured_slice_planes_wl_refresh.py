@@ -3,7 +3,7 @@
 #
 # The frame-side methods (on_window_level_changed / _run_scheduled_wl_
 # texture_refresh / refresh_slice_textures) are the real, unmodified
-# ROIViewerFrame methods, bound onto a SimpleNamespace fake the same way
+# ROIViewerPanel methods, bound onto a SimpleNamespace fake the same way
 # test_preview_surface_integration.py's _panel_like() does - so no real
 # wx.Frame or running event loop is needed. wx.CallAfter is replaced by a
 # recorder so "scheduled" vs "ran" is something the test controls.
@@ -15,7 +15,7 @@ import types
 import pytest
 
 from plugins.roi_viewer.gui import roi_panel
-from plugins.roi_viewer.gui.roi_panel import ROIViewerFrame
+from plugins.roi_viewer.gui.roi_panel import ROIViewerPanel
 
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def _frame_like(show_texture=True, position=(1.0, 2.0, 3.0)):
 
     fake.request_render = _render
     for name in ("on_window_level_changed", "_run_scheduled_wl_texture_refresh", "refresh_slice_textures"):
-        setattr(fake, name, getattr(ROIViewerFrame, name).__get__(fake))
+        setattr(fake, name, getattr(ROIViewerPanel, name).__get__(fake))
     return fake
 
 
