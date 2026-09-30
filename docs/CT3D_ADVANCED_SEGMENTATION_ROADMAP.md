@@ -14,7 +14,7 @@
 | E4 | Fast live 3D preview | P1 | **WORKING** |
 | E5 | Advanced 3D visualization (textured planes, clipping) | P2 | **WORKING** (gate PASS 30/09/2026 after the rendered texture-orientation proof - see below) |
 | E6 | AI segmentation architecture | P2/Experimental | **WORKING** — gate PASS 30/09/2026 = AI ARCHITECTURE READY; no real model (real inference `BLOCKED_NO_REAL_PROVIDER`) |
-| E6b | TotalSegmentator integration | P3/Experimental | PLANNED |
+| E6b | TotalSegmentator integration | P3/Experimental | **PARTIAL_REAL_INFERENCE_PENDING** — provider code WORKING (30/09/2026); package/weights not installed here, no real inference yet |
 
 Each milestone is audited against real source first, implemented, tested, documented, and committed **separately** — never squashed together. A milestone does not start until the previous one's gate is `PASS` (see `docs/CT3D_ADVANCED_SEGMENTATION_PROGRESS.md` for live per-feature status).
 
@@ -79,3 +79,7 @@ This run implements **E5** (Advanced 3D visualization: E5A textured slice planes
 ## E6 scope note (30/09/2026)
 
 E6 adds the AI **architecture only** (`plugins/roi_viewer/core/ai/`): provider abstraction, isolated registry (no production provider — `KNOWN_PROVIDER_MODULES` is empty), point/box prompts on the existing coordinate contract, a single-worker job controller with generation guard and cancel, and strict candidate validation. The AI result is an E2 preview (kind "ai"), shown by E4, and Accept commits exactly that preview through the shared `native_mask.commit_preview_array_to_new_mask()`. Default OFF; no AI framework dependency, no weights, no downloads. Before E6, this run closed the E5 gate (rendered texture proof) and fixed the native mask read/write contract. **E6b (TotalSegmentator) was not implemented**; readiness is assessed in `docs/CT3D_ADVANCED_E6_AI_ARCHITECTURE_REPORT.md` §10.
+
+## E6b scope note (30/09/2026)
+
+Adds `core/ai/providers/totalsegmentator_provider.py` on the unchanged E6 pipeline (E2 preview → E4 → Accept via the shared native commit). Lazy/optional; never installs or downloads (TotalSegmentator's own weight download and usage-statistics upload are disabled while the plugin runs it); one selected structure per preview; NIfTI affine proven against InVesalius's real axial DICOM import. TotalSegmentator is not installed in this environment, so the gate is `PARTIAL_REAL_INFERENCE_PENDING`. Report: `docs/CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md`.

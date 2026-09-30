@@ -512,3 +512,15 @@ Full writeup: `docs/CT3D_ADVANCED_E6_AI_ARCHITECTURE_REPORT.md`.
 - **Prompts**: positive/negative points and a two-corner box, slice-frame world (x, y, z) mm → voxel (z, y, x) with native rounding; out-of-volume rejected, not clamped. 3D picks via `view_to_slice`, corners and cursor points from the 2D crosshair (`ROIViewerFrame.get_crosshair_position()`). Scribble/lasso reserved (PLANNED). Session only.
 - **Jobs**: one worker at a time, no queue; states IDLE/PREPARING/RUNNING/CANCELLING/RESULT_READY/FAILED; `job_id` generation guard; cancel sets the provider's event and invalidates the job, the thread finishes on its own and its result is dropped; results/progress reach the GUI only through `wx.CallAfter`. The E2 preview generation is a second guard (E2 Cancel / a newer preview discard an AI result).
 - **Lifecycle**: project close/load → `reset_ai_session()`; plugin close → `shutdown_ai()` first in `ROIViewerFrame._on_close()` (wx destroys at idle time) and in the panel destroy hook. Nothing serialized.
+
+---
+
+# E6b TotalSegmentator provider — 30/09/2026
+
+Full writeup: `docs/CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md`.
+
+- **Generic E6 additions only**: `AIProviderInfo.parameter_choices` (provider-declared selectable parameters → `request.options`), `Capability.INTERRUPTIBLE`, `progress(None, stage)` for models without numeric progress, and shared codes in `provider.py` (`REASON_*`, `REQUEST_STRUCTURE_UNKNOWN/MODE_UNSUPPORTED/ORIENTATION_UNKNOWN`, `STAGE_*`, `OPTION_*`). No TotalSegmentator-specific preview, actor or mask storage.
+- **Provider**: `core/ai/providers/totalsegmentator_provider.py`, registered in `KNOWN_PROVIDER_MODULES`; imports only numpy at module level; probe checks package (without importing when absent) → dependencies → real API signature → class map → TotalSegmentator's own weights dir → CUDA. Automatic (no prompts), not interruptible.
+- **Grid contract**: NIfTI array = `Slice().matrix` transposed to (x, y, z); affine = LPS→RAS of [row cosine · sx | −column cosine · sy | normal · sz] from `Project().patient_orientation`, translation 0 — follows InVesalius's axial DICOM import (IPPSorter ascending, rows flipped). Only AXIAL imports with a valid IOP are accepted. Output accepted only if its shape and affine equal the input's; mapped back by exact transposition; one label → bool candidate.
+- **Isolation of third-party behaviour**: during the run `download_pretrained_weights` raises and `send_usage_stats` is a no-op in the loaded `totalsegmentator.*` modules; both restored afterwards.
+- **UI**: structure combo (search-as-you-type), mode choice, prompt controls disabled for prompt-less providers, stage texts without percentages, truthful cancel text for non-interruptible providers, mask name "AI - <structure>".

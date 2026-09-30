@@ -678,3 +678,94 @@ Leave AI off; run Threshold, Otsu, Region Growing, brush, Undo/Redo, E1–E5, su
 **`BLOCKED_NO_REAL_PROVIDER`** — no production provider exists (E6 ships none by design). Automated stub-provider tests prove the orchestration only.
 
 **E6_MANUAL_QA_COMPLETE: NOT_RUN** (0/12).
+
+---
+
+## E6b - TotalSegmentator (30/09/2026)
+
+> Needs TotalSegmentator + `total` weights installed (see `docs/CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md` §10). On the development machine only E6b-A's "not installed" state is reachable. Do not mark anything PASS from the automated fake-module tests.
+
+### TEST E6b-A — TotalSegmentator appears only when installed/available
+Tick AI on a machine without TotalSegmentator, then (after installing package + weights) again.
+**Expected**: Without it: "TotalSegmentator chưa được cài đặt." (or the weights/dependency reason) and no model in the list; with it: Mô hình "TotalSegmentator".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-B — Structure list populated
+Open the Cấu trúc list.
+**Expected**: The installed TotalSegmentator class names; typing filters them.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-C — Select structure
+Pick e.g. "spleen"; also type a name not in the list and press Xem trước bằng AI.
+**Expected**: Valid name accepted; invalid → "Hãy chọn một cấu trúc trong danh sách."; point/box controls disabled.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-D — CPU inference without GUI freeze
+Thiết bị CPU, Xem trước bằng AI on 0051.
+**Expected**: Stage texts (no %), window stays responsive, finishes with "Đã hoàn thành trong … s.".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-E — CUDA inference if available
+Thiết bị CUDA (only listed when available).
+**Expected**: Runs on the GPU; no silent CPU fallback.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-F — AI preview visible in all 3 2D views
+After a run, scroll Axial/Coronal/Sagittal.
+**Expected**: Orange overlay on the right anatomy in all 3 views.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-G — E4 live 3D preview shows the same candidate
+Enable Xem trước 3D thời gian thực.
+**Expected**: Source "Xem trước AI"; mesh matches the overlay.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-H — Cancel does not create a mask
+Hủy xử lý AI during a run; also Hủy xem trước after one.
+**Expected**: Truthful text (model finishes in background, result discarded); no new mask; no overlay appears later.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-I — Accept creates exactly one ROI
+Chấp nhận (click twice quickly).
+**Expected**: One new ROI "AI - <structure>".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-J — Accepted ROI matches the preview
+Compare the new mask with the preview just before Accept.
+**Expected**: Identical.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-K — Cleanup works after Accept
+Run Hậu xử lý on the accepted ROI.
+**Expected**: Works as for any mask; undoable.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-L — Final 3D surface works after Accept
+Cập nhật bề mặt 3D từ ROI hiện tại.
+**Expected**: Surface matches the accepted mask.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-M — Save/Open preserves the accepted AI ROI
+Save, close, reopen the project.
+**Expected**: ROI present and unchanged; no AI state restored.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-N — Project close during inference is safe
+Close the project while TotalSegmentator runs.
+**Expected**: No crash; no preview/mask appears afterwards.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-O — Plugin close during inference is safe
+Close ROI Viewer while it runs.
+**Expected**: No crash; late result ignored.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6b-P — AI off leaves the classic workflow unchanged
+Leave AI off; run the classic workflow.
+**Expected**: Same as before E6b.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### Real inference
+**`BLOCKED_MODEL_NOT_AVAILABLE`** — TotalSegmentator/nnunetv2 not installed, no weights.
+
+**E6b_MANUAL_QA_COMPLETE: NOT_RUN** (0/16).

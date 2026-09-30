@@ -7,7 +7,7 @@
 > | Phạm vi | Nhánh / tag | Nội dung |
 > |---|---|---|
 > | **Bản ổn định (stable baseline)** | `thesis-ct-roi-tools` / tag **`ct3d-rc1`** | Phần mềm sau Phase 14 (`CT3D_P14_FINAL_AUDIT_REPORT`, 17/09/2026), gồm C8 mặt phẳng 2D→3D (`core/slice_planes_3d.SlicePlanes3D`, Phase 13.5). Mọi mục **không** gắn nhãn "chỉ nhánh `enhancement/advanced-segmentation`" thuộc phạm vi này. **Giao diện bản ổn định vẫn là tiếng Anh, 5 tab** — xem bảng đối chiếu tên nút ở mục 1.2. |
-> | **Nhánh nâng cao (enhancement-only)** | `enhancement/advanced-segmentation` | Các mục gắn nhãn **"chỉ nhánh `enhancement/advanced-segmentation`"**: hiện gồm **E1–E6** (2.3, 2.4, 2.7, 3.1 phần Khóa/Chỉ hiện, 3.3, 4.3), sửa lỗi toạ độ 3D↔voxel (mục 8) và **giao diện tiếng Việt, 6 tab sắp theo quy trình làm việc** (30/09/2026). **Tag `ct3d-rc1` KHÔNG chứa E1–E6, không chứa sửa lỗi toạ độ và không có giao diện tiếng Việt.** |
+> | **Nhánh nâng cao (enhancement-only)** | `enhancement/advanced-segmentation` | Các mục gắn nhãn **"chỉ nhánh `enhancement/advanced-segmentation`"**: hiện gồm **E1–E6b** (2.3, 2.4, 2.7, 2.8, 3.1 phần Khóa/Chỉ hiện, 3.3, 4.3), sửa lỗi toạ độ 3D↔voxel (mục 8) và **giao diện tiếng Việt, 6 tab sắp theo quy trình làm việc** (30/09/2026). **Tag `ct3d-rc1` KHÔNG chứa E1–E6, không chứa sửa lỗi toạ độ và không có giao diện tiếng Việt.** |
 >
 > **Tên nút trong tài liệu này là tên trên nhánh `enhancement/advanced-segmentation`** (tiếng Việt). Lần đầu nhắc tới một chức năng, tên tiếng Anh cũ ghi trong ngoặc, ví dụ "Phát triển vùng (Region Growing)"; sau đó chỉ dùng tên tiếng Việt.
 >
@@ -168,7 +168,7 @@ Mục thu gọn — bấm tiêu đề **"Chỉnh sửa thủ công (cọ vẽ)"*
 
 ### 2.7 (chỉ nhánh `enhancement/advanced-segmentation`) — Phân đoạn AI (thử nghiệm) (AI segmentation, E6)
 
-> **Chỉ có trên nhánh `enhancement/advanced-segmentation`.** Mục thu gọn, **mặc định TẮT**. Hiện **chưa có mô hình AI nào đi kèm**: E6 chỉ là *kiến trúc* để sau này gắn mô hình (ví dụ TotalSegmentator ở E6b). Khi bật, nếu chưa cài mô hình, giao diện báo **"Chưa có mô hình AI tương thích."** và nút "Xem trước bằng AI" bị khóa — đây là hành vi đúng, không phải lỗi. Plugin **không bao giờ tự tải mô hình hay tự cài thư viện**.
+> **Chỉ có trên nhánh `enhancement/advanced-segmentation`.** Mục thu gọn, **mặc định TẮT**. Mô hình hỗ trợ: **TotalSegmentator** (E6b, xem 2.8) — plugin **không kèm** mô hình, người dùng phải tự cài. Khi bật, nếu chưa cài mô hình, giao diện báo **"Chưa có mô hình AI tương thích."** và nút "Xem trước bằng AI" bị khóa — đây là hành vi đúng, không phải lỗi. Plugin **không bao giờ tự tải mô hình hay tự cài thư viện**.
 
 **Nguyên tắc**: kết quả AI **chỉ là bản xem trước** (lớp phủ màu cam giống mục 2.3, hiện cả trong Xem trước 3D nếu đang bật). Mặt nạ thật chỉ được tạo khi bấm **Chấp nhận** trong khung **Xem trước**, và mặt nạ đó **đúng từng voxel** với bản xem trước (không chạy lại mô hình). **Hủy xem trước** thì không tạo gì.
 
@@ -182,6 +182,21 @@ Mục thu gọn — bấm tiêu đề **"Chỉnh sửa thủ công (cọ vẽ)"*
 7. Kiểm tra lớp phủ → **Chấp nhận** (tạo mặt nạ mới "AI Segmentation N", có thể hậu xử lý mục 2.4 như mặt nạ thường) hoặc **Hủy xem trước**.
 
 **Lưu ý**: điểm/hộp AI chỉ tồn tại trong phiên làm việc (không lưu vào dự án, bị xóa khi đóng/mở dự án hoặc đóng plugin). ROI đang Khóa vẫn chạy AI được vì AI chỉ tạo ứng viên mới; Chấp nhận tạo ROI mới, không khóa. Ảnh lát cắt trên mặt phẳng 3D / cắt hiển thị (mục 4.3) không ảnh hưởng kết quả AI — AI đọc trực tiếp khối ảnh gốc (giá trị HU với CT). Chi tiết kỹ thuật: `CT3D_ADVANCED_E6_AI_ARCHITECTURE_REPORT.md`.
+
+### 2.8 (chỉ nhánh `enhancement/advanced-segmentation`) — Phân đoạn tự động bằng TotalSegmentator (E6b)
+
+> **Thử nghiệm, chưa được kiểm định lâm sàng.** TotalSegmentator được **chạy cục bộ trên máy**; ảnh CT không được gửi đi đâu (plugin còn tắt chức năng gửi thống kê sử dụng của TotalSegmentator trong lúc chạy). Thời gian chạy phụ thuộc rất nhiều vào CPU/GPU — trên CPU có thể rất lâu.
+
+**Cài đặt (làm một lần, ngoài plugin)**: cài gói `TotalSegmentator` vào đúng môi trường Python của InVesalius, rồi tải trọng số mô hình `total` bằng công cụ của chính TotalSegmentator. Plugin **không bao giờ tự cài hay tự tải**. Nếu chưa cài: "TotalSegmentator chưa được cài đặt."; nếu thiếu trọng số: "Mô hình TotalSegmentator chưa sẵn sàng." Chi tiết: `CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md` mục 10.
+
+**Quy trình**: tab **Phân đoạn** → mở **Phân đoạn AI (thử nghiệm)** → tick **Bật phân đoạn AI (thử nghiệm)** → **Mô hình**: TotalSegmentator → **Cấu trúc**: gõ để tìm và chọn một cấu trúc (tên gốc tiếng Anh của mô hình, ví dụ `spleen`, `liver`) → **Thiết bị**: Tự động / CPU / CUDA (CUDA chỉ hiện khi có GPU dùng được) → **Chế độ**: Chính xác tiêu chuẩn hoặc Nhanh / ít bộ nhớ hơn (kém chính xác hơn) → **Xem trước bằng AI** → kiểm tra lớp phủ trên Axial/Coronal/Sagittal và trong Xem trước 3D → **Chấp nhận** (tạo mặt nạ "AI - <cấu trúc>") → **Hậu xử lý** nếu cần → **Cập nhật bề mặt 3D từ ROI hiện tại**.
+
+**Lưu ý**:
+- Mỗi lần chỉ một cấu trúc; các lớp khác của mô hình không được dùng.
+- TotalSegmentator không dùng điểm/hộp gợi ý — các nút đó bị khóa khi chọn mô hình này.
+- Trạng thái chỉ hiện giai đoạn (Đang chuẩn bị dữ liệu… / Đang chạy TotalSegmentator… / Đang ánh xạ kết quả…), không có phần trăm vì mô hình không báo tiến độ.
+- **Hủy xử lý AI** không dừng được mô hình đang chạy: nó chạy tiếp ở nền tới khi xong, kết quả bị bỏ qua (giao diện ghi rõ điều này).
+- Chỉ hỗ trợ khối ảnh nhập từ **chuỗi DICOM lát ngang** (cần biết hướng bệnh nhân); trường hợp khác bị từ chối. Nếu đã dùng công cụ lật/đổi trục của InVesalius sau khi nhập, hướng lưu trong dự án không còn đúng.
 
 ---
 

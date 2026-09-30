@@ -172,7 +172,21 @@ Found while auditing the commit path E6 Accept reuses. Three real defects (commi
 
 `tests/ct3d` **540 passed / 1 skipped / 0 failed** ×3; upstream 94; pyflakes/compileall/diff-check clean. **E6_GATE: PASS** = AI ARCHITECTURE READY, not AI MODEL READY. Report: `docs/CT3D_ADVANCED_E6_AI_ARCHITECTURE_REPORT.md`.
 
-## E6b — TotalSegmentator
+## E6b — TotalSegmentator (30/09/2026)
+
+| ID | Item | Status |
+|---|---|---|
+| E6b.1 | Optional lazy provider, registered, plugin opens without the package | **WORKING** (fresh-interpreter test: no framework imported) |
+| E6b.2 | Truthful probe (package / dependency / API signature / weights / CUDA) | **WORKING** |
+| E6b.3 | No install, no download, no usage stats (guards during the run) | **WORKING** |
+| E6b.4 | NIfTI affine from InVesalius's axial DICOM import | **PASS** — 25 tests incl. real `dcm2memmap`, 0051 + asymmetric spacing, 4 orientations, mirror control |
+| E6b.5 | Structure selection (installed class map), modes, device mapping | **WORKING** (fake modules) |
+| E6b.6 | E2 preview / E4 / Accept == Preview / lifecycle | **WORKING** (real frame, fake modules) |
+| E6b.7 | Real inference | **BLOCKED_MODEL_NOT_AVAILABLE** — TotalSegmentator and nnunetv2 not installed, no weights |
+
+`tests/ct3d` **599 passed / 1 skipped / 0 failed** ×3; upstream 94. **E6b_GATE: PARTIAL_REAL_INFERENCE_PENDING**. Report: `docs/CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md`.
+
+### E6b — before 30/09/2026
 
 `PLANNED`, not started. Readiness assessed in the E6 report §10 (architecture READY; Python/PyTorch install, model-path config, NIfTI affine for InVesalius's grid and label→binary selection to be done in E6b). *[Updated 30/09/2026: this section used to say E6 was blocked by the E5 gate.]*
 
@@ -209,3 +223,4 @@ One row per development/validation run on this branch - including runs that chan
 | 30/09/2026 | Pre-E6 validation: E5 closure | E5 closure commit (see `git log`) | 456 / 1 | 94 | Rendered texture-orientation proof added (10 tests); operator group-level confirmation of E4 + E5 texture/clipping recorded; **E5_GATE PASS**; manual E5-B/C/D/E/J/K/L still `RETEST_REQUIRED` |
 | 30/09/2026 | Pre-E6 fix: native mask read/write contract | native-mask commit (see `git log`) | 465 / 1 | 94 | Commit/cleanup/E4/measure/export follow InVesalius's lazy-threshold, sentinel and foreground rules; 10 new tests (7 fail on pre-fix code). Manual E2-G/E3/E4 items to be run on this build |
 | 30/09/2026 | E6 - AI segmentation architecture | E6 commit (see `git log`) | 540 / 1 | 94 | **E6_GATE PASS** (architecture only). No production provider; real inference `BLOCKED_NO_REAL_PROVIDER`; E6-A..L `NOT_RUN`; E6b not started |
+| 30/09/2026 | E6b - TotalSegmentator provider | `6b491799` (test isolation fix), `098e284e` (provider) + docs commit | 599 / 1 | 94 | Provider code WORKING; affine hard gate PASS; package/weights absent → real inference `BLOCKED_MODEL_NOT_AVAILABLE`; **E6b_GATE PARTIAL_REAL_INFERENCE_PENDING**; E6b-A..P `NOT_RUN` |
