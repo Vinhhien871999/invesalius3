@@ -12,6 +12,12 @@ import wx
 import wx.lib.scrolledpanel as scrolled
 
 from ..core import native_mask, segmentation_cleanup, segmentation_preview
+from ..core.ai import ENABLE_AI_SEGMENTATION
+from ..core.ai import job_controller as ai_jobs
+from ..core.ai import preview_bridge as ai_bridge
+from ..core.ai import provider as ai_provider
+from ..core.ai.prompts import AIPromptSet, PromptOutOfVolume
+from ..core.ai.types import DeviceKind
 from ..i18n import _, fmt_float, fmt_int
 from . import ui_helpers
 
@@ -126,6 +132,15 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # _on_surface_info_updated() below).
         self._roi_surface_index = {}
         self._pending_surface_build_mask_index = None
+        # E6: created only when the user switches AI on - with it off no
+        # provider module is imported and no AI thread can exist.
+        self._ai_registry = None
+        self._ai_jobs = None
+        self._ai_prompts = AIPromptSet()  # session only, never saved
+        self._ai_provider_ids = []  # dropdown index -> provider_id
+        self._ai_devices = [DeviceKind.AUTO]  # dropdown index -> DeviceKind
+        self._ai_preview_generation = None
+        self._ai_run = None  # provider/prompt/timing info of the running job
         self._subscribe_surface_info_once()
         self._init_ui()
         self.SetupScrolling(scroll_x=False)
@@ -145,7 +160,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         sizer.Add(ui_helpers.hint(
             self, _("1. Create or preview  →  2. Accept  →  3. Post-process  →  4. Update 3D surface")
-        ), 0, wx.ALL | wx.EXPAND, 5)
+        ), 0, wx.ALL | wx.EXPAND, 3)
 
         # Current ROI, repeated here because post-processing, brush and
         # undo all act on it while the ROI list itself is on "ROI & 3D".
@@ -178,7 +193,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_preview_otsu = wx.Button(self, wx.ID_ANY, _("Preview Otsu"))
         self.btn_preview_otsu.Enable(False)
         thresh_sizer.Add(ui_helpers.button_row(self.btn_apply_thresh, self.btn_preview_otsu), 0, wx.EXPAND)
-        sizer.Add(thresh_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(thresh_sizer, 0, wx.ALL | wx.EXPAND, 3)
 
         # --- A. Create: region growing (seed picked in the 3D view with
         # the shared controller.picker; see _on_seed_picked()) ---
@@ -204,7 +219,61 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         self.rg_status = wx.StaticText(self, wx.ID_ANY, "")
         rg_sizer.Add(self.rg_status, 0, wx.ALL | wx.EXPAND, 3)
-        sizer.Add(rg_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(rg_sizer, 0, wx.ALL | wx.EXPAND, 3)
+
+        # --- A. Create: AI (E6), collapsed and off by default. An AI
+        # result is only ever an E2 preview (kind "ai") - Accept/Cancel in
+        # the Preview box below commit or drop it. See core/ai/__init__.py.
+        pane_ai, p = ui_helpers.collapsible(self, _("AI segmentation (experimental)"), self._on_section_toggled)
+        ai_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.cb_enable_ai = wx.CheckBox(p, wx.ID_ANY, _("Enable AI segmentation (experimental)"))
+        self.cb_enable_ai.SetValue(ENABLE_AI_SEGMENTATION)
+        self.cb_enable_ai.SetToolTip(_(
+            "Runs an installed AI model on the real image volume. The result is only a preview - no mask "
+            "is created until you click Accept. Nothing is downloaded or installed."
+        ))
+        ai_sizer.Add(self.cb_enable_ai, 0, wx.ALL, 3)
+        self.choice_ai_model = wx.Choice(p, wx.ID_ANY, choices=[_("(none)")])
+        self.choice_ai_model.SetSelection(0)
+        ai_sizer.Add(ui_helpers.labelled_row(p, _("Model:"), self.choice_ai_model), 0, wx.EXPAND)
+        self.choice_ai_device = wx.Choice(p, wx.ID_ANY, choices=[_("Auto")])
+        self.choice_ai_device.SetSelection(0)
+        ai_sizer.Add(ui_helpers.labelled_row(p, _("Device:"), self.choice_ai_device), 0, wx.EXPAND)
+
+        kind_row = wx.BoxSizer(wx.HORIZONTAL)
+        kind_row.Add(wx.StaticText(p, wx.ID_ANY, _("Point type:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.rb_ai_positive = wx.RadioButton(p, wx.ID_ANY, _("Inside region"), style=wx.RB_GROUP)
+        self.rb_ai_positive.SetValue(True)
+        self.rb_ai_negative = wx.RadioButton(p, wx.ID_ANY, _("Exclude"))
+        kind_row.Add(self.rb_ai_positive, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        kind_row.Add(self.rb_ai_negative, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        ai_sizer.Add(kind_row, 0, wx.EXPAND)
+
+        self.btn_ai_pick_point = wx.ToggleButton(p, wx.ID_ANY, _("Pick point (3D)"))
+        self.btn_ai_cursor_point = wx.Button(p, wx.ID_ANY, _("Point at 2D cursor"))
+        ai_sizer.Add(ui_helpers.button_row(self.btn_ai_pick_point, self.btn_ai_cursor_point), 0, wx.EXPAND)
+        ai_sizer.Add(ui_helpers.hint(p, _("Bounding box: move the 2D cursor to each corner.")), 0, wx.ALL, 3)
+        self.btn_ai_corner1 = wx.Button(p, wx.ID_ANY, _("Set corner 1"))
+        self.btn_ai_corner2 = wx.Button(p, wx.ID_ANY, _("Set corner 2"))
+        ai_sizer.Add(ui_helpers.button_row(self.btn_ai_corner1, self.btn_ai_corner2), 0, wx.EXPAND)
+        self.lbl_ai_prompts = wx.StaticText(p, wx.ID_ANY, "")
+        ai_sizer.Add(self.lbl_ai_prompts, 0, wx.ALL | wx.EXPAND, 3)
+        self.btn_ai_clear = wx.Button(p, wx.ID_ANY, _("Clear AI points"))
+        ai_sizer.Add(self.btn_ai_clear, 0, wx.ALL | wx.EXPAND, 2)
+        self.btn_ai_run = wx.Button(p, wx.ID_ANY, _("Preview with AI"))
+        self.btn_ai_run.SetToolTip(_(
+            "Shows the AI result as a preview overlay (and in the live 3D preview if on). "
+            "Accept creates a new mask from exactly this preview; the model is not run again."
+        ))
+        self.btn_ai_cancel = wx.Button(p, wx.ID_ANY, _("Cancel AI processing"))
+        ai_sizer.Add(ui_helpers.button_row(self.btn_ai_run, self.btn_ai_cancel), 0, wx.EXPAND)
+        ai_state_row = wx.BoxSizer(wx.HORIZONTAL)
+        ai_state_row.Add(wx.StaticText(p, wx.ID_ANY, _("State:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        self.lbl_ai_status = wx.StaticText(p, wx.ID_ANY, _("Off"))
+        ai_state_row.Add(self.lbl_ai_status, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
+        ai_sizer.Add(ai_state_row, 0, wx.EXPAND)
+        p.SetSizer(ai_sizer)
+        sizer.Add(pane_ai, 0, wx.ALL | wx.EXPAND, 3)
 
         # --- B. Preview -> Accept / Cancel (E2). Off by default: with the
         # checkbox off the classic immediate-commit behaviour is unchanged.
@@ -229,7 +298,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_preview_cancel = wx.Button(self, wx.ID_ANY, _("Cancel preview"))
         self.btn_preview_cancel.Enable(False)
         preview_sizer.Add(ui_helpers.button_row(self.btn_preview_accept, self.btn_preview_cancel), 0, wx.EXPAND)
-        sizer.Add(preview_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(preview_sizer, 0, wx.ALL | wx.EXPAND, 3)
 
         # --- C. Post-processing on the current ROI (E3), collapsed ---
         pane_cleanup, p = ui_helpers.collapsible(self, _("Post-processing (current ROI)"), self._on_section_toggled)
@@ -264,7 +333,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.lbl_cleanup_status = wx.StaticText(p, wx.ID_ANY, "")
         cleanup_sizer.Add(self.lbl_cleanup_status, 0, wx.ALL | wx.EXPAND, 3)
         p.SetSizer(cleanup_sizer)
-        sizer.Add(pane_cleanup, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(pane_cleanup, 0, wx.ALL | wx.EXPAND, 3)
 
         # --- Manual editing: InVesalius's own 2D brush, driven through its
         # real pubsub topics (this panel never captures mouse events). ---
@@ -294,7 +363,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_toggle_brush.SetToolTip(_("Paint directly on the 2D slice views. Edits the real mask."))
         brush_sizer.Add(self.btn_toggle_brush, 0, wx.ALL | wx.EXPAND, 3)
         p.SetSizer(brush_sizer)
-        sizer.Add(pane_brush, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(pane_brush, 0, wx.ALL | wx.EXPAND, 3)
 
         # --- Undo / redo of the real current mask ---
         box_undo = wx.StaticBox(self, wx.ID_ANY, _("Edit history (current ROI)"))
@@ -304,13 +373,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_redo = wx.Button(self, wx.ID_ANY, _("Redo"))
         undo_sizer.Add(self.btn_checkpoint, 0, wx.ALL | wx.EXPAND, 2)
         undo_sizer.Add(ui_helpers.button_row(self.btn_undo, self.btn_redo), 0, wx.EXPAND)
-        sizer.Add(undo_sizer, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(undo_sizer, 0, wx.ALL | wx.EXPAND, 3)
 
         self.status_text = wx.StaticText(self, wx.ID_ANY, _("Ready."), style=wx.ST_NO_AUTORESIZE)
-        sizer.Add(self.status_text, 0, wx.ALL | wx.EXPAND, 5)
+        sizer.Add(self.status_text, 0, wx.ALL | wx.EXPAND, 3)
         self.SetSizer(sizer)
 
         self._build_roi_3d_page()
+        self._update_ai_controls()
 
         self.cb_auto_thresh.Bind(wx.EVT_CHECKBOX, self._on_auto_thresh_toggle)
         self.btn_apply_thresh.Bind(wx.EVT_BUTTON, self._on_apply_threshold)
@@ -319,6 +389,15 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_preview_region_growing.Bind(wx.EVT_BUTTON, self._on_preview_region_growing)
         self.cb_enable_preview.Bind(wx.EVT_CHECKBOX, self._on_enable_preview_toggle)
         self.btn_preview_accept.Bind(wx.EVT_BUTTON, self._on_preview_accept)
+        self.cb_enable_ai.Bind(wx.EVT_CHECKBOX, self._on_enable_ai_toggle)
+        self.choice_ai_model.Bind(wx.EVT_CHOICE, self._on_ai_model_changed)
+        self.btn_ai_pick_point.Bind(wx.EVT_TOGGLEBUTTON, self._on_ai_toggle_pick_point)
+        self.btn_ai_cursor_point.Bind(wx.EVT_BUTTON, self._on_ai_cursor_point)
+        self.btn_ai_corner1.Bind(wx.EVT_BUTTON, lambda event: self._on_ai_corner(1))
+        self.btn_ai_corner2.Bind(wx.EVT_BUTTON, lambda event: self._on_ai_corner(2))
+        self.btn_ai_clear.Bind(wx.EVT_BUTTON, self._on_ai_clear)
+        self.btn_ai_run.Bind(wx.EVT_BUTTON, self._on_ai_run)
+        self.btn_ai_cancel.Bind(wx.EVT_BUTTON, self._on_ai_cancel)
         self.btn_preview_cancel.Bind(wx.EVT_BUTTON, self._on_preview_cancel)
         self.btn_cleanup_keep_largest.Bind(wx.EVT_BUTTON, self._on_cleanup_keep_largest)
         self.btn_cleanup_remove_small.Bind(wx.EVT_BUTTON, self._on_cleanup_remove_small)
@@ -842,6 +921,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.preview_mgr.cancel()
         self._preview_seed_world = None
         self._preview_seed_voxel = None
+        # E6: an AI job still computing a preview is part of that preview.
+        if self._ai_jobs is not None:
+            self._ai_jobs.cancel()
         # Widget updates are best-effort and wrapped separately from the
         # real-data cleanup above: during whole-app/plugin-window
         # teardown these wx widgets can already be mid-destruction (same
@@ -1090,6 +1172,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     self.preview_mgr.preview_array, self.preview_mgr.seed_voxel, self.preview_mgr.tolerance
                 )
 
+            elif kind == "ai":
+                # E6: commit EXACTLY the previewed candidate - the model is
+                # not run again and nothing is recomputed.
+                name = self._commit_ai_preview(self.preview_mgr.preview_array)
+
             if name is None:
                 self.preview_mgr.revert_accept()
                 wx.MessageBox(_("Failed to create the final mask."), _("Error"), wx.OK | wx.ICON_ERROR)
@@ -1115,6 +1202,391 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.cancel_preview()
         # E4: fall back to Current ROI (or hide, if none) - Section 18.
         self._mark_preview_3d_dirty("E2 preview cancelled")
+
+    # ------------------------------------------------------------------
+    # E6 - AI segmentation (core/ai). Orchestration only: the provider runs
+    # on the job controller's worker thread, every callback below runs on
+    # the GUI thread (wx.CallAfter), and the result becomes an E2 preview.
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _ai_request_message(code) -> str:
+        return {
+            ai_provider.REQUEST_UNAVAILABLE: _("The model is not installed."),
+            ai_provider.REQUEST_NEEDS_PROMPT: _("Add at least one point or a bounding box."),
+            ai_provider.REQUEST_PROMPT_UNSUPPORTED: _("This model does not support this kind of prompt."),
+            ai_provider.REQUEST_DEVICE_UNSUPPORTED: _("This model cannot use the selected device."),
+            ai_provider.REQUEST_NO_VOLUME: _("No project loaded."),
+        }.get(code, _("AI processing failed."))
+
+    @staticmethod
+    def _ai_candidate_message(code) -> str:
+        return {
+            ai_bridge.CANDIDATE_SHAPE: _("AI result rejected: its size does not match the image volume."),
+            ai_bridge.CANDIDATE_DTYPE: _("AI result rejected: unsupported data type."),
+            ai_bridge.CANDIDATE_NON_FINITE: _("AI result rejected: it contains invalid values."),
+            ai_bridge.CANDIDATE_NOT_BINARY: _("AI result rejected: it is not a binary mask."),
+        }.get(code, _("AI processing failed."))
+
+    def _ai_enabled(self) -> bool:
+        return self.cb_enable_ai.GetValue()
+
+    def _selected_ai_provider_id(self):
+        index = self.choice_ai_model.GetSelection()
+        if 0 <= index < len(self._ai_provider_ids):
+            return self._ai_provider_ids[index]
+        return None
+
+    def _selected_ai_device(self) -> str:
+        index = self.choice_ai_device.GetSelection()
+        return self._ai_devices[index] if 0 <= index < len(self._ai_devices) else DeviceKind.AUTO
+
+    def _on_enable_ai_toggle(self, event):
+        if self._ai_enabled():
+            if self._ai_registry is None:
+                from ..core.ai import registry as ai_registry
+
+                self._ai_registry = ai_registry.load_known_providers(ai_registry.AIProviderRegistry())
+            if self._ai_jobs is None:
+                self._ai_jobs = ai_jobs.AIInferenceJobController(dispatch=wx.CallAfter)
+                self._ai_jobs.listener = self._on_ai_event
+            self._ai_registry.probe_all()
+            self._refresh_ai_models()
+        else:
+            self.controller.picker.remove_callback(self._on_ai_point_picked)
+            self.btn_ai_pick_point.SetValue(False)
+            if self._ai_jobs is not None and self._ai_jobs.is_busy():
+                self._on_ai_cancel(None)
+            self.lbl_ai_status.SetLabel(_("Off"))
+        self._update_ai_controls()
+
+    def _refresh_ai_models(self):
+        """Dropdown = available providers only. With none, say why."""
+        infos = self._ai_registry.list_providers() if self._ai_registry is not None else []
+        available = [i for i in infos if i.available]
+        self._ai_provider_ids = [i.provider_id for i in available]
+        self.choice_ai_model.Set([i.display_name for i in available] or [_("(none)")])
+        self.choice_ai_model.SetSelection(0)
+        for info in infos:
+            if not info.available:
+                print(f"ROI Viewer: AI provider '{info.provider_id}' unavailable - {info.unavailable_reason}")
+        if available:
+            self.lbl_ai_status.SetLabel(_("Ready."))
+        elif any(i.requires_weights for i in infos):
+            self.lbl_ai_status.SetLabel(_("The model is not installed."))
+        else:
+            self.lbl_ai_status.SetLabel(_("No compatible AI model."))
+        self._refresh_ai_devices()
+
+    def _refresh_ai_devices(self):
+        pid = self._selected_ai_provider_id()
+        info = self._ai_registry.info(pid) if (pid and self._ai_registry is not None) else None
+        devices = [DeviceKind.AUTO] + [d for d in (info.supported_devices if info else ())
+                                       if d in (DeviceKind.CPU, DeviceKind.CUDA)]
+        self._ai_devices = devices
+        self.choice_ai_device.Set([_("Auto") if d == DeviceKind.AUTO else d.upper() for d in devices])
+        self.choice_ai_device.SetSelection(0)
+
+    def _on_ai_model_changed(self, event):
+        self._refresh_ai_devices()
+        self._update_ai_controls()
+
+    def _update_ai_controls(self):
+        enabled = self._ai_enabled()
+        has_model = enabled and self._selected_ai_provider_id() is not None
+        busy = self._ai_jobs is not None and self._ai_jobs.is_busy()
+        running = busy and self._ai_jobs.state in (ai_jobs.AIJobState.PREPARING, ai_jobs.AIJobState.RUNNING)
+        for widget in (self.rb_ai_positive, self.rb_ai_negative, self.btn_ai_pick_point, self.btn_ai_cursor_point,
+                       self.btn_ai_corner1, self.btn_ai_corner2, self.btn_ai_clear):
+            widget.Enable(enabled)
+        self.choice_ai_model.Enable(has_model)
+        self.choice_ai_device.Enable(has_model)
+        self.btn_ai_run.Enable(has_model and not busy)
+        self.btn_ai_cancel.Enable(running)
+        self._update_ai_prompt_label()
+
+    def _update_ai_prompt_label(self):
+        prompts = self._ai_prompts
+        if not self._ai_enabled():
+            self.lbl_ai_prompts.SetLabel("")
+            return
+        if prompts.box is not None:
+            box = _("set")
+        elif prompts.corner1 is not None or prompts.corner2 is not None:
+            box = _("one corner")
+        else:
+            box = _("none")
+        self.lbl_ai_prompts.SetLabel(_("Points: {inside} inside, {excluded} excluded · Box: {box}").format(
+            inside=prompts.positive_count, excluded=prompts.negative_count, box=box))
+
+    def _ai_volume_geometry(self):
+        """(spacing_xyz, shape_zyx) of the loaded volume, or None."""
+        from ..interface.project_interface import ProjectInterface
+
+        pi = ProjectInterface()
+        volume = pi.get_volume_data()
+        if volume is None:
+            return None
+        return pi.get_spacing(), tuple(volume.shape)
+
+    def _ai_add_prompt(self, world_slice, corner=None):
+        """world_slice: slice-frame (x, y, z) mm - core/coordinates.py."""
+        geometry = self._ai_volume_geometry()
+        if geometry is None:
+            self.lbl_ai_status.SetLabel(_("No project loaded."))
+            return
+        spacing, shape = geometry
+        try:
+            if corner is None:
+                self._ai_prompts.add_point(world_slice, spacing, shape, self.rb_ai_positive.GetValue())
+            else:
+                self._ai_prompts.set_corner(corner, world_slice, spacing, shape)
+        except PromptOutOfVolume as e:
+            print(f"ROI Viewer: AI prompt ignored - {e}")
+            self.lbl_ai_status.SetLabel(_("Outside the image volume - ignored."))
+            return
+        self._update_ai_prompt_label()
+
+    def _ai_cursor_position(self):
+        position = self.controller.get_crosshair_position()
+        if position is None:
+            self.lbl_ai_status.SetLabel(_("No 2D cursor position yet - click a 2D view first."))
+        return position
+
+    def _on_ai_toggle_pick_point(self, event):
+        if not self.btn_ai_pick_point.GetValue():
+            self.controller.picker.remove_callback(self._on_ai_point_picked)
+            return
+        if not self.controller.ensure_picker_initialized():
+            self.btn_ai_pick_point.SetValue(False)
+            self.lbl_ai_status.SetLabel(_("No 3D view available yet"))
+            return
+        self.controller.picker.add_callback(self._on_ai_point_picked)
+        self.controller.picker.enable()
+        self.lbl_ai_status.SetLabel(_("Click a point in the 3D view..."))
+
+    def _on_ai_point_picked(self, world_point):
+        """Picker callback (one-shot). The pick is in the y-flipped 3D view
+        frame; prompts are stored in the slice frame."""
+        import math
+
+        from ..core.coordinates import view_to_slice
+
+        self.controller.picker.remove_callback(self._on_ai_point_picked)
+        wx.CallAfter(self.btn_ai_pick_point.SetValue, False)
+        if world_point is None or len(world_point) != 3 or not all(math.isfinite(c) for c in world_point):
+            self.lbl_ai_status.SetLabel(_("Invalid pick position - try again"))
+            return
+        self._ai_add_prompt(view_to_slice(world_point))
+
+    def _on_ai_cursor_point(self, event):
+        position = self._ai_cursor_position()
+        if position is not None:
+            self._ai_add_prompt(position)
+
+    def _on_ai_corner(self, which):
+        position = self._ai_cursor_position()
+        if position is not None:
+            self._ai_add_prompt(position, corner=which)
+
+    def _on_ai_clear(self, event):
+        self._ai_prompts.clear()
+        self._update_ai_prompt_label()
+
+    def _on_ai_run(self, event):
+        import time
+
+        import invesalius.data.slice_ as sl
+        from ..core.ai.types import AIInferenceRequest, read_only_volume
+        from ..interface.project_interface import ProjectInterface
+
+        pid = self._selected_ai_provider_id()
+        provider = self._ai_registry.get(pid) if (pid and self._ai_registry is not None) else None
+        if provider is None or self._ai_jobs is None:
+            self.lbl_ai_status.SetLabel(_("No compatible AI model."))
+            return
+        if self._ai_jobs.is_busy():
+            self.lbl_ai_status.SetLabel(_("The previous AI job is still stopping - try again shortly."))
+            return
+        if sl.Slice().current_mask is None:
+            wx.MessageBox(
+                _("Create or select a mask first - the preview overlay needs a current mask."),
+                _("No mask selected"), wx.OK | wx.ICON_WARNING,
+            )
+            return
+        pi = ProjectInterface()
+        volume = pi.get_volume_data()
+        if volume is None:
+            self.lbl_ai_status.SetLabel(_("No project loaded."))
+            return
+        spacing = pi.get_spacing()
+        request = AIInferenceRequest(volume=read_only_volume(volume, spacing), prompts=self._ai_prompts.snapshot(),
+                                     device=self._selected_ai_device())
+
+        # A new preview replaces the current one (as for Otsu/Region Growing).
+        self._clear_preview_overlay()
+        self.preview_mgr.cancel()
+        self._ai_preview_generation = self.preview_mgr.new_generation()
+        info = self._ai_registry.info(pid)
+        self._ai_run = {
+            "provider_id": pid, "provider_name": info.display_name if info else pid,
+            "prompt_count": request.prompts.count, "device": request.device,
+            "shape": tuple(volume.shape), "spacing": spacing, "started": time.perf_counter(),
+        }
+        self.lbl_preview_status.SetLabel(_("Computing…"))
+        job = self._ai_jobs.start(provider, request)
+        if job is None:
+            self.preview_mgr.cancel()
+            self.lbl_preview_status.SetLabel(_("Idle"))
+        self._update_preview_buttons()
+        self._update_ai_controls()
+
+    def _on_ai_cancel(self, event):
+        if self._ai_jobs is None:
+            return
+        self._ai_jobs.cancel()
+        if (self._ai_preview_generation is not None
+                and not self.preview_mgr.is_stale(self._ai_preview_generation)
+                and self.preview_mgr.state == segmentation_preview.PreviewState.COMPUTING):
+            self.preview_mgr.cancel()
+            self.lbl_preview_status.SetLabel(_("Idle"))
+            self._update_preview_buttons()
+        self.lbl_ai_status.SetLabel(_("AI processing cancelled."))
+        self._update_ai_controls()
+
+    def _on_ai_event(self, event, job, payload):
+        """Job controller listener - GUI thread only (see core/ai/job_controller.py)."""
+        try:
+            if event == ai_jobs.EVENT_STATE:
+                if payload == ai_jobs.AIJobState.PREPARING:
+                    self.lbl_ai_status.SetLabel(_("Preparing…"))
+                elif payload == ai_jobs.AIJobState.RUNNING:
+                    self.lbl_ai_status.SetLabel(_("Running AI…"))
+                elif payload == ai_jobs.AIJobState.CANCELLING:
+                    self.lbl_ai_status.SetLabel(_("Stopping AI…"))
+                self._update_ai_controls()
+            elif event == ai_jobs.EVENT_PROGRESS:
+                fraction = max(0.0, min(1.0, payload[0]))
+                self.lbl_ai_status.SetLabel(_("Running AI… {percent}%").format(percent=int(round(fraction * 100))))
+            elif event == ai_jobs.EVENT_RESULT:
+                self._on_ai_result(job, payload)
+            elif event == ai_jobs.EVENT_FAILED:
+                self._on_ai_failed(payload)
+        except RuntimeError as e:  # widget already destroyed during shutdown
+            print(f"ROI Viewer: AI UI update skipped - {e}")
+
+    def _on_ai_failed(self, error):
+        # A string is a request-check code; an exception is a provider failure.
+        self.lbl_ai_status.SetLabel(
+            self._ai_request_message(error) if isinstance(error, str) else _("AI processing failed."))
+        if self._ai_jobs is not None:
+            self._ai_jobs.consume_result()
+        if self._ai_preview_generation is not None and not self.preview_mgr.is_stale(self._ai_preview_generation):
+            self.preview_mgr.cancel()
+            self.lbl_preview_status.SetLabel(_("Idle"))
+        self._update_preview_buttons()
+        self._update_ai_controls()
+
+    def _on_ai_result(self, job, result):
+        """A current (not stale) AI result: validate it on the native grid
+        and show it as an E2 preview. No mask is created here."""
+        import os
+        import time
+
+        import invesalius.data.slice_ as sl
+
+        self._ai_jobs.consume_result()
+        run = self._ai_run or {}
+        if self._ai_preview_generation is None or self.preview_mgr.is_stale(self._ai_preview_generation):
+            print("ROI Viewer: discarded AI result - its preview was cancelled or replaced")
+            self._update_ai_controls()
+            return
+        try:
+            foreground = ai_bridge.validate_candidate(result.mask, run.get("shape"))
+        except ai_bridge.CandidateError as e:
+            print(f"ROI Viewer: AI result rejected - {e}")
+            self.lbl_ai_status.SetLabel(self._ai_candidate_message(e.code))
+            self.preview_mgr.cancel()
+            self.lbl_preview_status.SetLabel(_("Idle"))
+            self._update_preview_buttons()
+            self._update_ai_controls()
+            return
+        runtime = time.perf_counter() - run.get("started", time.perf_counter())
+        if not foreground.any():
+            self.lbl_ai_status.SetLabel(_("AI found no region."))
+            self.preview_mgr.cancel()
+            self.lbl_preview_status.SetLabel(_("Idle"))
+            self._update_preview_buttons()
+            self._update_ai_controls()
+            return
+
+        temp_file, array = sl.Slice().create_temp_mask()
+        array[:] = ai_bridge.preview_values(foreground)
+        stats = self.controller.seg_mgr.region_stats(foreground, run.get("spacing"))
+        metadata = {
+            "provider_id": run.get("provider_id"), "provider_name": run.get("provider_name"),
+            "model_name": result.model_name, "model_version": result.model_version,
+            "device": result.device_used or run.get("device"), "runtime_seconds": runtime,
+            "prompt_count": run.get("prompt_count", 0),
+        }
+        if not self.preview_mgr.set_ai_preview(self._ai_preview_generation, array, metadata, stats, name="AI Preview"):
+            try:
+                os.remove(temp_file)
+            except OSError:
+                pass
+            return
+        self._preview_temp_file = temp_file
+        self._show_preview_overlay(array)
+        self.lbl_preview_status.SetLabel(_("AI preview: {info}.").format(info=self._region_info(stats)))
+        self.lbl_ai_status.SetLabel(_("Done in {seconds} s.").format(seconds=fmt_float(runtime, 1)))
+        print(f"ROI Viewer: AI preview ready - {metadata}")
+        self._update_preview_buttons()
+        self._update_ai_controls()
+        self._mark_preview_3d_dirty("AI preview ready")
+
+    def _commit_ai_preview(self, preview_array) -> Optional[str]:
+        """Accept: the previewed candidate itself becomes a new real mask
+        (core/native_mask.commit_preview_array_to_new_mask - the same commit
+        Region Growing uses). Returns the name, or None on failure."""
+        try:
+            import numpy as np
+            import invesalius.constants as const
+            from ..interface.project_interface import ProjectInterface
+
+            mask_count = len(ProjectInterface().get_mask_dict())
+            colour = const.MASK_COLOUR[mask_count % len(const.MASK_COLOUR)]
+            name = f"AI Segmentation {mask_count + 1}"
+            mask = native_mask.commit_preview_array_to_new_mask(np.asarray(preview_array) > 0, name, colour)
+            return name if mask is not None else None
+        except Exception as e:
+            print(f"ROI Viewer: committing AI preview failed - {e}")
+            return None
+
+    def shutdown_ai(self):
+        """Plugin close / destroy: no AI callback may reach this panel
+        afterwards (a late result is dropped), models are released.
+        Idempotent."""
+        self.controller.picker.remove_callback(self._on_ai_point_picked)
+        if self._ai_jobs is not None:
+            self._ai_jobs.shutdown()
+        if self._ai_registry is not None:
+            self._ai_registry.close_all()
+        self._ai_prompts.clear()
+
+    def reset_ai_session(self):
+        """Project close/load: stop any AI job, forget prompts, release
+        provider resources. The AI checkbox keeps its state."""
+        self.controller.picker.remove_callback(self._on_ai_point_picked)
+        if self._ai_jobs is not None:
+            self._ai_jobs.cancel()
+        if self._ai_registry is not None:
+            self._ai_registry.close_all()
+        self._ai_prompts.clear()
+        self._ai_run = None
+        try:
+            self.btn_ai_pick_point.SetValue(False)
+            self._update_ai_controls()
+        except RuntimeError as e:
+            print(f"ROI Viewer: AI widget reset skipped (likely app shutdown) - {e}")
 
     # ------------------------------------------------------------------
     # Undo / Redo of the real current mask
@@ -1280,6 +1752,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # seed-pick callback registered on the shared picker pointing
         # back into this (about to be destroyed) panel.
         self.controller.picker.remove_callback(self._on_seed_picked)
+        self.shutdown_ai()  # E6 - already done by the frame's close handler; idempotent
         # E2: always clear any active/pending preview on destroy,
         # regardless of brush state - same "never leave native/plugin
         # state stuck across a close" reasoning as the brush cleanup
@@ -1379,6 +1852,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             return _("Otsu preview")
         if kind == "region_growing_preview":
             return _("Region growing preview")
+        if kind == "ai_preview":
+            return _("AI preview")
         return _("Current ROI")
 
     def _apply_visibility_changes(self, changes):
@@ -1917,7 +2392,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.preview_mgr.state == segmentation_preview.PreviewState.PREVIEW_READY
             and self.preview_mgr.preview_array is not None
         ):
-            kind = "otsu_preview" if self.preview_mgr.preview_kind == "otsu" else "region_growing_preview"
+            kind = {"otsu": "otsu_preview", "ai": "ai_preview"}.get(
+                self.preview_mgr.preview_kind, "region_growing_preview")
             return self.preview_mgr.preview_array, spacing, kind
 
         mask = self._current_mask()

@@ -174,6 +174,7 @@ def test_advanced_sections_collapsed_by_default():
     try:
         panes = {w.GetLabel(): w.IsCollapsed() for w in _walk(fresh) if isinstance(w, wx.CollapsiblePane)}
         assert panes == {
+            "Phân đoạn AI (thử nghiệm)": True,  # E6 (30/09/2026)
             "Hậu xử lý (ROI hiện tại)": True,
             "Chỉnh sửa thủ công (cọ vẽ)": True,
             "Xem trước 3D thời gian thực (thử nghiệm)": True,

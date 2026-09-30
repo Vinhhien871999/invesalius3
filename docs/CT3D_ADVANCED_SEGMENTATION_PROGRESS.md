@@ -156,7 +156,27 @@ Label mapping for older docs and Manual QA steps: `docs/HUONG_DAN_SU_DUNG_ROI_VI
 
 Found while auditing the commit path E6 Accept reuses. Three real defects (commit lost voxels on the first view of a coronal/sagittal slice; whole-mask reads skipped the native lazy-threshold completion; brush-erased voxels counted as foreground) fixed through one module, `core/native_mask.py`, used by Region Growing commit, E2 Region Growing Accept, E3 cleanup, E4 Current ROI, Measure Volume and NumPy/NRRD export. `tests/ct3d/test_native_mask_contract.py` (10 tests; the 7 handler-level ones fail on the pre-fix code with value mismatches, e.g. Measure Volume 54.4 vs 210.4 mm³). Report: `docs/CT3D_NATIVE_MASK_CONTRACT_FIX_REPORT.md`. Stable `ct3d-rc1` keeps the defects (documented known issue).
 
-## E6 / E6b — AI segmentation architecture / TotalSegmentator
+## E6 — AI segmentation architecture (30/09/2026)
+
+| ID | Feature | Implementation | Tests | Manual | Status |
+|---|---|---|---|---|---|
+| E6.1 | Feature flag, default OFF | `core/ai.ENABLE_AI_SEGMENTATION = False`; checkbox "Bật phân đoạn AI (thử nghiệm)"; nothing loaded while off | `test_ai_ui_state.py`, `test_ai_provider.py` | E6-A/L `NOT_RUN` | **WORKING** |
+| E6.2 | Provider abstraction + info | `core/ai/provider.py`, `types.AIProviderInfo` | `test_ai_provider.py` | — | **WORKING** |
+| E6.3 | Registry, isolation, optional deps | `core/ai/registry.py`, `KNOWN_PROVIDER_MODULES = ()` | `test_ai_provider.py` (incl. fresh-interpreter import check) | E6-C/D `NOT_RUN` | **WORKING** |
+| E6.4 | Prompts (points, box) | `core/ai/prompts.py` on `core/coordinates.py` | `test_ai_prompts.py` | E6-E/F/G/H `NOT_RUN` | **WORKING** |
+| E6.5 | Job controller, cancel, generation guard | `core/ai/job_controller.py` | `test_ai_job_controller.py` | E6-I `NOT_RUN` | **WORKING** |
+| E6.6 | Candidate validation | `core/ai/preview_bridge.py` | `test_ai_preview_integration.py` | — | **WORKING** |
+| E6.7 | E2 / E4 reuse, Accept == Preview | `set_ai_preview()`, E4 source "ai_preview", shared native commit | `test_ai_preview_integration.py` (23) | — | **WORKING** |
+| E6.8 | Lifecycle, Save/Open | `reset_ai_session()`, `shutdown_ai()`; `.inv3` round-trip test | `test_ai_preview_integration.py` | E6-J/K `NOT_RUN` | **WORKING** |
+| E6.9 | Real AI inference | no production provider | — | `BLOCKED_NO_REAL_PROVIDER` | **NOT AVAILABLE** |
+
+`tests/ct3d` **540 passed / 1 skipped / 0 failed** ×3; upstream 94; pyflakes/compileall/diff-check clean. **E6_GATE: PASS** = AI ARCHITECTURE READY, not AI MODEL READY. Report: `docs/CT3D_ADVANCED_E6_AI_ARCHITECTURE_REPORT.md`.
+
+## E6b — TotalSegmentator
+
+`PLANNED`, not started. Readiness assessed in the E6 report §10 (architecture READY; Python/PyTorch install, model-path config, NIfTI affine for InVesalius's grid and label→binary selection to be done in E6b). *[Updated 30/09/2026: this section used to say E6 was blocked by the E5 gate.]*
+
+## E6 / E6b — history
 
 `PLANNED`. Not started. **E6 / E6b must not start until E1-E5 are stable and the E5 gate is `PASS`** (the E5 gate is currently `PARTIAL` - see above; E6 is therefore blocked by the roadmap's own "a milestone does not start until the previous one's gate is `PASS`" rule). *[Corrected 28/09/2026, E5 finalization: previously read "not to start before E1-E4 are stable", stale once E5 existed.]* No model weights, no fake/mock inference results, no claimed support until real inference has actually succeeded. Default OFF via `ENABLE_AI_SEGMENTATION` when eventually scaffolded.
 
@@ -167,7 +187,7 @@ Found while auditing the commit path E6 Accept reuses. Three real defects (commi
 | `ENABLE_ADVANCED_ROI` | — | **Not introduced as an explicit flag** - E1's new controls live inside the existing "Segmentation Set" box, additive to (not replacing) the classic Rename/Delete/visibility controls, and every new action (lock/solo/show-all/hide-all) is purely opt-in per-click. A dedicated on/off flag was judged unnecessary risk-wise for E1 specifically (nothing it added can silently change classic-workflow behavior when unused) - this decision, and whether later milestones need one, is revisited per-milestone. |
 | `ENABLE_PREVIEW_SEGMENTATION` | **OFF** | **IMPLEMENTED / WORKING** — realized as the real `cb_enable_preview` checkbox ("Enable Preview Workflow") in `gui/segmentation_panel.py`, unchecked by default. With it unchecked, `btn_preview_otsu`/`btn_preview_region_growing` stay disabled and `_on_seed_picked()` takes its original immediate-grow branch - see `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`'s "E2 Preview Architecture" section and `docs/CT3D_ADVANCED_E2_PREVIEW_REPORT.md` §5-6. **[Corrected 24/09/2026, E3 run]**: this row previously read "OFF (once E2 exists) / not yet introduced" - stale, left over from before E2 was implemented; E2 landed with this flag real and working, but this table was never updated to match. |
 | `ENABLE_LIVE_3D_PREVIEW` | **OFF** | **IMPLEMENTED / WORKING** — realized as the real `cb_enable_live_3d_preview` checkbox ("Enable Live 3D Preview") in `gui/segmentation_panel.py`, unchecked by default. With it unchecked, no worker thread is spawned, no actor is attached, and behavior is identical to pre-E4. See `docs/CT3D_ADVANCED_SEGMENTATION_ARCHITECTURE.md`'s "E4 Live 3D Preview Architecture" section and `docs/CT3D_ADVANCED_E4_LIVE_3D_PREVIEW_REPORT.md`. **[Corrected 25/09/2026, E5 run]**: this row previously read "OFF (once E4 exists) / not yet introduced" - stale, left over from before E4 was implemented; E4 landed with this flag real and working, but this table was never updated to match. |
-| `ENABLE_AI_SEGMENTATION` | OFF (once E6 exists) | not yet introduced |
+| `ENABLE_AI_SEGMENTATION` | **OFF** | **IMPLEMENTED** (E6, 30/09/2026) — `plugins/roi_viewer/core/ai/__init__.py`, the default of the "Bật phân đoạn AI (thử nghiệm)" checkbox. Off: no registry, no provider import, no AI thread |
 
 ## Run log
 
@@ -188,3 +208,4 @@ One row per development/validation run on this branch - including runs that chan
 | 30/09/2026 | Pre-E6 product polish: UI/UX + Vietnamese localization | `4d0ca6e5` + docs commit | 446 / 1 | 94 | 6 workflow tabs, 4 collapsible advanced sections, 237/237 msgids Vietnamese, 0 English labels at runtime (except documented neutral terms), no backend change. UI-A..UI-J `NOT_RUN`; E5-A PASS; E5-B/C/D/E/J/K/L `RETEST_REQUIRED`; E5_GATE PARTIAL; E6 blocked |
 | 30/09/2026 | Pre-E6 validation: E5 closure | E5 closure commit (see `git log`) | 456 / 1 | 94 | Rendered texture-orientation proof added (10 tests); operator group-level confirmation of E4 + E5 texture/clipping recorded; **E5_GATE PASS**; manual E5-B/C/D/E/J/K/L still `RETEST_REQUIRED` |
 | 30/09/2026 | Pre-E6 fix: native mask read/write contract | native-mask commit (see `git log`) | 465 / 1 | 94 | Commit/cleanup/E4/measure/export follow InVesalius's lazy-threshold, sentinel and foreground rules; 10 new tests (7 fail on pre-fix code). Manual E2-G/E3/E4 items to be run on this build |
+| 30/09/2026 | E6 - AI segmentation architecture | E6 commit (see `git log`) | 540 / 1 | 94 | **E6_GATE PASS** (architecture only). No production provider; real inference `BLOCKED_NO_REAL_PROVIDER`; E6-A..L `NOT_RUN`; E6b not started |

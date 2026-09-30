@@ -7,7 +7,7 @@
 > | Phạm vi | Nhánh / tag | Nội dung |
 > |---|---|---|
 > | **Bản ổn định (stable baseline)** | `thesis-ct-roi-tools` / tag **`ct3d-rc1`** | Phần mềm sau Phase 14 (`CT3D_P14_FINAL_AUDIT_REPORT`, 17/09/2026), gồm C8 mặt phẳng 2D→3D (`core/slice_planes_3d.SlicePlanes3D`, Phase 13.5). Mọi mục **không** gắn nhãn "chỉ nhánh `enhancement/advanced-segmentation`" thuộc phạm vi này. **Giao diện bản ổn định vẫn là tiếng Anh, 5 tab** — xem bảng đối chiếu tên nút ở mục 1.2. |
-> | **Nhánh nâng cao (enhancement-only)** | `enhancement/advanced-segmentation` | Các mục gắn nhãn **"chỉ nhánh `enhancement/advanced-segmentation`"**: hiện gồm **E1–E5** (2.3, 2.4, 3.1 phần Khóa/Chỉ hiện, 3.3, 4.3), sửa lỗi toạ độ 3D↔voxel (mục 8) và **giao diện tiếng Việt, 6 tab sắp theo quy trình làm việc** (30/09/2026). **Tag `ct3d-rc1` KHÔNG chứa E1–E5, không chứa sửa lỗi toạ độ và không có giao diện tiếng Việt.** |
+> | **Nhánh nâng cao (enhancement-only)** | `enhancement/advanced-segmentation` | Các mục gắn nhãn **"chỉ nhánh `enhancement/advanced-segmentation`"**: hiện gồm **E1–E6** (2.3, 2.4, 2.7, 3.1 phần Khóa/Chỉ hiện, 3.3, 4.3), sửa lỗi toạ độ 3D↔voxel (mục 8) và **giao diện tiếng Việt, 6 tab sắp theo quy trình làm việc** (30/09/2026). **Tag `ct3d-rc1` KHÔNG chứa E1–E6, không chứa sửa lỗi toạ độ và không có giao diện tiếng Việt.** |
 >
 > **Tên nút trong tài liệu này là tên trên nhánh `enhancement/advanced-segmentation`** (tiếng Việt). Lần đầu nhắc tới một chức năng, tên tiếng Anh cũ ghi trong ngoặc, ví dụ "Phát triển vùng (Region Growing)"; sau đó chỉ dùng tên tiếng Việt.
 >
@@ -48,13 +48,13 @@ Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở 
 
 | Tab | Nội dung | Mục |
 |---|---|---|
-| **Phân đoạn** | Tạo mặt nạ (Ngưỡng, Phát triển vùng) → Xem trước / Chấp nhận → Hậu xử lý → Chỉnh sửa thủ công → Lịch sử chỉnh sửa | 2 |
+| **Phân đoạn** | Tạo mặt nạ (Ngưỡng, Phát triển vùng, Phân đoạn AI) → Xem trước / Chấp nhận → Hậu xử lý → Chỉnh sửa thủ công → Lịch sử chỉnh sửa | 2 |
 | **ROI & 3D** | Quản lý ROI (danh sách, đổi tên, xóa, khóa, chỉ hiện ROI này, hiện/ẩn tất cả) và Bề mặt 3D (cập nhật bề mặt cuối, xem trước 3D thời gian thực) | 3 |
 | **Tương tác & Hiển thị** | Đồng bộ 2D – 3D, Chọn điểm 3D, Hiển thị 3D nâng cao (ảnh lát cắt trên mặt phẳng 3D, cắt hiển thị 3D) | 4 |
 | **Đo lường** / **Ghi chú** / **Xuất dữ liệu** | Như bản ổn định, chỉ đổi sang tiếng Việt | 5, 6, 7 |
 
 - Đầu tab **Phân đoạn** có dòng gợi ý quy trình: *"1. Tạo / xem trước → 2. Chấp nhận → 3. Hậu xử lý → 4. Cập nhật bề mặt 3D"*, và dòng **"ROI hiện tại:"** cho biết thao tác sẽ áp dụng lên ROI nào.
-- Các mục nâng cao/thử nghiệm được **thu gọn mặc định** (bấm vào tiêu đề có mũi tên để mở): *Hậu xử lý (ROI hiện tại)*, *Chỉnh sửa thủ công (cọ vẽ)*, *Xem trước 3D thời gian thực (thử nghiệm)*, *Hiển thị 3D nâng cao (thử nghiệm)*. Khi thu gọn, tab **Phân đoạn** vừa một màn hình; khi mở, chỉ có thanh cuộn dọc (không có thanh cuộn ngang).
+- Các mục nâng cao/thử nghiệm được **thu gọn mặc định** (bấm vào tiêu đề có mũi tên để mở): *Phân đoạn AI (thử nghiệm)*, *Hậu xử lý (ROI hiện tại)*, *Chỉnh sửa thủ công (cọ vẽ)*, *Xem trước 3D thời gian thực (thử nghiệm)*, *Hiển thị 3D nâng cao (thử nghiệm)*. Khi thu gọn, tab **Phân đoạn** vừa một màn hình; khi mở, chỉ có thanh cuộn dọc (không có thanh cuộn ngang).
 - Các tính năng thử nghiệm vẫn **TẮT mặc định** như trước (Xem trước, Xem trước 3D thời gian thực, ảnh lát cắt trên mặt phẳng 3D, cắt hiển thị 3D).
 - Đã bỏ 2 khung **không có tác dụng thật** ở tab Interaction cũ: "Real-time Update / Update delay (ms)" (chỉ lưu giá trị, không nơi nào dùng) và "Brush Mode / Brush Size" (bản sao chỉ để tham chiếu; cọ vẽ thật nằm ở mục 2.5).
 - Số hiển thị theo kiểu Việt Nam: `152.340 voxel`, `0,08 s`.
@@ -165,6 +165,23 @@ Mục thu gọn — bấm tiêu đề **"Chỉnh sửa thủ công (cọ vẽ)"*
 - **Lưu điểm khôi phục**: lưu lại trạng thái hiện tại của mặt nạ đang chọn (làm mốc để quay lại).
 - **Hoàn tác / Làm lại**: khôi phục/làm lại — hoạt động trên **toàn bộ ma trận voxel thật** của mặt nạ, nên **hoàn tác được cả những gì vừa vẽ bằng brush gốc của InVesalius**, không chỉ thao tác qua plugin.
 - Dòng trạng thái cuối tab (mặc định *"Sẵn sàng."*) báo kết quả: *"Đã lưu điểm khôi phục."*, *"Đã hoàn tác."*, *"Không có gì để hoàn tác."*, *"ROI đang bị khóa."*...
+
+### 2.7 (chỉ nhánh `enhancement/advanced-segmentation`) — Phân đoạn AI (thử nghiệm) (AI segmentation, E6)
+
+> **Chỉ có trên nhánh `enhancement/advanced-segmentation`.** Mục thu gọn, **mặc định TẮT**. Hiện **chưa có mô hình AI nào đi kèm**: E6 chỉ là *kiến trúc* để sau này gắn mô hình (ví dụ TotalSegmentator ở E6b). Khi bật, nếu chưa cài mô hình, giao diện báo **"Chưa có mô hình AI tương thích."** và nút "Xem trước bằng AI" bị khóa — đây là hành vi đúng, không phải lỗi. Plugin **không bao giờ tự tải mô hình hay tự cài thư viện**.
+
+**Nguyên tắc**: kết quả AI **chỉ là bản xem trước** (lớp phủ màu cam giống mục 2.3, hiện cả trong Xem trước 3D nếu đang bật). Mặt nạ thật chỉ được tạo khi bấm **Chấp nhận** trong khung **Xem trước**, và mặt nạ đó **đúng từng voxel** với bản xem trước (không chạy lại mô hình). **Hủy xem trước** thì không tạo gì.
+
+**Cách dùng (khi đã có mô hình)**:
+1. Mở mục **"Phân đoạn AI (thử nghiệm)"**, tick **"Bật phân đoạn AI (thử nghiệm)"**, chọn **Mô hình** và **Thiết bị** (Tự động / CPU / CUDA — chỉ hiện thiết bị mô hình hỗ trợ).
+2. Chọn **Kiểu điểm**: **Thuộc vùng** (điểm nằm trong cấu trúc cần tách) hoặc **Loại trừ**.
+3. Thêm điểm: **"Chọn điểm (3D)"** rồi nhấp lên khối 3D, hoặc đưa con trỏ 2D tới vị trí rồi bấm **"Điểm tại con trỏ 2D"**.
+4. (Tùy chọn) **Hộp giới hạn**: đưa con trỏ 2D tới một góc → **"Chọn góc 1"**, tới góc đối diện → **"Chọn góc 2"**.
+5. Dòng tóm tắt cho biết số điểm và trạng thái hộp; **"Xóa điểm AI"** để làm lại. Điểm nằm ngoài khối ảnh bị bỏ qua (không tự kéo vào mép).
+6. Bấm **"Xem trước bằng AI"** (cần có một mặt nạ hiện hành, như mục 2.3). Mô hình chạy nền, giao diện không bị treo; **"Hủy xử lý AI"** để dừng — kết quả đến muộn sẽ bị bỏ.
+7. Kiểm tra lớp phủ → **Chấp nhận** (tạo mặt nạ mới "AI Segmentation N", có thể hậu xử lý mục 2.4 như mặt nạ thường) hoặc **Hủy xem trước**.
+
+**Lưu ý**: điểm/hộp AI chỉ tồn tại trong phiên làm việc (không lưu vào dự án, bị xóa khi đóng/mở dự án hoặc đóng plugin). ROI đang Khóa vẫn chạy AI được vì AI chỉ tạo ứng viên mới; Chấp nhận tạo ROI mới, không khóa. Ảnh lát cắt trên mặt phẳng 3D / cắt hiển thị (mục 4.3) không ảnh hưởng kết quả AI — AI đọc trực tiếp khối ảnh gốc (giá trị HU với CT). Chi tiết kỹ thuật: `CT3D_ADVANCED_E6_AI_ARCHITECTURE_REPORT.md`.
 
 ---
 

@@ -62,7 +62,7 @@ class SegmentationPreviewManager:
         self.generation_id: int = 0
 
         self.preview_array = None  # real (memmap) or fake (plain ndarray) - opaque to this module
-        self.preview_kind: Optional[str] = None  # "otsu" | "region_growing"
+        self.preview_kind: Optional[str] = None  # "otsu" | "region_growing" | "ai" (E6)
         self.preview_name: Optional[str] = None  # suggested name for the eventual final mask
 
         # Otsu-specific
@@ -73,6 +73,9 @@ class SegmentationPreviewManager:
         self.seed_voxel: Optional[Tuple[int, int, int]] = None
         self.tolerance: Optional[int] = None
         self.stats: Optional[dict] = None  # SegmentationManager.region_stats() result
+        # E6: provider, model/version, device, runtime, prompt count of an
+        # "ai" preview - display/record only, never used to recompute.
+        self.ai_metadata: Optional[dict] = None
 
     # ------------------------------------------------------------------
     # Starting / rejecting async computations
@@ -122,6 +125,21 @@ class SegmentationPreviewManager:
         self.state = PreviewState.PREVIEW_READY
         return True
 
+    def set_ai_preview(self, generation_id: int, array, metadata: dict, stats: dict, name: str) -> bool:
+        """E6: an AI candidate, already validated on the native grid
+        (core/ai/preview_bridge.py). Same generation guard as the other
+        kinds - a stale AI result is dropped. Returns False if stale."""
+        if self.is_stale(generation_id):
+            return False
+        self._reset_metadata()
+        self.preview_array = array
+        self.preview_kind = "ai"
+        self.preview_name = name
+        self.stats = stats
+        self.ai_metadata = dict(metadata)
+        self.state = PreviewState.PREVIEW_READY
+        return True
+
     def _reset_metadata(self):
         """Shared by set_*_preview() - clears every field before setting
         the new preview's own subset, so a stale otsu field can never
@@ -134,6 +152,7 @@ class SegmentationPreviewManager:
         self.seed_voxel = None
         self.tolerance = None
         self.stats = None
+        self.ai_metadata = None
 
     # ------------------------------------------------------------------
     # Cancel / Accept

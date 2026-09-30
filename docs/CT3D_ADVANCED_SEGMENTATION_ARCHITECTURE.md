@@ -498,3 +498,17 @@ All whole-mask reads and writes go through `plugins/roi_viewer/core/native_mask.
 - **Write** (`write_logical_region`): exactly 0/255, all three "slice computed" flag planes set (`matrix[0]`, `[:,0]`, `[:,:,0]` = 1, as native whole-volume writes do), `was_edited = True`, 2D slice buffers discarded. Setting only the axial flags (the old code) let `get_mask_slice()` re-threshold coronal/sagittal planes on first view and erase committed data.
 - **Commit** (`commit_preview_array_to_new_mask`): shape check before anything is created → native "Create new mask" → `write_logical_region`. The one commit path for computed candidates: Region Growing (classic, E2 Accept) and E6 AI Accept. E2 Otsu Accept keeps the native threshold commit.
 - `_refresh_after_edit()` discards the 2D slice buffers before "Reload actual slice".
+
+---
+
+# E6 AI Segmentation Architecture — 30/09/2026
+
+Full writeup: `docs/CT3D_ADVANCED_E6_AI_ARCHITECTURE_REPORT.md`.
+
+- **Not a separate subsystem.** Pipeline: `Slice().matrix` (read-only view) → `AISegmentationProvider.infer()` on a worker thread → `preview_bridge.validate_candidate()` (exact native (z, y, x) shape; bool / 0-1 / 0-255; finite; nothing reshaped or thresholded) → `SegmentationPreviewManager.set_ai_preview()` (kind "ai") → same 2D aux overlay as E2 → E4 source "ai_preview" → Accept → `native_mask.commit_preview_array_to_new_mask()` → `Project().mask_dict`. No mask exists before Accept; Accept never re-runs the model.
+- **Package** `core/ai/` has no wx/VTK/Project/Mask access: `types`, `prompts`, `provider`, `registry`, `job_controller`, `preview_bridge`. The panel only orchestrates.
+- **Feature flag** `ENABLE_AI_SEGMENTATION = False` = default of "Bật phân đoạn AI (thử nghiệm)". Off: no registry, no provider import, no controller, no thread.
+- **Providers**: `probe()` / `validate_request()` / `infer(request, progress, cancel_event)` / `close()`; must not create masks, touch Project/wx/VTK or build surfaces; own preprocessing and map back to the native grid; import frameworks lazily; never download/install. Registry isolates import/probe/close failures. `KNOWN_PROVIDER_MODULES = ()` in E6 — no fake production provider.
+- **Prompts**: positive/negative points and a two-corner box, slice-frame world (x, y, z) mm → voxel (z, y, x) with native rounding; out-of-volume rejected, not clamped. 3D picks via `view_to_slice`, corners and cursor points from the 2D crosshair (`ROIViewerFrame.get_crosshair_position()`). Scribble/lasso reserved (PLANNED). Session only.
+- **Jobs**: one worker at a time, no queue; states IDLE/PREPARING/RUNNING/CANCELLING/RESULT_READY/FAILED; `job_id` generation guard; cancel sets the provider's event and invalidates the job, the thread finishes on its own and its result is dropped; results/progress reach the GUI only through `wx.CallAfter`. The E2 preview generation is a second guard (E2 Cancel / a newer preview discard an AI result).
+- **Lifecycle**: project close/load → `reset_ai_session()`; plugin close → `shutdown_ai()` first in `ROIViewerFrame._on_close()` (wx destroys at idle time) and in the panel destroy hook. Nothing serialized.

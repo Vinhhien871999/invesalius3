@@ -607,3 +607,74 @@ With every experimental option left OFF: Tạo mặt nạ (threshold), Phát tri
 **ADVANCED_FULL_MANUAL_QA_COMPLETE: NO** (1/89 passed: E1-E5 1/79 = 0/14 + 0/12 + 0/13 + 0/18 + 1/22, plus UI polish 0/10 - only E5-A, which failed once, was fixed, and passed on operator retest). This is separate from any single milestone's technical gate - even if E5-B/C/D later pass and E5 reaches `PASS`, this stays `NO` until every intended item has actually been run by an operator.
 
 **E5_MANUAL_QA_COMPLETE: NO** (1/22 passed - E5-A: FAIL 29/09 → fixed → PASS 30/09; E5-B/C/D/E/J/K/L `RETEST_REQUIRED` after the coordinate fix; the other 14 `NOT_RUN`; group-level operator statement 30/09/2026 that texture/clipping basically work recorded above, no item changed) — same discipline, same reasoning. Does not block E5's automated gate. *[Updated 30/09/2026: E5-B/C/D were described here as gate-blocking; the gate's texture-orientation criterion is now met by the rendered test `tests/ct3d/test_texture_orientation_render.py` (E5 report, "E5 closure"), so E5-B/C/D are the operator's own visual confirmation, no longer the only available proof.]*
+
+---
+
+## E6 - AI segmentation architecture (30/09/2026)
+
+> Build: the E6 commit or later. **No real AI model is shipped**, so on a normal install the only reachable states are "off" and "no compatible model". Items needing a model (E6-E..I result checks) can only be run once an E6b provider exists; do not mark them PASS from the automated stub-provider tests.
+
+### TEST E6-A — AI off by default
+Open the plugin, tab Phân đoạn, expand "Phân đoạn AI (thử nghiệm)".
+**Expected**: "Bật phân đoạn AI (thử nghiệm)" unticked; every AI control disabled; State "Tắt"; the rest of the tab works as before.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-B — Enable the AI section
+Tick the checkbox.
+**Expected**: point type, point/corner/clear buttons become enabled; no freeze, no error.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-C — No-provider state
+With AI ticked on a standard install.
+**Expected**: State "Chưa có mô hình AI tương thích."; Mô hình "(chưa có)"; "Xem trước bằng AI" disabled.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-D — Missing dependency safe
+On a machine without torch/onnxruntime/etc., open the plugin, tick AI, untick, reopen the plugin.
+**Expected**: no error dialog, no crash, no download or install attempt, startup time unchanged.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-E — Positive point
+Kiểu điểm "Thuộc vùng", then "Chọn điểm (3D)" + click on the surface, and "Điểm tại con trỏ 2D".
+**Expected**: summary counts go up ("Điểm: n thuộc vùng, …"); a point outside the image says "Nằm ngoài khối ảnh - bỏ qua.".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-F — Negative point
+Same with "Loại trừ".
+**Expected**: the "loại trừ" count goes up.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-G — Box prompt
+Move the 2D cursor, "Chọn góc 1"; move again, "Chọn góc 2".
+**Expected**: "Hộp: mới có 1 góc" then "Hộp: đã đặt".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-H — Clear prompts
+"Xóa điểm AI".
+**Expected**: "Điểm: 0 thuộc vùng, 0 loại trừ · Hộp: chưa có".
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-I — Cancel AI (needs a provider)
+Start "Xem trước bằng AI", then "Hủy xử lý AI" (or "Hủy xem trước").
+**Expected**: UI stays responsive; "Đã hủy xử lý AI."; no preview appears later; no mask created.
+**Actual Result**: `NOT_RUN` (`BLOCKED_NO_REAL_PROVIDER`) | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-J — Project close
+With prompts set (and AI running if a provider exists), close the project.
+**Expected**: no crash; prompts cleared; no AI preview left.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-K — Plugin close/reopen
+With AI ticked, close the ROI Viewer window and reopen it.
+**Expected**: no crash; AI back to off; no leftover overlay.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST E6-L — Classic mode with AI off
+Leave AI off; run Threshold, Otsu, Region Growing, brush, Undo/Redo, E1–E5, surface, measurements, annotations, save/open, export.
+**Expected**: same as before E6.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### Real inference
+**`BLOCKED_NO_REAL_PROVIDER`** — no production provider exists (E6 ships none by design). Automated stub-provider tests prove the orchestration only.
+
+**E6_MANUAL_QA_COMPLETE: NOT_RUN** (0/12).

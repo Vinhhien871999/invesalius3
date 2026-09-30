@@ -187,6 +187,13 @@ class ROIViewerFrame(wx.Frame):
 
     def _on_close(self, event):
         try:
+            # E6: stop AI before anything else. wx destroys the window at
+            # idle time, so the panel's own destroy hook comes too late to
+            # stop a wx.CallAfter'd AI result from reaching its widgets.
+            self.segmentation_panel.shutdown_ai()
+        except Exception as e:
+            print(f"ROI Viewer: AI shutdown on close failed - {e}")
+        try:
             self.picker.cleanup()
         except Exception as e:
             print(f"ROI Viewer: picker cleanup on close failed - {e}")
@@ -339,6 +346,8 @@ class ROIViewerFrame(wx.Frame):
         # open-a-different-project flow.
         if hasattr(self, "segmentation_panel"):
             self.segmentation_panel.cancel_preview()
+            # E6: prompts/jobs refer to the old volume's grid.
+            self.segmentation_panel.reset_ai_session()
         # E4: same reasoning - a fast preview mesh built for the OLD
         # project's voxel data is meaningless (wrong shape/coordinate
         # space) once a different project is loaded. detach() (not just
@@ -409,6 +418,8 @@ class ROIViewerFrame(wx.Frame):
             # preview tied to the volume that's now closing must not
             # survive into whatever project (if any) opens next.
             self.segmentation_panel.cancel_preview()
+            # E6: no AI job, prompt or loaded model survives a project close.
+            self.segmentation_panel.reset_ai_session()
         if hasattr(self, "annotation_panel"):
             self.annotation_panel.refresh_from_manager()
         print("ROI Viewer: Project closed")
@@ -438,6 +449,11 @@ class ROIViewerFrame(wx.Frame):
             from ..core.coordinates import view_to_slice
 
             return view_to_slice(picked)
+        return self._last_cross_focal_point
+
+    def get_crosshair_position(self):
+        """E6: the last 2D crosshair position (slice frame), or None - the
+        position "Điểm tại con trỏ 2D" / "Chọn góc 1/2" use."""
         return self._last_cross_focal_point
 
     def on_roi_source_changed(self):

@@ -13,7 +13,7 @@
 | E3 | Segmentation cleanup tools | P1 | **WORKING** (Current ROI target; Active Preview target deferred — see below) |
 | E4 | Fast live 3D preview | P1 | **WORKING** |
 | E5 | Advanced 3D visualization (textured planes, clipping) | P2 | **WORKING** (gate PASS 30/09/2026 after the rendered texture-orientation proof - see below) |
-| E6 | AI segmentation architecture | P2/Experimental | PLANNED |
+| E6 | AI segmentation architecture | P2/Experimental | **WORKING** — gate PASS 30/09/2026 = AI ARCHITECTURE READY; no real model (real inference `BLOCKED_NO_REAL_PROVIDER`) |
 | E6b | TotalSegmentator integration | P3/Experimental | PLANNED |
 
 Each milestone is audited against real source first, implemented, tested, documented, and committed **separately** — never squashed together. A milestone does not start until the previous one's gate is `PASS` (see `docs/CT3D_ADVANCED_SEGMENTATION_PROGRESS.md` for live per-feature status).
@@ -75,3 +75,7 @@ This run implements **E5** (Advanced 3D visualization: E5A textured slice planes
 **E5 finalization (28/09/2026)**: added immediate texture refresh on a native Window/Level change (the original E5 run only proved fresh-data correctness), fixed textured planes being built at the live crosshair instead of C8's frozen plane position when Sync 2D->3D is off, and synchronized docs. No operator evidence for E5-B/C/D was supplied, so **E5 remains `PARTIAL`** and, per the rule above, **E6 is blocked** until the E5 gate is `PASS`.
 
 **E5 closure (30/09/2026)**: after the world↔voxel fix (`7b245865`, `c9f220bd`), the texture orientation was proven by a real rendered test (`tests/ct3d/test_texture_orientation_render.py`: off-screen render + framebuffer read-back in a subprocess; all 3 planes match their voxels; mirrored controls fail). **E5_GATE = PASS**, so E6 may start. Manual E5-B/C/D/E/J/K/L remain operator items (`RETEST_REQUIRED`).
+
+## E6 scope note (30/09/2026)
+
+E6 adds the AI **architecture only** (`plugins/roi_viewer/core/ai/`): provider abstraction, isolated registry (no production provider — `KNOWN_PROVIDER_MODULES` is empty), point/box prompts on the existing coordinate contract, a single-worker job controller with generation guard and cancel, and strict candidate validation. The AI result is an E2 preview (kind "ai"), shown by E4, and Accept commits exactly that preview through the shared `native_mask.commit_preview_array_to_new_mask()`. Default OFF; no AI framework dependency, no weights, no downloads. Before E6, this run closed the E5 gate (rendered texture proof) and fixed the native mask read/write contract. **E6b (TotalSegmentator) was not implemented**; readiness is assessed in `docs/CT3D_ADVANCED_E6_AI_ARCHITECTURE_REPORT.md` §10.
