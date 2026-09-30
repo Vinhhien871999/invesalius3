@@ -132,3 +132,37 @@ E6b-A..E6b-P added to `CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md`, all `NOT_RUN`; 
 | **27 real inference actually succeeded** | **NOT DONE — package and weights absent** |
 
 **`E6b_GATE = PARTIAL_REAL_INFERENCE_PENDING`**, `E6b_IMPLEMENTATION = WORKING_PROVIDER_CODE`. Next: install TotalSegmentator + `total` weights (§10), then run one bounded real inference (e.g. `spleen` or `liver`, GPU, standard) on 0051 and the Accept/E3/E4/surface/Save-Open checks of spec §37–38.
+
+---
+
+## 13. Final completion run (30/09/2026, evening)
+
+### Environment (measured again)
+
+Interpreter running InVesalius: `D:\PyTools\invx-venv\Scripts\python.exe` (Python 3.11.7). torch 2.7.1+cu118, CUDA 11.8 build, `torch.cuda.is_available()` True, 1 device "NVIDIA GeForce RTX 4060 Laptop GPU". nibabel 5.2.1, numpy 1.26.4, scipy 1.14.0, vtk 9.3.0, wxPython 4.2.5, setuptools 65.5.0. **TotalSegmentator and nnunetv2: not installed. No weights.** → `SETUP_REQUIRED`; no real inference possible in this run.
+
+### Dependency audit (pip `--dry-run`, nothing installed)
+
+| Command | Result |
+|---|---|
+| `pip install TotalSegmentator` | resolves TotalSegmentator 2.18.0 + 71 packages and **changes torch 2.7.1+cu118 → 2.14.0 (PyPI, CPU-only on Windows), numpy 1.26.4 → 2.2.6, setuptools 65.5.0 → 84.0.0** — conflicts with InVesalius's pins (`numpy==1.26.4`, `setuptools>=65,<68` for wxPython) and would lose CUDA. **Not acceptable.** |
+| same with `-c tools/ct3d_ai_constraints.txt --extra-index-url https://download.pytorch.org/whl/cu118` | resolves 69 new packages (TotalSegmentator 2.18.0, nnunetv2 2.8.1, torchvision 0.22.1+cu118, SimpleITK, dipy, …) and **changes no installed package** |
+
+`TotalSegmentator` declares `requires_python >=3.9` (3.11.7 OK).
+
+### Installed-version API audit (TotalSegmentator 2.18.0 wheel, read from the wheel, not installed)
+
+- `python_api.totalsegmentator(input, output=None, ml=False, …, fast=False, …, task="total", roi_subset=None, …, quiet=False, …, device="gpu", …)` — every parameter the provider uses exists.
+- **Every run calls `download_pretrained_weights(task_id)`** (a no-op when the weight folder exists; it also deletes old weight folders), and with `roi_subset` a CT run first uses the 6 mm crop model **task 298**. `map_tasks_config.TASK_CONFIGS["total"]["sub_modes"]`: default 291–295, fast 297; folder names in `TASK_ID_WEIGHTS_CONFIGS`.
+- Network calls reachable from a plugin run: `send_usage_stats` (stats server; config key `send_usage_stats`, default True) and the weight download (GitHub releases). License checks and the `dcm2niix` download only apply to commercial tasks / DICOM input (the plugin passes an in-memory NIfTI).
+- Official weight tool: `totalseg_download_weights -t total` → tasks [291, 292, 293, 294, 295, 298]; `-t total_fast` → [297, 298].
+
+### Defect found and fixed (`42875a5d`)
+
+The E6b guard replaced `download_pretrained_weights` with a function that **always raised**. Because 2.18.0 calls it on every run, **every real inference would have failed even with all weights present**. Now the replacement returns when the required folder exists and raises `WeightsNotReady` (never downloading) when it does not. `probe()` checks the exact folders per mode (standard: 291–295 + 298; fast: 297 + 298) from the installed package's tables and offers only complete modes. Test fakes now behave like 2.18.0 (weight function called on every run); 4 of the new tests (all-weights-present run, and the per-mode weight checks for a missing 297, 293 or 298) fail on the old code and pass on the fix.
+
+### Status
+
+`REAL_AI_INFERENCE = BLOCKED` (package not installed). **`E6b_GATE = PARTIAL_REAL_INFERENCE_PENDING`** (unchanged). Setup steps: user guide §2.8 and `docs/CT3D_ADVANCED_RC_READINESS_REPORT.md` §6.
+
+**First real run plan**: dataset 0051 is a head CT, so use structure `brain` (2.18.0 class id 90; `skull` = 91) - not `spleen`/`liver`, which are outside its field of view. 2.18.0's `total` map has 117 classes.

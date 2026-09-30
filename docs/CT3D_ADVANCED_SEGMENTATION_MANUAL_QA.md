@@ -797,3 +797,23 @@ Select ROIs of different colours (tab ROI & 3D).
 **Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
 
 **UI_SIDEBAR_MANUAL_QA_COMPLETE: NOT_RUN** (0/4).
+
+---
+
+## Final completion run (30/09/2026, evening)
+
+- **No new item-level operator evidence was supplied in this run → no item changed to PASS.** E5-A stays the only item PASS.
+- **E6b real inference: `BLOCKED`** - TotalSegmentator/nnunetv2 not installed in the InVesalius environment (a plain install would replace CUDA torch and numpy; constrained command in `docs/CT3D_ADVANCED_RC_READINESS_REPORT.md` §6). E6b-A..P stay `NOT_RUN`. First run plan: 0051 is a **head CT** → structure `brain`.
+- UI-K..UI-N (sidebar in the real InVesalius): `NOT_RUN`. E5-B/C/D/E/J/K/L: `RETEST_REQUIRED`.
+
+### E3 smooth safety - investigation item (automated, real 0051)
+
+Operator evidence reported earlier: Smooth reduced an ROI 170,405 → 10,127 voxels (~94 % loss). Reproduced mechanism on real 0051 (head CT, 0.4785 × 0.4785 × 1.5 mm), 1 pass, the plugin's own `smooth_binary_mask`:
+
+| ROI | Before | After | Delta |
+|---|---:|---:|---:|
+| bone threshold 226..3071, largest component | 1,730,409 | 1,704,840 | −1.5 % (thin skull-base parts removed; vault intact - slice images inspected) |
+| soft tissue −100..200, largest component | 7,130,381 | 7,026,144 | −1.5 % |
+| the same soft tissue on only 2 axial slices (brush-like) | 174,504 | 0 | **−100 %** |
+
+The opening step (6-connected, in voxels) removes anything thinner than 3 voxels along any axis - 4.5 mm in z here - so ROIs drawn on 1-2 slices disappear. Undo restores them. Status: **WARNING / open investigation** (options: confirm before a large loss; an in-plane or anisotropy-aware smoothing). Algorithm unchanged. E3 manual items (E3-G in particular) not complete.

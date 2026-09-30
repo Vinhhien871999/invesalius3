@@ -1,0 +1,22 @@
+# Constraints for installing TotalSegmentator (E6b) into the Python
+# environment that runs InVesalius, WITHOUT changing InVesalius's own pinned
+# packages (pyproject.toml / requirements.txt) or losing CUDA.
+#
+# Why (pip dry-run in D:\PyTools\invx-venv, 30/09/2026): a plain
+# `pip install TotalSegmentator` (2.18.0) would replace torch 2.7.1+cu118 by
+# torch 2.14.0 from PyPI (CPU-only on Windows), upgrade numpy 1.26.4 -> 2.2.6
+# and setuptools 65.5.0 -> 84.0.0 (InVesalius pins numpy==1.26.4 and
+# setuptools<68 for wxPython). With these constraints pip resolves 69 new
+# packages and changes none of the installed ones.
+#
+# Use (the plugin itself never installs anything):
+#   <python> -m pip install -c tools/ct3d_ai_constraints.txt ^
+#       --extra-index-url https://download.pytorch.org/whl/cu118 TotalSegmentator==2.18.0
+numpy==1.26.4
+scipy==1.14.0
+setuptools==65.5.0
+vtk==9.3.0
+wxPython==4.2.5
+torch==2.7.1+cu118
+torchvision==0.22.1+cu118
+nibabel==5.2.1

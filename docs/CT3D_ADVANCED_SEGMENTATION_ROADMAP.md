@@ -83,3 +83,5 @@ E6 adds the AI **architecture only** (`plugins/roi_viewer/core/ai/`): provider a
 ## E6b scope note (30/09/2026)
 
 Adds `core/ai/providers/totalsegmentator_provider.py` on the unchanged E6 pipeline (E2 preview → E4 → Accept via the shared native commit). Lazy/optional; never installs or downloads (TotalSegmentator's own weight download and usage-statistics upload are disabled while the plugin runs it); one selected structure per preview; NIfTI affine proven against InVesalius's real axial DICOM import. TotalSegmentator is not installed in this environment, so the gate is `PARTIAL_REAL_INFERENCE_PENDING`. Report: `docs/CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md`.
+
+**Final completion run (30/09/2026)**: E6b stays `PARTIAL_REAL_INFERENCE_PENDING` - TotalSegmentator is not installed in the InVesalius environment; installing it needs the constrained command (`tools/ct3d_ai_constraints.txt`). `ADVANCED_RC_READY = NO` - see `docs/CT3D_ADVANCED_RC_READINESS_REPORT.md`.

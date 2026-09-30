@@ -145,6 +145,8 @@ Mọc vùng bán tự động: chọn 1 điểm hạt giống trên khối 3D, t
 | **Số lần làm mịn** + **Làm mịn mặt nạ** | Làm mượt biên mặt nạ (đóng rồi mở hình thái học — thuật toán chọn qua so sánh thật, xem architecture doc), tối đa 5 lần |
 
 > ⚠️ **Cảnh báo thật (Làm mịn mặt nạ)**: làm mịn nhị phân có thể **XOÁ HOÀN TOÀN cấu trúc rất mỏng**. Khảo sát tổng hợp thật ở E3 (`CT3D_ADVANCED_E3_CLEANUP_REPORT.md` mục "Smooth algorithm selection") cho thấy: một cấu trúc dày chỉ 1 voxel biến mất hoàn toàn ngay ở lần làm mịn đầu tiên, với CẢ 2 thuật toán từng so sánh. Dùng ít lần làm mịn và **luôn kiểm tra lại kết quả** — đặc biệt với ROI có cấu trúc mảnh (mạch máu nhỏ, thành mỏng...). Tooltip của nút cũng ghi cảnh báo này.
+>
+> **Đo trên dữ liệu thật 0051 (30/09/2026, 1 lần làm mịn)**: khối xương và khối mô mềm lớn chỉ mất khoảng 1,5%; nhưng **một vùng chỉ dày 2 lát trục (như vẽ tay trên vài lát) bị xoá 100%** (174.504 → 0 voxel), vì phép "mở" xoá mọi phần mỏng hơn 3 voxel theo bất kỳ trục nào (ở 0051 là 4,5 mm theo trục z). Nếu dòng trạng thái báo mất nhiều voxel, bấm **Hoàn tác**. Đây là mục đang điều tra, chưa đổi thuật toán.
 
 **Hành vi quan trọng, giống hệt cọ vẽ/Hoàn tác/Làm lại**:
 - Bị **chặn nếu ROI đang Khóa (E1)** — hiện cảnh báo, không đổi gì.
@@ -189,7 +191,20 @@ Mục thu gọn — bấm tiêu đề **"Chỉnh sửa thủ công (cọ vẽ)"*
 
 > **Thử nghiệm, chưa được kiểm định lâm sàng.** TotalSegmentator được **chạy cục bộ trên máy**; ảnh CT không được gửi đi đâu (plugin còn tắt chức năng gửi thống kê sử dụng của TotalSegmentator trong lúc chạy). Thời gian chạy phụ thuộc rất nhiều vào CPU/GPU — trên CPU có thể rất lâu.
 
-**Cài đặt (làm một lần, ngoài plugin)**: cài gói `TotalSegmentator` vào đúng môi trường Python của InVesalius, rồi tải trọng số mô hình `total` bằng công cụ của chính TotalSegmentator. Plugin **không bao giờ tự cài hay tự tải**. Nếu chưa cài: "TotalSegmentator chưa được cài đặt."; nếu thiếu trọng số: "Mô hình TotalSegmentator chưa sẵn sàng." Chi tiết: `CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md` mục 10.
+**Cài đặt (làm một lần, ngoài plugin)** — plugin **không bao giờ tự cài hay tự tải**. Nếu chưa cài: "TotalSegmentator chưa được cài đặt."; nếu thiếu trọng số: "Mô hình TotalSegmentator chưa sẵn sàng."
+
+> ⚠️ **Không chạy `pip install TotalSegmentator` trần**: kiểm tra (pip `--dry-run`, 30/09/2026) cho thấy lệnh đó sẽ thay torch CUDA bằng torch CPU và nâng numpy lên 2.x — làm hỏng môi trường InVesalius. Dùng lệnh có ràng buộc dưới đây (đã kiểm tra bằng dry-run: không thay đổi gói nào đang có).
+
+```bat
+cd /d D:\Learns\DeAn\invesalius\invesalius3
+D:\PyTools\invx-venv\Scripts\python.exe -m pip install -c tools\ct3d_ai_constraints.txt --extra-index-url https://download.pytorch.org/whl/cu118 TotalSegmentator==2.18.0
+D:\PyTools\invx-venv\Scripts\python.exe -c "import torch, numpy; print(torch.__version__, torch.cuda.is_available(), numpy.__version__)"
+D:\PyTools\invx-venv\Scripts\totalseg_download_weights.exe -t total
+```
+
+Dòng kiểm tra phải in `2.7.1+cu118 True 1.26.4`. `-t total` tải trọng số cho chế độ **Chính xác tiêu chuẩn** (kèm mô hình cắt vùng mà mỗi lần phân đoạn một cấu trúc cần); thêm `-t total_fast` nếu muốn chế độ **Nhanh**. Sau đó khởi động lại InVesalius. (Đường dẫn trên là môi trường của máy phát triển; máy khác thay bằng Python đang chạy InVesalius.) Chi tiết: `CT3D_ADVANCED_RC_READINESS_REPORT.md` mục 6.
+
+**Chưa có lần chạy thật nào được ghi nhận** (30/09/2026: TotalSegmentator chưa được cài trên máy phát triển). Dữ liệu mẫu 0051 là **CT sọ** — khi chạy thử, chọn cấu trúc `brain` (không chọn `spleen`/`liver` vì không nằm trong ảnh).
 
 **Quy trình**: tab **Phân đoạn** → mở **Phân đoạn AI (thử nghiệm)** → tick **Bật phân đoạn AI (thử nghiệm)** → **Mô hình**: TotalSegmentator → **Cấu trúc**: gõ để tìm và chọn một cấu trúc (tên gốc tiếng Anh của mô hình, ví dụ `spleen`, `liver`) → **Thiết bị**: Tự động / CPU / CUDA (CUDA chỉ hiện khi có GPU dùng được) → **Chế độ**: Chính xác tiêu chuẩn hoặc Nhanh / ít bộ nhớ hơn (kém chính xác hơn) → **Xem trước bằng AI** → kiểm tra lớp phủ trên Axial/Coronal/Sagittal và trong Xem trước 3D → **Chấp nhận** (tạo mặt nạ "AI - <cấu trúc>") → **Hậu xử lý** nếu cần → **Cập nhật bề mặt 3D từ ROI hiện tại**.
 
