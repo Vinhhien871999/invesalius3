@@ -154,7 +154,12 @@ def test_matches_real_final_surface_pipeline_bounds():
     shape = (30, 60, 60)
     m = np.zeros(shape, dtype=np.uint8)
     m[10:20, 20:40, 20:40] = 255
-    spacing = (1.5, 0.4785156, 0.4785156)  # real dataset 0051 spacing convention
+    # Real dataset 0051 Slice().spacing, which is (x, y, z). Corrected
+    # 30/09/2026: this used to be the reversed (1.5, 0.4785, 0.4785)
+    # labelled as the 0051 convention. Both sides of this comparison use
+    # the same tuple, so the old value never made the test wrong - but it
+    # did not exercise the real order.
+    spacing = (0.4785156, 0.4785156, 1.5)
 
     # The real final pipeline's own exact steps, re-run here directly.
     image = converters.to_vtk(m, spacing, 0, "AXIAL")

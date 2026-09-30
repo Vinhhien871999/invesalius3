@@ -13,14 +13,14 @@
 # the phase spec's own warning about this): masks here are expected in
 # the SAME array-axis order as invesalius.data.mask.Mask.matrix / the
 # real image matrix - axis 0 = AXIAL slice stack, axis 1 = CORONAL,
-# axis 2 = SAGITAL (matches invesalius.data.slice_.Slice.spacing's own
-# index alignment - see plugins/roi_viewer/core/sync_2d3d.py's
-# world_to_voxel()/voxel_to_world() docstrings for the same convention
-# used elsewhere in this plugin). Spacing arguments are therefore named
-# `spacing_zyx` (NOT a generic/ambiguous `spacing`) meaning
-# (axial_spacing, coronal_spacing, sagital_spacing) - i.e. exactly
-# `Slice().spacing` / `ProjectInterface().get_spacing()`, index-aligned
-# with the mask array's own axes, not a generic image (x, y, z) triple.
+# axis 2 = SAGITAL. Spacing arguments are therefore named `spacing_zyx`
+# (NOT a generic/ambiguous `spacing`) meaning (axial_spacing,
+# coronal_spacing, sagital_spacing), index-aligned with the mask array's
+# own axes. NOTE: Slice().spacing / ProjectInterface().get_spacing() is
+# (x, y, z) - the REVERSE - so a caller must pass `tuple(spacing[::-1])`,
+# never Slice().spacing directly (see core/coordinates.py). [Corrected
+# 30/09/2026: this header previously claimed spacing_zyx was exactly
+# Slice().spacing, which is false for anisotropic volumes.]
 # --------------------------------------------------------------------------
 from typing import Tuple
 

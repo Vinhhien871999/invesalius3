@@ -6,6 +6,8 @@
 from typing import Tuple, Callable, List, Dict
 import time
 
+from .coordinates import voxel_zyx_to_world_xyz, world_xyz_to_voxel_zyx
+
 
 class SyncManager2D3D:
     """
@@ -30,9 +32,9 @@ class SyncManager2D3D:
         self.mask_update_callbacks: List[Callable] = []
         self.world_coords_callbacks: List[Callable] = []
         
-        # Volume info (will be set from project). Both are index-aligned
-        # with Slice().matrix.shape: axis 0 = AXIAL, 1 = CORONAL,
-        # 2 = SAGITAL - see world_to_voxel()'s docstring below.
+        # Volume info (set from the project). dimensions = Slice().matrix
+        # .shape (z, y, x); spacing = Slice().spacing (x, y, z) - NOT
+        # index-aligned with each other. See core/coordinates.py.
         self.spacing = (1.0, 1.0, 1.0)
         self.dimensions = (0, 0, 0)
 
@@ -42,11 +44,9 @@ class SyncManager2D3D:
         Set volume information for coordinate conversion.
 
         Args:
-            spacing: ProjectInterface().get_spacing() /
-                Slice().spacing - (axial, coronal, sagital) mm per voxel.
-            dimensions: ProjectInterface().get_shape() /
-                Slice().matrix.shape - (axial, coronal, sagital) voxel
-                counts. NOT a generic (width, height, depth).
+            spacing: Slice().spacing - (x, y, z) mm per voxel.
+            dimensions: Slice().matrix.shape - (z, y, x) voxel counts,
+                i.e. (axial, coronal, sagital).
         """
         self.spacing = spacing
         self.dimensions = dimensions
@@ -98,54 +98,14 @@ class SyncManager2D3D:
             callback(x, y, z, self.current_plane, self.current_slice_index)
 
     def world_to_voxel(self, x: float, y: float, z: float) -> Tuple[int, int, int]:
-        """
-        Convert a VTK world-space point (mm) to a
-        Slice().matrix-style voxel index.
-
-        NOTE on axis order: invesalius.data.slice_.Slice keeps
-        `self.spacing` index-aligned with `self.matrix.shape` (see the
-        axis-swap code in slice_.py, which permutes both together) -
-        axis 0 is the AXIAL slice stack, axis 1 is CORONAL, axis 2 is
-        SAGITAL. InVesalius builds its VTK volume/actors with the
-        standard medical-imaging convention where VTK world X is the
-        fastest-varying image axis (SAGITAL / matrix axis 2), Y is
-        CORONAL (matrix axis 1), and Z is the slice stack (AXIAL /
-        matrix axis 0). So the mapping is world (x, y, z) -> voxel
-        (axis0, axis1, axis2) = (z/spacing[0], y/spacing[1], x/spacing[2]).
-        `dimensions` must be set from Slice().matrix.shape directly
-        (that axis order), not a generic "(width, height, depth)".
-
-        Args:
-            x, y, z: World coordinates in mm
-
-        Returns:
-            Tuple of (axial_index, coronal_index, sagital_index)
-        """
-        axial = int(z / self.spacing[0]) if self.spacing[0] != 0 else 0
-        coronal = int(y / self.spacing[1]) if self.spacing[1] != 0 else 0
-        sagital = int(x / self.spacing[2]) if self.spacing[2] != 0 else 0
-
-        # Clamp to valid range
-        axial = max(0, min(axial, self.dimensions[0] - 1))
-        coronal = max(0, min(coronal, self.dimensions[1] - 1))
-        sagital = max(0, min(sagital, self.dimensions[2] - 1))
-
-        return (axial, coronal, sagital)
+        """World (x, y, z) mm -> clamped voxel (axial, coronal, sagital) =
+        (z, y, x) index. Delegates to core/coordinates.py."""
+        return world_xyz_to_voxel_zyx((x, y, z), self.spacing, self.dimensions)
 
     def voxel_to_world(self, axial: int, coronal: int, sagital: int) -> Tuple[float, float, float]:
-        """
-        Convert a Slice().matrix-style voxel index (axial, coronal,
-        sagital) back to a VTK world-space point (mm). Inverse of
-        world_to_voxel() - see its docstring for the axis mapping.
-
-        Returns:
-            Tuple of (x, y, z) world coordinates in mm
-        """
-        x = sagital * self.spacing[2]
-        y = coronal * self.spacing[1]
-        z = axial * self.spacing[0]
-
-        return (x, y, z)
+        """Voxel (axial, coronal, sagital) = (z, y, x) -> world (x, y, z) mm.
+        Delegates to core/coordinates.py."""
+        return voxel_zyx_to_world_xyz((axial, coronal, sagital), self.spacing)
         
     def request_3d_update(self):
         """Request a 3D view update (with throttling)."""

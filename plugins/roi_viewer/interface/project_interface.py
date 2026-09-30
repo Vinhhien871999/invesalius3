@@ -201,36 +201,19 @@ class ProjectInterface:
         return -1024, 3071  # Default CT range
         
     def world_to_voxel(self, x: float, y: float, z: float) -> Tuple[int, int, int]:
-        """
-        Convert a VTK world-space point (mm) to a (axial, coronal,
-        sagital) index into self._shape / Slice().matrix.
+        """World (x, y, z) mm -> clamped voxel (axial, coronal, sagital) =
+        (z, y, x) index. self._spacing is Slice().spacing = (x, y, z),
+        self._shape is Slice().matrix.shape = (z, y, x) - see
+        core/coordinates.py, which this delegates to."""
+        from ..core.coordinates import world_xyz_to_voxel_zyx
 
-        NOTE: self._spacing is index-aligned with self._shape
-        (Slice().matrix.shape): axis 0 = AXIAL, 1 = CORONAL, 2 = SAGITAL
-        (see the axis-swap code in invesalius/data/slice_.py, which
-        permutes both together). InVesalius's VTK actors use the
-        standard convention where world X is the fastest-varying image
-        axis (SAGITAL), Y is CORONAL, and Z is the AXIAL slice stack -
-        see core/sync_2d3d.py's world_to_voxel() for the same mapping,
-        used for the exact same reason.
-        """
-        axial = int(z / self._spacing[0]) if self._spacing[0] != 0 else 0
-        coronal = int(y / self._spacing[1]) if self._spacing[1] != 0 else 0
-        sagital = int(x / self._spacing[2]) if self._spacing[2] != 0 else 0
-
-        # Clamp to valid range
-        axial = max(0, min(axial, self._shape[0] - 1))
-        coronal = max(0, min(coronal, self._shape[1] - 1))
-        sagital = max(0, min(sagital, self._shape[2] - 1))
-
-        return axial, coronal, sagital
+        return world_xyz_to_voxel_zyx((x, y, z), self._spacing, self._shape)
 
     def voxel_to_world(self, axial: int, coronal: int, sagital: int) -> Tuple[float, float, float]:
-        """Inverse of world_to_voxel() - see its docstring for the axis mapping."""
-        x = sagital * self._spacing[2]
-        y = coronal * self._spacing[1]
-        z = axial * self._spacing[0]
-        return x, y, z
+        """Voxel (axial, coronal, sagital) = (z, y, x) -> world (x, y, z) mm."""
+        from ..core.coordinates import voxel_zyx_to_world_xyz
+
+        return voxel_zyx_to_world_xyz((axial, coronal, sagital), self._spacing)
         
     def get_mask_dict(self) -> Dict[int, Any]:
         """Get dictionary of masks in the project."""
