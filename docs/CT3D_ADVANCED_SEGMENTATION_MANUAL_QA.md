@@ -313,7 +313,7 @@ With live 3D preview left at its default (OFF), verify the rest of the classic w
 
 ## E5 - Advanced 3D visualization (textured slice planes + clipping/cutaway)
 
-> ⚠️ **Read before running E5-B/C/D/E or E5-J/K/L (30/09/2026)**: a real world↔voxel spacing-order bug was found (see `CT3D_ADVANCED_SEGMENTATION_PROGRESS.md`, "Blocking finding"). Until it is fixed, on an **anisotropic** dataset such as `0051` (0.4785/0.4785/1.5 mm) the textured planes show the **wrong slice** and C8/clipping positions are wrong in z, so an orientation result there would be confounded. Wait for the fix, or note which dataset was used - on near-isotropic `0801` the error is ~2%.
+> ⚠️ **Retest policy (30/09/2026)**: two world↔voxel bugs (spacing order; 2D slice frame vs y-flipped 3D view frame) were fixed on this branch in `7b245865` / `c9f220bd` - see `docs/CT3D_COORDINATE_SPACING_FIX_REPORT.md`. Before the fix, textured planes showed the wrong slice on anisotropic data and every plugin 3D actor (C8 marker/planes, textured planes, clipping origin) was mirrored in y relative to the surface. **E5-B/C/D/E/J/K/L are `RETEST_REQUIRED`**: run them only on a build that includes `c9f220bd`, preferably on anisotropic `0051`, and do not reuse any earlier result for them. E5-A's PASS stays valid (it checks visibility only). Quick sanity check while retesting: the C8 planes and marker should now cut *through* the surface, not sit beside it.
 
 ### TEST E5-A — Enable textured planes
 With a real project loaded and Sync 2D->3D active, tick "Show CT texture on slice planes" in the Interaction tab's "3D Visualization" box.
@@ -492,17 +492,17 @@ With both "Show CT texture on slice planes" and "Enable Clipping" left at their 
 | E4-Q | Save/Open unaffected by live preview | `NOT_RUN` |
 | E4-R | Classic workflow unaffected with preview OFF | `NOT_RUN` |
 | E5-A | Enable textured planes | **`PASS`** (operator FAIL 29/09/2026 → fixed `890e1f50` → operator PASS 30/09/2026) |
-| E5-B | Axial texture orientation | `NOT_RUN` |
-| E5-C | Coronal texture orientation | `NOT_RUN` |
-| E5-D | Sagittal texture orientation | `NOT_RUN` |
-| E5-E | Move crosshair, textures follow | `NOT_RUN` |
+| E5-B | Axial texture orientation | `RETEST_REQUIRED` (never run; must be run after coordinate fix `c9f220bd`) |
+| E5-C | Coronal texture orientation | `RETEST_REQUIRED` (never run; must be run after coordinate fix `c9f220bd`) |
+| E5-D | Sagittal texture orientation | `RETEST_REQUIRED` (never run; must be run after coordinate fix `c9f220bd`) |
+| E5-E | Move crosshair, textures follow | `RETEST_REQUIRED` (never run; must be run after coordinate fix `c9f220bd`) |
 | E5-F | Window/Level texture refresh | `NOT_RUN` |
 | E5-G | Texture toggle OFF restores geometric planes | `NOT_RUN` |
 | E5-H | 3D picker works through textured planes | `NOT_RUN` |
 | E5-I | Enable Axial clipping | `NOT_RUN` |
-| E5-J | Move Axial crosshair changes cut | `NOT_RUN` |
-| E5-K | Coronal clipping | `NOT_RUN` |
-| E5-L | Sagittal clipping | `NOT_RUN` |
+| E5-J | Move Axial crosshair changes cut | `RETEST_REQUIRED` (never run; must be run after coordinate fix `c9f220bd`) |
+| E5-K | Coronal clipping | `RETEST_REQUIRED` (never run; must be run after coordinate fix `c9f220bd`) |
+| E5-L | Sagittal clipping | `RETEST_REQUIRED` (never run; must be run after coordinate fix `c9f220bd`) |
 | E5-M | Invert clipping | `NOT_RUN` |
 | E5-N | Final polydata unchanged | `NOT_RUN` |
 | E5-O | ROI switch while clipping | `NOT_RUN` |

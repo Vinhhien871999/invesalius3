@@ -447,3 +447,17 @@ Both E5A and E5B are pure runtime VTK/display state - `TexturedSlicePlanes3D`/`S
 ## Performance
 
 Real measurement this milestone: `converters.to_vtk()` (the dominant real per-slice conversion cost inside `Slice().GetSlices()`) on a representative 512x512 uint8 slice - **0.04ms average** (20 runs). 3 orientations per real crosshair event (only while texture mode is on) - **~0.13ms** total, negligible relative to the 2D/3D render itself. `do_ww_wl()`/`do_colour_image()` are the SAME real VTK LUT-based filters the native 2D viewer already runs on every slice scroll - no additional cost profile beyond what InVesalius's own 2D views already pay continuously. Clipping-plane enable/disable/origin updates are pure mapper-state operations - negligible cost, no surface regeneration.
+
+---
+
+# Coordinate contract (world ↔ voxel) — corrected 30/09/2026
+
+Supersedes every earlier statement in this document (and in plugin docstrings) that `Slice().spacing` is "index-aligned with `matrix.shape`" / "(axial, coronal, sagital)", and every E5 statement that places C8/E5 3D actors at the raw crosshair position. Full evidence: `docs/CT3D_COORDINATE_SPACING_FIX_REPORT.md`.
+
+- **Single implementation**: `plugins/roi_viewer/core/coordinates.py`. `SyncManager2D3D` and `ProjectInterface` delegate to it; no other code derives these formulas.
+- **Voxel index** (z, y, x) = `Slice().matrix` axes (AXIAL, CORONAL, SAGITAL). **Spacing** (x, y, z) = `Slice().spacing` — x first (`control.py:1300`, `slice_.py:202`). **World** (x, y, z) mm, origin 0.
+- **world → voxel** rounds to nearest (native `viewer_slice.py:1848`), then clamps.
+- **Two frames**: the 2D **slice frame** (crosshair, `converters.to_vtk()` images, y ≥ 0) and the 3D **view frame** (surfaces/volume/mask volumes are `vtkImageFlip`ped on Y, y ≤ 0). Convert only at boundaries: crosshair → anything drawn in 3D (C8 marker/planes, E5 textured planes, E5B clipping origin) uses `slice_to_view`; a 3D pick → voxel (3D→2D sync, Region Growing seed, annotation reference) uses `view_to_slice` first. The E4 preview mesh and final surface are already in the view frame.
+- E5A texture: geometry comes from the slice-frame image bounds and is moved into the view frame corner by corner (texture coordinates stay per corner) — the same flip the native surfaces get, so textures land on the same anatomy.
+- E5B clipping normals are unchanged (still the axis of the orientation); only the origin moved into the view frame. "Invert" still flips which half is removed.
+- Future E6 point prompts must follow the same rule: prompts from a 3D pick go through `view_to_slice` before voxel conversion.
