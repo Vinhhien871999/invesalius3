@@ -51,6 +51,38 @@ def world_xyz_to_voxel_zyx(
     return (_index(wz, sz, nz), _index(wy, sy, ny), _index(wx, sx, nx))
 
 
+# Two world frames, differing only in the sign of y:
+#   slice frame - the 2D viewers, "Set cross focal point" positions and
+#                 converters.to_vtk() images: y in [0, +Ymax]. All the voxel
+#                 conversions above are in this frame.
+#   view frame  - the 3D volume viewer's renderer: surfaces
+#                 (surface_process.py:156), volume rendering (volume.py:597)
+#                 and mask volumes (volume_mask.py:70) all apply
+#                 vtkImageFlip(FilteredAxis=1, FlipAboutOriginOn): y in
+#                 [-Ymax, 0].
+# Native converts with -y in both directions: styles.py:555 (2D crosshair
+# -> 3D pointer) and styles_3d.py:994 (3D pick -> 2D). Anything the plugin
+# draws in the 3D view must be in the view frame; anything picked in the 3D
+# view must go back to the slice frame before voxel conversion.
+
+
+def slice_to_view(world_xyz: Tuple[float, float, float]) -> Tuple[float, float, float]:
+    x, y, z = world_xyz
+    return (x, -y, z)
+
+
+def view_to_slice(world_xyz: Tuple[float, float, float]) -> Tuple[float, float, float]:
+    x, y, z = world_xyz
+    return (x, -y, z)
+
+
+def slice_bounds_to_view(
+    bounds: Tuple[float, float, float, float, float, float],
+) -> Tuple[float, float, float, float, float, float]:
+    xmin, xmax, ymin, ymax, zmin, zmax = bounds
+    return (xmin, xmax, -ymax, -ymin, zmin, zmax)
+
+
 def volume_bounds_world(
     shape_zyx: Tuple[int, int, int], spacing_xyz: Tuple[float, float, float]
 ) -> Tuple[float, float, float, float, float, float]:

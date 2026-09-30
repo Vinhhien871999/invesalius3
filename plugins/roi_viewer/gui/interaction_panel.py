@@ -314,9 +314,14 @@ class InteractionPanel(scrolled.ScrolledPanel):
                     # place. Not _last_cross_focal_point: it keeps moving
                     # while Sync 2D->3D is off, when C8's planes stay
                     # frozen - the textures would appear somewhere else.
+                    # C8's planes hold a VIEW-frame position; texture
+                    # building selects voxels, so convert back to the
+                    # slice frame (core/coordinates.py).
                     position = self.controller.slice_planes_3d.get_position()
                     if position is not None:
-                        self.controller.update_textured_slice_planes(position)
+                        from ..core.coordinates import view_to_slice
+
+                        self.controller.update_textured_slice_planes(view_to_slice(position))
             except Exception as e:
                 print(f"ROI Viewer: E5A texture planes enable failed - {e}")
         self.controller.apply_slice_plane_visibility()
@@ -435,10 +440,15 @@ class InteractionPanel(scrolled.ScrolledPanel):
             from ..interface.project_interface import ProjectInterface
             from ..interface.view_interface import ViewInterface
 
+            from ..core.coordinates import view_to_slice
+
             self.controller.sync_mgr.set_volume_info(
                 ProjectInterface().get_spacing(), ProjectInterface().get_shape()
             )
-            self.controller.sync_mgr.set_world_coords(x, y, z)
+            # The 3D pick is in the y-flipped view frame; slice selection
+            # needs the slice frame - same -y native uses for 3D pick ->
+            # 2D (styles_3d.py:994). See core/coordinates.py.
+            self.controller.sync_mgr.set_world_coords(*view_to_slice((x, y, z)))
             plane, index = (
                 self.controller.sync_mgr.current_plane,
                 self.controller.sync_mgr.current_slice_index,

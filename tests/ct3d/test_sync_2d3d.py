@@ -167,17 +167,14 @@ def _fake_frame(project_loaded=True, sync_enabled=True, marker=None, planes=None
 
 def _fake_project_interface(shape, spacing):
     """A minimal stand-in for interface/project_interface.ProjectInterface
-    exposing exactly what _compute_volume_bounds() calls - get_shape()
-    and voxel_to_world() - using the SAME real mapping the real
-    ProjectInterface.voxel_to_world() implements (x=sagital*spacing[2],
-    y=coronal*spacing[1], z=axial*spacing[0]), so the test's expected
-    bounds are computed via that same real, documented convention, not
-    a reimplementation with different semantics."""
+    exposing what _compute_volume_bounds() calls: get_shape() (z, y, x)
+    and get_spacing() (x, y, z) - the real Slice() conventions.
 
-    def voxel_to_world(axial, coronal, sagital):
-        return (sagital * spacing[2], coronal * spacing[1], axial * spacing[0])
-
-    return types.SimpleNamespace(get_shape=lambda: shape, voxel_to_world=voxel_to_world)
+    Corrected 30/09/2026: this used to re-implement ProjectInterface's
+    old mapping (x = sagital * spacing[2], z = axial * spacing[0]) and
+    call it "the SAME real mapping" - it was the spacing-order bug itself,
+    so these tests could only agree with it. See core/coordinates.py."""
+    return types.SimpleNamespace(get_shape=lambda: shape, get_spacing=lambda: spacing)
 
 
 def test_sync_t1_disabled_does_not_touch_the_marker():
@@ -228,7 +225,11 @@ def test_sync_t2_enabled_marker_moves_to_the_real_world_position(vtk_renderer):
         with patch("invesalius.pubsub.pub.sendMessage"):  # don't touch real pubsub subscribers
             roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (5.0, 6.0, 7.0))
 
-    assert real_marker.get_position() == pytest.approx((5.0, 6.0, 7.0))
+    # Corrected 30/09/2026: the crosshair position is in the 2D slice
+    # frame; the 3D view is y-flipped (surfaces/volume use vtkImageFlip on
+    # Y, and native sends its own 3D pointer to [x, -y, z] - styles.py:555).
+    # The old expectation (5, 6, 7) was the mirrored placement.
+    assert real_marker.get_position() == pytest.approx((5.0, -6.0, 7.0))
     assert vtk_renderer.GetActors().GetNumberOfItems() == 1  # exactly one actor, no duplicates
 
 
@@ -237,8 +238,13 @@ def test_sync_t2_enabled_marker_moves_to_the_real_world_position(vtk_renderer):
 # real on_cross_focal_point_changed() event as the marker above.
 # ---------------------------------------------------------------------
 
-_TEST_SHAPE = (50, 80, 60)  # (axial, coronal, sagital) voxel counts
-_TEST_SPACING = (1.5, 1.0, 0.8)  # (axial, coronal, sagital) mm/voxel
+_TEST_SHAPE = (50, 80, 60)  # Slice().matrix.shape: (z, y, x) = (axial, coronal, sagital)
+# Slice().spacing is (x, y, z). Corrected 30/09/2026 from the old
+# (1.5, 1.0, 0.8) "(axial, coronal, sagital)" - same physical volume
+# (sagital 0.8, coronal 1.0, axial 1.5 mm), now in the real order.
+_TEST_SPACING = (0.8, 1.0, 1.5)
+# Positions below are asserted in the 3D VIEW frame (y negated) - the
+# frame the planes are actually drawn in; see core/coordinates.py.
 
 
 def _attach_real_viewer_and_project(vtk_renderer, shape=_TEST_SHAPE, spacing=_TEST_SPACING):
@@ -263,12 +269,12 @@ def test_sync3d_t2_enabled_planes_intersect_event_a(vtk_renderer):
                 roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (10.0, 20.0, 30.0))
 
     assert real_planes.actor_count == 3
-    assert real_planes.get_position() == pytest.approx((10.0, 20.0, 30.0))
+    assert real_planes.get_position() == pytest.approx((10.0, -20.0, 30.0))
     axial = real_planes._planes["AXIAL"]["source"]
     coronal = real_planes._planes["CORONAL"]["source"]
     sagital = real_planes._planes["SAGITAL"]["source"]
     assert axial.GetOrigin()[2] == pytest.approx(30.0)
-    assert coronal.GetOrigin()[1] == pytest.approx(20.0)
+    assert coronal.GetOrigin()[1] == pytest.approx(-20.0)
     assert sagital.GetOrigin()[0] == pytest.approx(10.0)
 
 
@@ -287,7 +293,7 @@ def test_sync3d_t3_event_b_same_actor_ids_new_position(vtk_renderer):
 
     for name in actors_a:
         assert actors_a[name] is actors_b[name]  # same VTK objects
-    assert real_planes.get_position() == pytest.approx((15.0, 25.0, 35.0))
+    assert real_planes.get_position() == pytest.approx((15.0, -25.0, 35.0))
 
 
 def test_sync3d_t4_many_updates_actor_count_stable(vtk_renderer):
@@ -320,11 +326,11 @@ def test_sync3d_t5_show_planes_off_marker_continues_planes_invisible(vtk_rendere
             with patch("invesalius.pubsub.pub.sendMessage"):
                 roi_panel.ROIViewerFrame.on_cross_focal_point_changed(fake, (10.0, 20.0, 30.0))
 
-    assert real_marker.get_position() == pytest.approx((10.0, 20.0, 30.0))  # marker still updates
+    assert real_marker.get_position() == pytest.approx((10.0, -20.0, 30.0))  # marker still updates
     for entry in real_planes._planes.values():
         assert entry["actor"].GetVisibility() == 0  # planes hidden
     # Geometry still tracks the real position underneath, even hidden:
-    assert real_planes.get_position() == pytest.approx((10.0, 20.0, 30.0))
+    assert real_planes.get_position() == pytest.approx((10.0, -20.0, 30.0))
 
 
 def test_sync3d_t6_show_planes_on_visible_at_current_position(vtk_renderer):
@@ -339,7 +345,7 @@ def test_sync3d_t6_show_planes_on_visible_at_current_position(vtk_renderer):
 
     for entry in real_planes._planes.values():
         assert entry["actor"].GetVisibility() == 1
-    assert real_planes.get_position() == pytest.approx((12.0, 22.0, 32.0))
+    assert real_planes.get_position() == pytest.approx((12.0, -22.0, 32.0))
 
 
 def test_sync3d_t7_detach_removes_both_marker_and_planes(vtk_renderer):
@@ -417,7 +423,11 @@ def _fake_frame_for_f3(picked_point, crosshair_point):
 
 
 def test_f3_priority_a_pick_3d_wins_when_present():
-    fake = _fake_frame_for_f3(picked_point=(1.0, 2.0, 3.0), crosshair_point=(9.0, 9.0, 9.0))
+    # Corrected 30/09/2026: a 3D pick is in the y-flipped view frame; the
+    # reference position is returned in the slice frame (like the
+    # crosshair, priority B), so y is negated. Before, A and B came back in
+    # different frames.
+    fake = _fake_frame_for_f3(picked_point=(1.0, -2.0, 3.0), crosshair_point=(9.0, 9.0, 9.0))
     result = roi_panel.ROIViewerFrame.get_current_reference_position(fake)
     assert result == (1.0, 2.0, 3.0)
 

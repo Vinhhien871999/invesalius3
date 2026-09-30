@@ -37,6 +37,8 @@
 # --------------------------------------------------------------------------
 from typing import Tuple
 
+from .coordinates import slice_to_view
+
 PLANE_AXIAL = "AXIAL"
 PLANE_CORONAL = "CORONAL"
 PLANE_SAGITAL = "SAGITAL"
@@ -242,10 +244,15 @@ class TexturedSlicePlanes3D:
         if plane_name not in self._planes or image is None:
             return False
         try:
-            origin, point1, point2 = plane_geometry_from_image_bounds(image.GetBounds())
+            corners = plane_geometry_from_image_bounds(image.GetBounds())
         except ValueError as e:
             print(f"ROI Viewer: textured plane '{plane_name}' geometry skipped - {e}")
             return False
+        # The image (and so these corners) are in the slice frame; the 3D
+        # view is y-flipped (see core/coordinates.py). Moving each corner -
+        # with its texture coordinate - applies the same flip the native
+        # surfaces/volume get, so the texture lands on the same anatomy.
+        origin, point1, point2 = (slice_to_view(c) for c in corners)
 
         entry = self._planes[plane_name]
         polydata = build_textured_plane_polydata(origin, point1, point2)

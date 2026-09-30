@@ -653,10 +653,13 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 wx.CallAfter(self.rg_status.SetLabel, _("No project loaded"))
                 return
 
-            # Same real world<->voxel conversion already verified for
-            # 3D-pick -> 2D-slice sync (interaction_panel.py) - see
-            # core/sync_2d3d.SyncManager2D3D.world_to_voxel()'s
-            # docstring for the axis mapping this relies on.
+            # The 3D pick is in the y-flipped view frame; convert to the
+            # slice frame before voxel conversion (core/coordinates.py).
+            # Before 30/09/2026 this skipped the flip, so every seed's
+            # coronal index clamped to row 0.
+            from ..core.coordinates import view_to_slice
+
+            world_point = view_to_slice(world_point)
             self.controller.sync_mgr.set_volume_info(pi.get_spacing(), pi.get_shape())
             seed = self.controller.sync_mgr.world_to_voxel(*world_point)
             tolerance = self.spin_rg_tolerance.GetValue()

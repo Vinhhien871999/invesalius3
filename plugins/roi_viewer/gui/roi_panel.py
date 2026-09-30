@@ -317,7 +317,7 @@ class ROIViewerFrame(wx.Frame):
         # but doing it eagerly here too means the planes are correctly
         # sized the moment a real crosshair event arrives, not one
         # event behind).
-        bounds = self._compute_volume_bounds()
+        bounds = self._compute_volume_bounds()  # already view frame
         if bounds is not None:
             try:
                 self.slice_planes_3d.set_bounds(bounds)
@@ -426,10 +426,17 @@ class ROIViewerFrame(wx.Frame):
              tracked regardless of the Sync 2D->3D checkbox;
           C) None - caller must refuse to create the annotation and
              tell the user to pick a position first.
+        Always returned in the SLICE frame (the frame the 2D crosshair and
+        voxel conversion use): a 3D pick comes back in the Y-flipped view
+        frame and is converted here - before this, A and B were in
+        different frames and a picked annotation's voxel clamped to
+        coronal row 0 (see core/coordinates.py).
         """
         picked = self.picker.get_last_point()
         if picked is not None:
-            return picked
+            from ..core.coordinates import view_to_slice
+
+            return view_to_slice(picked)
         return self._last_cross_focal_point
 
     def on_roi_source_changed(self):
@@ -528,8 +535,15 @@ class ROIViewerFrame(wx.Frame):
                 return
             if not self.marker_3d.attach(viewer.ren):
                 return
-            x, y, z = world_position
-            self.marker_3d.update_position(x, y, z)
+            from ..core.coordinates import slice_to_view
+
+            # world_position is in the slice frame (2D viewers); everything
+            # this method draws lives in the 3D view frame (y negated) -
+            # see core/coordinates.py. Textures still use the slice-frame
+            # position, because it selects voxels.
+            x, y, z = (float(c) for c in world_position[:3])
+            view_pos = slice_to_view((x, y, z))
+            self.marker_3d.update_position(*view_pos)
 
             # Slice planes: same event, same renderer, real bounds
             # derived from real project data every time (not cached
@@ -545,7 +559,7 @@ class ROIViewerFrame(wx.Frame):
                 if bounds is not None:
                     try:
                         self.slice_planes_3d.set_bounds(bounds)
-                        self.slice_planes_3d.update_position((x, y, z))
+                        self.slice_planes_3d.update_position(view_pos)
                         self.apply_slice_plane_visibility()
                     except ValueError as e:
                         print(f"ROI Viewer: slice planes geometry update skipped - {e}")
@@ -557,7 +571,7 @@ class ROIViewerFrame(wx.Frame):
             # disable() already keeps the plane fully detached from any
             # mapper when clipping itself is off, so this has zero
             # visual effect until the user actually enables it.
-            self.surface_clipping_3d.set_origin((x, y, z))
+            self.surface_clipping_3d.set_origin(view_pos)
 
             # E5A (Section 11): only rebuild textures when texture mode
             # is actually on - real image extraction + Window/Level +
@@ -672,30 +686,22 @@ class ROIViewerFrame(wx.Frame):
 
     def _compute_volume_bounds(self):
         """
-        Real world-space bounds (xmin, xmax, ymin, ymax, zmin, zmax) of
-        the whole loaded volume (not just a mask/surface, which may
-        only occupy part of it) - reuses the exact same real, already
-        unit-tested voxel_to_world() convention
-        interface/project_interface.py.ProjectInterface already
-        implements (see its docstring for the axis mapping: world X =
-        SAGITAL, Y = CORONAL, Z = AXIAL). Never hardcodes dimensions/
-        spacing/origin. Returns None if no real volume shape is known
-        yet (e.g. no project loaded).
+        Bounds (xmin, xmax, ymin, ymax, zmin, zmax) of the whole loaded
+        volume in the 3D VIEW frame - the frame C8's planes are drawn in,
+        where y runs over [-Ymax, 0] exactly like the native surfaces and
+        volume rendering (see core/coordinates.py). Computed from the real
+        Slice() shape/spacing via the canonical convention. Returns None if
+        no volume shape is known yet (e.g. no project loaded).
         """
         try:
+            from ..core.coordinates import slice_bounds_to_view, volume_bounds_world
             from ..interface.project_interface import ProjectInterface
 
             pi = ProjectInterface()
             shape = pi.get_shape()
             if not shape or shape == (0, 0, 0):
                 return None
-            corner_a = pi.voxel_to_world(0, 0, 0)
-            corner_b = pi.voxel_to_world(shape[0] - 1, shape[1] - 1, shape[2] - 1)
-            return (
-                min(corner_a[0], corner_b[0]), max(corner_a[0], corner_b[0]),
-                min(corner_a[1], corner_b[1]), max(corner_a[1], corner_b[1]),
-                min(corner_a[2], corner_b[2]), max(corner_a[2], corner_b[2]),
-            )
+            return slice_bounds_to_view(volume_bounds_world(shape, pi.get_spacing()))
         except Exception as e:
             print(f"ROI Viewer: could not compute real volume bounds - {e}")
             return None

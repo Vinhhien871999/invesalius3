@@ -164,10 +164,13 @@ def test_enable_texture_uses_c8_plane_position_not_live_crosshair(monkeypatch):
         lambda self: types.SimpleNamespace(ren=renderer),
     )
 
+    # C8's planes live in the y-flipped 3D view frame; texture building
+    # selects voxels, so the toggle must hand it the SLICE-frame position
+    # (2, 2, 2) - see core/coordinates.py (updated 30/09/2026).
     planes = SlicePlanes3D()
     planes.attach(renderer)
-    planes.set_bounds((0.0, 10.0, 0.0, 10.0, 0.0, 10.0))
-    planes.update_position((2.0, 2.0, 2.0))
+    planes.set_bounds((0.0, 10.0, -10.0, 0.0, 0.0, 10.0))
+    planes.update_position((2.0, -2.0, 2.0))
 
     built = []
     controller = types.SimpleNamespace(
