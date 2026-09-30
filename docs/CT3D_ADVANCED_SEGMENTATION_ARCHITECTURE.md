@@ -461,3 +461,27 @@ Supersedes every earlier statement in this document (and in plugin docstrings) t
 - E5A texture: geometry comes from the slice-frame image bounds and is moved into the view frame corner by corner (texture coordinates stay per corner) — the same flip the native surfaces get, so textures land on the same anatomy.
 - E5B clipping normals are unchanged (still the axis of the orientation); only the origin moved into the view frame. "Invert" still flips which half is removed.
 - Future E6 point prompts must follow the same rule: prompts from a 3D pick go through `view_to_slice` before voxel conversion.
+
+---
+
+# UI layout and Vietnamese localization — 30/09/2026 (`4d0ca6e5`)
+
+Presentation-only change: no handler, pubsub topic, `Project().mask_dict` access, final-surface policy or E1-E5 backend was altered. Full audit and measurements: `docs/CT3D_UI_UX_VIETNAMESE_POLISH_REPORT.md`.
+
+## Translation layer
+
+- InVesalius ships no `vi` catalog and the plugin's strings are not in the upstream `invesalius` gettext domain, so `invesalius.i18n.tr` could never return Vietnamese. The plugin therefore has its own lookup: `plugins/roi_viewer/i18n.py` (`_()`, `fmt_int()`, `fmt_float()`) over `plugins/roi_viewer/locale_vi.py` (`CATALOG`: English msgid → Vietnamese, 237 entries). Upstream i18n is untouched; the plugin no longer imports `invesalius.i18n`.
+- Source code keeps English msgids. Every `_()` argument is a string literal; runtime values are inserted with `.format()` **after** translation so the msgid is constant (the old `_(f"...")` calls could never be translated). `_("")` returns `""` without a lookup (the gettext header-leak bug).
+- Numbers shown to the user use Vietnamese format: `fmt_int(152340)` → `152.340`, `fmt_float(0.08)` → `0,08`.
+- `PLUGIN_LANGUAGE = "vi"`; setting it to anything else shows the English msgids (used to prove the localization tests fail without the catalog).
+- Enforced by `tests/ct3d/test_ui_localization.py`: all msgids literal, every msgid translated, no unused catalog entry, placeholders preserved, empty string never looked up, no upstream translator import.
+- Not translated on purpose: file-format names, units, "ROI", "Otsu", "Window/Level", "2D"/"3D", the native tool name `"Slices' cross intersection"` and native tab "Measures" (InVesalius shows them in English), auto-generated mask names "ROI Viewer N"/"Region Growing N" (project data saved in `.inv3`, not UI chrome), console `print` output.
+
+## Layout
+
+- Tabs, in workflow order: **Phân đoạn** (create → preview/accept → post-process → brush → edit history), **ROI & 3D** (ROI management + final 3D surface + E4 live preview), **Tương tác & Hiển thị** (2D-3D sync, 3D point picking, E5 advanced display), **Đo lường**, **Ghi chú**, **Xuất dữ liệu**.
+- `SegmentationPanel` still owns every ROI/3D widget and handler, but builds the ROI management and 3D surface boxes on a second notebook page (`roi_page`, a `ScrolledPanel` created by `ROIViewerFrame`). Without `roi_page` it falls back to itself, so existing tests that construct the panel alone keep working. `_refresh_active_roi_indicator()` updates both the ROI page's "ROI hiện tại" label and the copy at the top of "Phân đoạn".
+- Advanced/experimental sections are native `wx.CollapsiblePane`s (`gui/ui_helpers.collapsible()`), collapsed by default: Hậu xử lý (E3), Chỉnh sửa thủ công (brush), Xem trước 3D thời gian thực (E4), Hiển thị 3D nâng cao (E5). Their widgets are parented to the pane's content window; handlers are bound directly on the widgets, so reparenting did not change event routing. Expanding/collapsing re-runs `SetupScrolling(scroll_x=False)` on the page (vertical scroll only).
+- Removed from "Tương tác & Hiển thị": "Real-time Update / Update delay" and the "Brush Mode" copy - both only stored values nothing read (the real brush controls are in "Phân đoạn"). Their dead handlers and `get_brush_config()` went with them (`test_dead_interaction_controls_removed`).
+- Pick-point readout shows the **slice-frame** coordinates (`view_to_slice`), consistent with the 2D views, instead of the raw y-flipped 3D view-frame pick.
+- Workflow hint deviates from the spec's suggested "Tạo/Xem trước → Kiểm tra → Hậu xử lý → Chấp nhận → Cập nhật 3D": post-processing cannot run on a preview (E3 "Cleanup targets" - Otsu Accept rebuilds the mask from the threshold), so the real order is "1. Tạo / xem trước → 2. Chấp nhận → 3. Hậu xử lý → 4. Cập nhật bề mặt 3D".

@@ -120,4 +120,8 @@ Automated evidence now covers C8 marker/planes, 3D pick → 2D, Region Growing s
 
 - Round-to-nearest uses Python's `round()` (banker's rounding at exact half-voxels), the same function native uses.
 - No gantry-tilt / oblique-orientation handling (pre-existing, unchanged); only the axis-aligned path with origin 0 that native uses.
-- The Pick Point coordinate readout in the Interaction tab still shows the raw 3D-view pick (y ≤ 0); only its use for slice selection was converted.
+- ~~The Pick Point coordinate readout in the Interaction tab still shows the raw 3D-view pick (y ≤ 0); only its use for slice selection was converted.~~ **Closed 30/09/2026 in `4d0ca6e5`** (UI polish): the "Chọn điểm trong 3D" readout in tab "Tương tác & Hiển thị" now shows `view_to_slice(pick)` - the same slice-frame millimetres (y ≥ 0) as the 2D views and the slice selection. See `docs/CT3D_UI_UX_VIETNAMESE_POLISH_REPORT.md`.
+
+## 12. Status after the UI polish run (30/09/2026)
+
+The coordinate fix was re-verified unchanged after the UI/localization commit `4d0ca6e5`: `tests/ct3d` 446 passed / 1 skipped / 0 failed (447 collected, 3 identical runs), which includes the coordinate tests of this report (`test_coordinates.py` and the 23 real-handler integration tests of `test_coordinate_frames_integration.py`). Dataset `0051` (108×512×512, spacing (0.4785, 0.4785, 1.5) mm): expected bounds x 0–244.5, y 0–244.5, z 0–160.5 mm (slice frame); the plugin's C8 bounds equal the real VTK volume bounds in the 3D view frame (x 0–244.5, y −244.5–0, z 0–160.5 mm). Manual E5-B/C/D/E/J/K/L remain `RETEST_REQUIRED`; E5-A stays `PASS`.

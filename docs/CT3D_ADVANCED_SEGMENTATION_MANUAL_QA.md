@@ -4,6 +4,10 @@
 
 **Branch**: `enhancement/advanced-segmentation`. **Preconditions (common to all items below)**: real CT project imported (e.g. dataset `0051`, see `CT3D_DATASET_REGISTRY.md`), plugin open on the **Segmentation** tab, at least 2-3 masks created via Threshold/Region Growing so the "Segmentation Set" list has multiple real ROIs to exercise.
 
+> **UI labels changed (30/09/2026, `4d0ca6e5`)**: the plugin UI is now Vietnamese and reorganised into 6 tabs (Phân đoạn / ROI & 3D / Tương tác & Hiển thị / Đo lường / Ghi chú / Xuất dữ liệu). The E1-E5 steps below were written with the old English labels and are kept verbatim; map each label with the table in `docs/HUONG_DAN_SU_DUNG_ROI_VIEWER.md` §1.2 (e.g. "Segmentation Set" / "Active ROI" → tab **ROI & 3D**, "Quản lý ROI" / "ROI hiện tại"; "Lock" → "Khóa"; "Solo" → "Chỉ hiện ROI này"; "Enable Preview Workflow" → "Bật chế độ xem trước"; "Show CT texture on slice planes" → "Hiển thị ảnh lát cắt trên mặt phẳng 3D", now in the collapsed section "Hiển thị 3D nâng cao (thử nghiệm)" of tab **Tương tác & Hiển thị**; "Enable Clipping" → "Bật cắt hiển thị 3D"). Status messages quoted in the old steps are now Vietnamese too (e.g. "No final surface for selected ROI." → "ROI hiện tại chưa có bề mặt 3D cuối."). Behaviour behind every control is unchanged - only labels and layout moved.
+>
+> **Reconciliation note (30/09/2026)**: Operator reports previous feature groups passed during manual use; item-level reconciliation pending. The operator's statement was general (per feature group, not per item), so no item below was changed to PASS on the strength of it: only items with specific evidence recorded in this file are marked PASS (currently E5-A). E5-B/C/D/E/J/K/L are `RETEST_REQUIRED` because they depend on world↔voxel coordinates fixed in `7b245865`/`c9f220bd` - any earlier result for them is void.
+
 ## E1 — Advanced ROI Manager
 
 ### TEST E1-A — Active ROI indicator
@@ -430,6 +434,62 @@ With both "Show CT texture on slice planes" and "Enable Clipping" left at their 
 
 ---
 
+## UI/UX Final Polish (Vietnamese UI + workflow layout, 30/09/2026)
+
+> Build: `4d0ca6e5` or later. Automated evidence (real `ROIViewerFrame` built headlessly, widget tree walked - `tests/ct3d/test_ui_localization.py`, 21 tests) covers labels, tooltips, defaults, IDs and size arithmetic; it cannot judge readability, real DPI/font rendering or whether the workflow is understandable. Those are the items below. All `NOT_RUN` until a real operator runs them - see `docs/CT3D_UI_UX_VIETNAMESE_POLISH_REPORT.md`.
+
+### TEST UI-A — Every ROI Viewer control is Vietnamese
+Open the plugin and visit all 6 tabs; expand the 4 collapsible sections (Hậu xử lý, Chỉnh sửa thủ công, Xem trước 3D thời gian thực, Hiển thị 3D nâng cao).
+**Expected**: every label, button, checkbox, box title, drop-down entry and tab name is Vietnamese, except the documented neutral terms (file formats, units, ROI, Otsu, Window/Level, 2D/3D, InVesalius tool name "Slices' cross intersection", tab name "Measures", Axial/Coronal/Sagittal with Vietnamese in parentheses).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-B — No user-facing English left in the plugin
+Run a short session that triggers messages: create a mask, run Region Growing with tolerance 0 on a background voxel, try Undo with nothing to undo, try Delete on a locked ROI, run Export with NRRD when pynrrd is missing.
+**Expected**: every status line, dialog title and dialog text shown by the plugin is Vietnamese (system Yes/No/OK buttons follow the Windows language; console output may stay English).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-C — No gettext metadata leak
+Look at every status line/label, especially the empty ones before any action (Region Growing status, post-processing status, "Nguồn:" row).
+**Expected**: no "Project-Id-Version", "Content-Type", "Plural-Forms" or similar catalog-header text anywhere.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-D — No clipped button/control
+At the default window size and at a narrow width, with all sections expanded.
+**Expected**: no button, checkbox or radio label is cut off; no control falls outside its box.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-E — Phân đoạn workflow reads in order
+A user unfamiliar with the plugin reads tab **Phân đoạn** top to bottom.
+**Expected**: the order Ngưỡng → Phát triển vùng → Xem trước (Chấp nhận/Hủy) → Hậu xử lý → Chỉnh sửa thủ công → Lịch sử chỉnh sửa, with the hint line "1. Tạo / xem trước → 2. Chấp nhận → 3. Hậu xử lý → 4. Cập nhật bề mặt 3D" and "ROI hiện tại:", is understandable without the User Guide.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-F — Advanced controls do not clutter the screen
+Open the plugin fresh.
+**Expected**: the 4 advanced/experimental sections start collapsed; tab **Phân đoạn** fits the window without scrolling while they are collapsed; basic workflow (Ngưỡng, Otsu, Phát triển vùng, Xem trước, Chấp nhận/Hủy) is never hidden.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-G — Status text short and clear
+Trigger the statuses of UI-B plus a preview (Otsu), a post-processing step and a live 3D preview update.
+**Expected**: each status is one short Vietnamese sentence with Vietnamese number format (e.g. "152.340 voxel", "0,08 s"); no long technical traces in the UI (details only in the console).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-H — Tooltips display correctly
+Hover over: Khóa, Chỉ hiện ROI này, Bật chế độ xem trước, Làm mịn mặt nạ, Bật xem trước 3D thời gian thực, Hiển thị ảnh lát cắt trên mặt phẳng 3D, Bật cắt hiển thị 3D, Cập nhật bề mặt 3D từ ROI hiện tại.
+**Expected**: each tooltip appears, is Vietnamese, and says briefly what the control does, whether it edits the real mask, and whether it affects the final 3D surface.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-I — Resizing does not break the layout
+Resize the ROI Viewer window narrower/wider/taller/shorter; expand and collapse sections while resized.
+**Expected**: controls reflow; only a vertical scrollbar appears when content is taller than the window; never a horizontal scrollbar; nothing overlaps.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-J — Classic workflow still works
+With every experimental option left OFF: Tạo mặt nạ (threshold), Phát triển vùng (seed from 3D), Bật cọ vẽ + draw on 2D, Hoàn tác/Làm lại, Cập nhật bề mặt 3D từ ROI hiện tại, Chọn điểm trong 3D, Đo lường, Ghi chú, Lưu/mở lại project.
+**Expected**: same results as before the UI change (only labels/positions differ).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+---
+
 ## Summary
 
 | # | Test | PASS/FAIL |
@@ -513,6 +573,18 @@ With both "Show CT texture on slice planes" and "Enable Clipping" left at their 
 | E5-T | Plugin close/reopen | `NOT_RUN` |
 | E5-U | Save/Open unaffected | `NOT_RUN` |
 | E5-V | Classic mode with E5 OFF | `NOT_RUN` |
+| UI-A | Every ROI Viewer control is Vietnamese | `NOT_RUN` |
+| UI-B | No user-facing English left | `NOT_RUN` |
+| UI-C | No gettext metadata leak | `NOT_RUN` |
+| UI-D | No clipped button/control | `NOT_RUN` |
+| UI-E | Phân đoạn workflow reads in order | `NOT_RUN` |
+| UI-F | Advanced controls do not clutter | `NOT_RUN` |
+| UI-G | Status text short and clear | `NOT_RUN` |
+| UI-H | Tooltips display correctly | `NOT_RUN` |
+| UI-I | Resizing does not break layout | `NOT_RUN` |
+| UI-J | Classic workflow still works | `NOT_RUN` |
+
+> Operator reports previous feature groups passed during manual use; item-level reconciliation pending. (No item above was changed on the strength of that general statement - see the reconciliation note at the top of this file.)
 
 **E1_MANUAL_QA_COMPLETE: NOT_RUN** (0/14) — awaiting a real operator session. This does not block E1's automated `PASS` gate (see `CT3D_ADVANCED_SEGMENTATION_PROGRESS.md`), consistent with how the stable release separated automated evidence from manual GUI confirmation throughout Phase 08-14.
 
@@ -522,6 +594,8 @@ With both "Show CT texture on slice planes" and "Enable Clipping" left at their 
 
 **E4_MANUAL_QA_COMPLETE: NOT_RUN** (0/18) — same discipline, same reasoning. Does not block E4's automated `PASS` gate.
 
-**ADVANCED_FULL_MANUAL_QA_COMPLETE: NO** (1/79 passed across E1-E5: 0/14 + 0/12 + 0/13 + 0/18 + 1/22 - only E5-A, which failed once, was fixed, and passed on operator retest). This is separate from any single milestone's technical gate - even if E5-B/C/D later pass and E5 reaches `PASS`, this stays `NO` until every intended item has actually been run by an operator.
+**UI_POLISH_MANUAL_QA_COMPLETE: NOT_RUN** (0/10) — UI-A..UI-J await a real operator session on build `4d0ca6e5` or later.
+
+**ADVANCED_FULL_MANUAL_QA_COMPLETE: NO** (1/89 passed: E1-E5 1/79 = 0/14 + 0/12 + 0/13 + 0/18 + 1/22, plus UI polish 0/10 - only E5-A, which failed once, was fixed, and passed on operator retest). This is separate from any single milestone's technical gate - even if E5-B/C/D later pass and E5 reaches `PASS`, this stays `NO` until every intended item has actually been run by an operator.
 
 **E5_MANUAL_QA_COMPLETE: NO** (1/22 passed - E5-A: FAIL 29/09 → fixed → PASS 30/09; the other 21 `NOT_RUN`, including the gate-blocking E5-B/C/D) — same discipline, same reasoning. Does not block E5's automated gate. Real operator confirmation of E5-B/C/D (texture orientation) is the authoritative verification for the one claim this milestone's own automated evidence could not additionally prove via live rendering (see `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`'s "Texture orientation proof" section).
