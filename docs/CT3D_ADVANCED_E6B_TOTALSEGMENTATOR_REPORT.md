@@ -189,3 +189,5 @@ Result: 25,953 foreground voxels (≈ 24.8 cm³); output affine diag(−0.9766, 
 A defect in the final-surface button (it overwrote InVesalius's last surface, e.g. the bone) was found in the same run and fixed — see Manual QA "Operator run 30/09/2026 (night)".
 
 `REAL_AI_INFERENCE = DONE (1 run)`. **`E6b_GATE = PARTIAL_MANUAL_QA_PENDING`** (before: `PARTIAL_REAL_INFERENCE_PENDING`): real inference works end to end; still open: CPU run (D), E4 live preview (G), cancel (H), Accept == preview (J), cleanup (K), surface re-test (L), Save/Open (M), close during inference (N, O), AI off (P).
+
+Second run (same data, after restarting InVesalius): "Đã hoàn thành trong 25,1 s." (the first run's 48.5 s included the first CUDA/model start-up; not separately measured). Enabling the E4 live preview after Accept exposed a camera defect (preview invisible while no surface had been shown) - fixed; E6b-G `RETEST_REQUIRED`.

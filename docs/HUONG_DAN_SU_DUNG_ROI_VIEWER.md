@@ -268,7 +268,7 @@ Nút **"Cập nhật bề mặt 3D từ ROI hiện tại"** dựng lại (hoặc
 
 **Lưu ý quan trọng**:
 - Lưới xem trước **không thể click/pick được** (không ảnh hưởng đến chọn điểm 3D cho Phát triển vùng, đo lường, hay các thao tác chọn khác).
-- Không bao giờ tự động di chuyển camera.
+- Không di chuyển camera — **trừ một trường hợp**: khi khung Volume chưa từng hiện bề mặt 3D nào (InVesalius chưa đặt camera 3D), plugin đặt camera **một lần** theo đúng cách InVesalius làm cho bề mặt đầu tiên (nhìn từ phía trước). **[Sửa 30/09/2026]** Trước đó lưới vẫn dựng xong (ví dụ 11.646 điểm) nhưng khung Volume **đen hoàn toàn** vì camera mặc định nằm ngoài vùng ảnh. Với bản cũ, cách khắc phục là chọn một hướng nhìn bằng nút hướng nhìn ở thanh bên phải khung Volume.
 - Đóng project hoặc đóng cửa sổ plugin trong khi đang bật sẽ tự dọn dẹp lưới an toàn (không crash, không để lại lưới "ma").
 - Nếu mặt nạ rỗng: *"Không có voxel thuộc vùng phân đoạn."*
 - Tắt tính năng này hoàn toàn không ảnh hưởng quy trình cổ điển (Ngưỡng/Otsu/Phát triển vùng/cọ vẽ/Hoàn tác/Làm lại/Cập nhật bề mặt 3D vẫn y hệt bản ổn định).

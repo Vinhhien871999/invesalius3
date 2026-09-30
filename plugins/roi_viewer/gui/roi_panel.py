@@ -313,6 +313,17 @@ class ROIViewerPanel(wx.Panel):
             return False
         return self.preview_surface_3d.attach(viewer.ren)
 
+    def place_3d_camera_if_unset(self) -> bool:
+        """Places the 3D camera if InVesalius has not yet - see
+        interface/view_interface.place_3d_camera_if_unset()."""
+        try:
+            from ..interface.view_interface import ViewInterface, place_3d_camera_if_unset
+
+            return place_3d_camera_if_unset(ViewInterface().get_volume_viewer())
+        except Exception as e:
+            print(f"ROI Viewer: 3D camera placement skipped - {e}")
+            return False
+
     def request_render(self):
         """Shared real "please repaint the 3D view" trigger - same real
         pubsub message marker_3d/slice_planes_3d updates already send
@@ -524,8 +535,10 @@ class ROIViewerPanel(wx.Panel):
         (the "Show slice planes in 3D" checkbox - a separate concern
         from whether Sync 2D->3D itself is on, see interaction_panel.py)
         - the marker's own visibility is unaffected by this flag.
-        Does NOT touch the camera (no rotate/zoom/pan/reset) and does
-        NOT rebuild any surface - only actor geometry moves.
+        Does NOT touch the camera (no rotate/zoom/pan/reset) - except
+        placing it once while InVesalius has never placed it (no surface
+        shown yet, see place_3d_camera_if_unset()) - and does NOT
+        rebuild any surface - only actor geometry moves.
 
         Guarded by self.sync_mgr.sync_2d_3d - the EXACT SAME flag the
         "Sync 2D -> 3D" checkbox in interaction_panel.py already toggles
@@ -591,6 +604,11 @@ class ROIViewerPanel(wx.Panel):
                         self.slice_planes_3d.set_bounds(bounds)
                         self.slice_planes_3d.update_position(view_pos)
                         self.apply_slice_plane_visibility()
+                        # Planes span the volume, so the first placement
+                        # frames the whole volume (the marker alone would
+                        # frame a 3 mm sphere - left to InVesalius then).
+                        if self.show_slice_planes:
+                            self.place_3d_camera_if_unset()
                     except ValueError as e:
                         print(f"ROI Viewer: slice planes geometry update skipped - {e}")
 

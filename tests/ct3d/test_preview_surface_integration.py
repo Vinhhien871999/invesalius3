@@ -86,6 +86,11 @@ class _FakeController:
         self.preview_surface_3d = PreviewSurfaceManager3D()
         self.preview_surface_3d.attach(renderer)
         self._render_calls = 0
+        self._camera_requests = 0
+
+    def place_3d_camera_if_unset(self):
+        self._camera_requests += 1
+        return False
 
     def ensure_preview_surface_attached(self):
         return self.preview_surface_3d.is_attached()
@@ -165,6 +170,11 @@ def test_e4_never_calls_create_surface_from_index(real_env, renderer):
     panel._on_preview_3d_built(gen, polydata, kind, 0.01)
 
     assert calls == []
+    # A built mesh asks for the one-time camera placement (no-op once
+    # InVesalius has placed its 3D camera); an empty result does not.
+    assert controller._camera_requests == 1
+    panel._on_preview_3d_built(controller.preview_surface_3d.new_generation(), None, kind, 0.01)
+    assert controller._camera_requests == 1
 
 
 def test_final_surface_untouched(real_env, renderer):

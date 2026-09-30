@@ -2731,6 +2731,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     _("{points} points, {cells} cells").format(
                         points=fmt_int(polydata.GetNumberOfPoints()), cells=fmt_int(polydata.GetNumberOfCells()))
                 )
+                # Only if InVesalius never placed its 3D camera (no
+                # surface shown yet) - otherwise the view is left as is.
+                self.controller.place_3d_camera_if_unset()
             self.controller.request_render()
         except RuntimeError as e:
             # Widgets destroyed mid-flight (plugin closing while a build

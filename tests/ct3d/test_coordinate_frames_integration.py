@@ -82,6 +82,7 @@ def _frame(show_texture=False):
         _last_cross_focal_point=None,
         _texture_planes_position=None,
         request_render=lambda: None,
+        place_3d_camera_if_unset=lambda: False,
     )
     for name in ("on_cross_focal_point_changed", "update_textured_slice_planes",
                  "apply_slice_plane_visibility", "_compute_volume_bounds"):

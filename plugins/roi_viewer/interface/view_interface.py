@@ -7,6 +7,30 @@ from typing import Optional, Tuple, Callable, List
 import wx
 
 
+def place_3d_camera_if_unset(viewer) -> bool:
+    """
+    InVesalius places the 3D camera only when its first surface, volume or
+    3D mask preview is shown (viewer_volume.AddSurface / LoadVolume /
+    load_mask_preview) - viewer.view_angle stays None until then, and the
+    default VTK camera looks at the world origin from 1 mm away, so the
+    meshes and planes this plugin draws (hundreds of mm from the origin)
+    are out of view. Seen in the real application on 30/09/2026: live 3D
+    preview built (11,646 points), Volume view black, no surface yet.
+
+    Places it once, exactly as load_mask_preview() does. A camera that
+    InVesalius or the user already placed (view_angle set) is never
+    touched; a viewer without view_angle is left alone. Returns whether
+    the camera was placed.
+    """
+    if viewer is None or getattr(viewer, "view_angle", True):
+        return False
+    import invesalius.constants as const
+
+    viewer.SetViewAngle(const.VOL_FRONT)
+    viewer.view_angle = 1
+    return True
+
+
 class ViewInterface:
     """
     Interface to control InVesalius viewers.

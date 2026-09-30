@@ -105,7 +105,11 @@ def test_gui_layer_never_touches_camera():
     """Same real assertion, extended to the GUI wiring
     (gui/segmentation_panel.py's E4 methods and
     gui/roi_panel.py's ensure_preview_surface_attached()/request_render())
-    - neither file's E4-related code contains any camera API call."""
+    - neither file's E4-related code contains any camera API call. The one
+    camera action (30/09/2026) is delegated: _on_preview_3d_built() asks
+    controller.place_3d_camera_if_unset(), which only acts while InVesalius
+    has never placed its 3D camera, through InVesalius's own SetViewAngle
+    (rendered proof: test_preview_camera_render.py)."""
     import inspect
     from plugins.roi_viewer.gui.segmentation_panel import SegmentationPanel
 

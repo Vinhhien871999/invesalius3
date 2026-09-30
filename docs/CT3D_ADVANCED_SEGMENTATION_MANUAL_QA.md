@@ -718,7 +718,7 @@ After a run, scroll Axial/Coronal/Sagittal.
 ### TEST E6b-G — E4 live 3D preview shows the same candidate
 Enable Xem trước 3D thời gian thực.
 **Expected**: Source "Xem trước AI"; mesh matches the overlay.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator screenshots, 30/09/2026, real InVesalius, 0801, after restarting InVesalius and a second AI run - "Đã hoàn thành trong 25,1 s." - accepted): E4 enabled only after Accept, so the source was "ROI hiện tại" (not "Xem trước AI"); mesh built (11,646 points, 23,288 cells, 0.16 s) but **the Volume view stayed black** - defect, see "Operator run 30/09/2026 (night)" item 5; fixed. | **PASS/FAIL**: `RETEST_REQUIRED` (enable E4 before Accept)
 
 ### TEST E6b-H — Cancel does not create a mask
 Hủy xử lý AI during a run; also Hủy xem trước after one.
@@ -768,7 +768,7 @@ Leave AI off; run the classic workflow.
 ### Real inference
 **`DONE` (1 run, operator, 30/09/2026)** — 0801, `trachea`, CUDA, standard: 48.5 s total, 25,953 voxels, accepted as "AI - trachea". (Before: `BLOCKED_MODEL_NOT_AVAILABLE`.)
 
-**E6b_MANUAL_QA_COMPLETE: NO** — 1 PASS (E), 4 PARTIAL (A, C, F, I), 1 RETEST_REQUIRED (L), 10 NOT_RUN (B, D, G, H, J, K, M, N, O, P).
+**E6b_MANUAL_QA_COMPLETE: NO** — 1 PASS (E), 4 PARTIAL (A, C, F, I), 2 RETEST_REQUIRED (G, L), 9 NOT_RUN (B, D, H, J, K, M, N, O, P).
 
 ---
 
@@ -826,3 +826,5 @@ Evidence: 4 screenshots (pip install tail + environment check `2.7.1+cu118 True 
 2. **Not a defect — coloured planes in the 3D view after turning on the cross tool**: C8's "Hiển thị mặt phẳng lát cắt trong 3D" (tab Hiển thị, default on; red = sagittal, green = coronal, blue = axial, 25 % opacity). They appear once InVesalius's "Slices' cross intersection" tool moves the crosshair; seen face-on, the coronal plane tints the whole Volume view green. Untick to hide. Recorded as a UX observation (default kept).
 3. **Caution — AI mask and InVesalius's threshold slider**: the accepted mask shows threshold "1 – 1"; moving the native threshold re-thresholds the mask from the image and discards the AI result (native behaviour for every edited mask). Added to the user guide.
 4. Console "State file found … Restoring a previous state…" lines come from InVesalius (`invesalius/session.py`), not from the plugin.
+5. **Defect — live 3D preview invisible before any surface exists** (operator: "đã bật mục xem trước 3d rồi sao vẫn ko thấy xuất hiện"; after restarting InVesalius no surface had been shown). InVesalius places its 3D camera only with its first surface, volume or 3D mask preview (`viewer_volume.AddSurface` / `LoadVolume` / `load_mask_preview`; `view_angle` stays None until then); the default VTK camera sits at (0, 0, 1) mm looking at the origin, so the E4 mesh (and C8's planes) hundreds of mm away are not drawn. Fixed: the plugin places the camera once, exactly as `load_mask_preview()` does (`SetViewAngle(VOL_FRONT)`), only while InVesalius never has - when an E4 mesh is built, or when C8's planes are drawn; an existing camera is never touched. Rendered proof (`tests/ct3d/test_preview_camera_render.py`, off-screen, production E4 mesh of a tube placed like 0801's trachea): 0 lit pixels with the default camera, 4,604 after the placement; a second call and an already-placed camera are no-ops.
+6. Second real AI run on the same data after the restart: 25.1 s (first run 48.5 s).

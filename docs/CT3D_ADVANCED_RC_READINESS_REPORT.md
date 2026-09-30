@@ -27,7 +27,7 @@ Everything else automated is green. The remaining manual items below are coverag
 
 ## 3. Automated evidence (this run)
 
-- `tests/ct3d`: 622 passed / 2 skipped (optional `pynrrd`; the "package missing" probe test, skipped now that TotalSegmentator is installed) / 0 failed, 3 consecutive runs; upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
+- `tests/ct3d`: 626 passed / 2 skipped (optional `pynrrd`; the "package missing" probe test, skipped now that TotalSegmentator is installed) / 0 failed, 3 consecutive runs; upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
 - All test and helper processes use a temporary `XDG_CONFIG_HOME`; verified that a full run leaves `%USERPROFILE%\.config\invesalius\config.json` / `state.json` untouched.
 
 ## 4. Manual QA status
@@ -36,7 +36,7 @@ Everything else automated is green. The remaining manual items below are coverag
 
 | Group | Status | Blocking? |
 |---|---|---|
-| E6b-A..P (real TotalSegmentator) | E PASS; A, C, F, I PARTIAL; L RETEST_REQUIRED; 10 NOT_RUN — first real run done | **yes** (E6b-D/G/J/L/M at minimum) |
+| E6b-A..P (real TotalSegmentator) | E PASS; A, C, F, I PARTIAL; G, L RETEST_REQUIRED; 9 NOT_RUN — first real run done | **yes** (E6b-D/G/J/L/M at minimum) |
 | UI-K..UI-N (sidebar in real InVesalius) | UI-K PARTIAL (screenshot: docked right); UI-L..N NOT_RUN | **yes** (UI-K reuse, UI-M) |
 | E5-B/C/D/E/J/K/L | RETEST_REQUIRED (after the coordinate fix) | no — orientation is proven by a rendered automated test; operator confirmation recommended |
 | E1-A..N, E2-A..L, E3-A..M, E4-A..R, E5 others, E6-A..L, UI-A..J | NOT_RUN | no (coverage) |

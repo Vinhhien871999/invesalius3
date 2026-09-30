@@ -68,7 +68,9 @@ def _make_frame():
         _texture_planes_position=None,
         _compute_volume_bounds=lambda: (0.0, 10.0, 0.0, 10.0, 0.0, 10.0),
         request_render=lambda: None,
+        camera_requests=[],
     )
+    frame.place_3d_camera_if_unset = lambda: frame.camera_requests.append(frame.show_slice_planes)
     for name in ("on_cross_focal_point_changed", "update_textured_slice_planes", "apply_slice_plane_visibility"):
         setattr(frame, name, getattr(ROIViewerPanel, name).__get__(frame))
     return frame
@@ -191,3 +193,15 @@ def test_plugin_close_reopen_visibility_clean(env):
     frame2, panel2 = _setup(env)
     assert (_visible(frame2.slice_planes_3d), _visible(frame2.textured_slice_planes_3d)) == (3, 0)
     assert env.GetActors().GetNumberOfItems() == 4  # 3 geometric + 1 marker
+
+
+def test_camera_placement_requested_only_while_planes_are_drawn(env):
+    """The crosshair asks for the one-time camera placement (a no-op once
+    InVesalius has a camera - view_interface.place_3d_camera_if_unset)
+    only while the planes are drawn: they span the volume, so the view
+    frames it. The marker alone is never used to frame the view."""
+    frame, panel = _setup(env)
+    assert frame.camera_requests == [True]
+    panel.set_master(False)
+    frame.on_cross_focal_point_changed((3.0, 3.0, 3.0))
+    assert frame.camera_requests == [True]
