@@ -84,7 +84,9 @@ class AIInferenceJobController:
         dispatch = self._dispatch
 
         def progress(fraction, message=""):
-            dispatch(self._on_progress, job, float(fraction), str(message))
+            # fraction None = a stage without a numeric progress (E6b: never
+            # invent a percentage the provider does not report).
+            dispatch(self._on_progress, job, None if fraction is None else float(fraction), str(message))
 
         def worker():
             try:

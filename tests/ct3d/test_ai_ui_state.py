@@ -69,9 +69,14 @@ def test_ai_section_collapsed_and_vietnamese(frame):
 
 
 def test_no_provider_state(frame):
+    """An empty registry (independent of what this machine has installed)."""
+    from plugins.roi_viewer.core.ai.registry import AIProviderRegistry
+
     panel = frame.segmentation_panel
     _enable(panel)
-    assert panel._ai_registry.list_providers() == [] and panel._ai_registry.load_errors == []
+    panel._ai_registry = AIProviderRegistry()
+    panel._refresh_ai_models()
+    panel._update_ai_controls()
     assert panel.lbl_ai_status.GetLabel() == "Chưa có mô hình AI tương thích."
     assert panel.choice_ai_model.GetStrings() == ["(chưa có)"]
     assert panel.choice_ai_device.GetStrings() == ["Tự động"]
@@ -84,11 +89,15 @@ def test_no_provider_state(frame):
 def test_model_not_installed_state(frame):
     panel = frame.segmentation_panel
     _enable(panel)
-    panel._ai_registry.register(StubAIProvider(available=False, requires_weights=True, reason="weights missing"))
+    from plugins.roi_viewer.core.ai.registry import AIProviderRegistry
+
+    panel._ai_registry = AIProviderRegistry()
+    panel._ai_registry.register(StubAIProvider(available=False, requires_weights=True,
+                                               reason="weights_missing: no weights"))
     panel._ai_registry.probe_all()
     panel._refresh_ai_models()
     panel._update_ai_controls()
-    assert panel.lbl_ai_status.GetLabel() == "Mô hình chưa được cài đặt."
+    assert panel.lbl_ai_status.GetLabel() == "Mô hình Stub stub chưa sẵn sàng."
     assert panel.choice_ai_model.GetStrings() == ["(chưa có)"]
     assert not panel.btn_ai_run.IsEnabled()
 

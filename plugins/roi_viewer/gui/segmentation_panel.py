@@ -17,7 +17,7 @@ from ..core.ai import job_controller as ai_jobs
 from ..core.ai import preview_bridge as ai_bridge
 from ..core.ai import provider as ai_provider
 from ..core.ai.prompts import AIPromptSet, PromptOutOfVolume
-from ..core.ai.types import DeviceKind
+from ..core.ai.types import Capability, DeviceKind
 from ..i18n import _, fmt_float, fmt_int
 from . import ui_helpers
 
@@ -139,6 +139,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._ai_prompts = AIPromptSet()  # session only, never saved
         self._ai_provider_ids = []  # dropdown index -> provider_id
         self._ai_devices = [DeviceKind.AUTO]  # dropdown index -> DeviceKind
+        self._ai_structures = []  # E6b: provider parameter "target_structure"
+        self._ai_modes = []  # E6b: provider parameter "mode"
         self._ai_preview_generation = None
         self._ai_run = None  # provider/prompt/timing info of the running job
         self._subscribe_surface_info_once()
@@ -239,6 +241,18 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.choice_ai_device = wx.Choice(p, wx.ID_ANY, choices=[_("Auto")])
         self.choice_ai_device.SetSelection(0)
         ai_sizer.Add(ui_helpers.labelled_row(p, _("Device:"), self.choice_ai_device), 0, wx.EXPAND)
+        # E6b: shown enabled only for a provider that declares these
+        # parameters (AIProviderInfo.parameter_choices). Structure names are
+        # the model's own canonical class names - not translated.
+        self.combo_ai_structure = wx.ComboBox(p, wx.ID_ANY, choices=[], style=wx.CB_DROPDOWN)
+        self.combo_ai_structure.SetToolTip(_(
+            "Type to search. One structure per preview - the model's other classes are not used."))
+        ai_sizer.Add(ui_helpers.labelled_row(p, _("Structure:"), self.combo_ai_structure), 0, wx.EXPAND)
+        self.choice_ai_mode = wx.Choice(p, wx.ID_ANY, choices=[_("Standard accuracy")])
+        self.choice_ai_mode.SetSelection(0)
+        self.choice_ai_mode.SetToolTip(_(
+            "Fast uses the model's lower-resolution version: less time and memory, less accurate."))
+        ai_sizer.Add(ui_helpers.labelled_row(p, _("Mode:"), self.choice_ai_mode), 0, wx.EXPAND)
 
         kind_row = wx.BoxSizer(wx.HORIZONTAL)
         kind_row.Add(wx.StaticText(p, wx.ID_ANY, _("Point type:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
@@ -1216,7 +1230,22 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             ai_provider.REQUEST_PROMPT_UNSUPPORTED: _("This model does not support this kind of prompt."),
             ai_provider.REQUEST_DEVICE_UNSUPPORTED: _("This model cannot use the selected device."),
             ai_provider.REQUEST_NO_VOLUME: _("No project loaded."),
+            ai_provider.REQUEST_STRUCTURE_UNKNOWN: _("Choose a structure from the list."),
+            ai_provider.REQUEST_MODE_UNSUPPORTED: _("This model does not support the selected mode."),
+            ai_provider.REQUEST_ORIENTATION_UNKNOWN: _(
+                "The patient orientation of this volume is unknown - only axial DICOM series are supported."),
         }.get(code, _("AI processing failed."))
+
+    @staticmethod
+    def _ai_unavailable_message(info) -> str:
+        code = (info.unavailable_reason or "").split(":", 1)[0].strip()
+        name = info.display_name or info.provider_id
+        return {
+            ai_provider.REASON_PACKAGE_MISSING: _("{name} is not installed."),
+            ai_provider.REASON_WEIGHTS: _("The {name} model is not ready."),
+            ai_provider.REASON_DEPENDENCY: _("{name}: a required library is missing or broken."),
+            ai_provider.REASON_API: _("The installed {name} version is not compatible."),
+        }.get(code, _("{name} is not available.")).format(name=name)
 
     @staticmethod
     def _ai_candidate_message(code) -> str:
@@ -1271,8 +1300,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 print(f"ROI Viewer: AI provider '{info.provider_id}' unavailable - {info.unavailable_reason}")
         if available:
             self.lbl_ai_status.SetLabel(_("Ready."))
-        elif any(i.requires_weights for i in infos):
-            self.lbl_ai_status.SetLabel(_("The model is not installed."))
+        elif infos:
+            self.lbl_ai_status.SetLabel(self._ai_unavailable_message(infos[0]))
         else:
             self.lbl_ai_status.SetLabel(_("No compatible AI model."))
         self._refresh_ai_devices()
@@ -1285,6 +1314,41 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._ai_devices = devices
         self.choice_ai_device.Set([_("Auto") if d == DeviceKind.AUTO else d.upper() for d in devices])
         self.choice_ai_device.SetSelection(0)
+        # E6b provider parameters
+        choices = info.parameter_choices if info else {}
+        self._ai_structures = list(choices.get(ai_provider.OPTION_STRUCTURE, ()))
+        self.combo_ai_structure.Set(self._ai_structures)
+        self.combo_ai_structure.AutoComplete(self._ai_structures)
+        self.combo_ai_structure.SetValue("")
+        self._ai_modes = list(choices.get(ai_provider.OPTION_MODE, ()))
+        labels = {ai_provider.MODE_STANDARD: _("Standard accuracy"), ai_provider.MODE_FAST: _("Fast / less memory")}
+        self.choice_ai_mode.Set([labels.get(m, m) for m in self._ai_modes] or [_("Standard accuracy")])
+        self.choice_ai_mode.SetSelection(0)
+
+    def _selected_ai_info(self):
+        pid = self._selected_ai_provider_id()
+        return self._ai_registry.info(pid) if (pid and self._ai_registry is not None) else None
+
+    def _selected_ai_mode(self):
+        index = self.choice_ai_mode.GetSelection()
+        return self._ai_modes[index] if 0 <= index < len(self._ai_modes) else ai_provider.MODE_STANDARD
+
+    @staticmethod
+    def _ai_volume_orientation():
+        """(patient_orientation, acquisition) as InVesalius recorded them at
+        import (Project; see the TotalSegmentator provider's grid contract)."""
+        try:
+            import invesalius.constants as const
+            import invesalius.project as prj
+
+            proj = prj.Project()
+            names = {const.AXIAL: "AXIAL", const.CORONAL: "CORONAL", const.SAGITAL: "SAGITTAL"}
+            acquisition = getattr(proj, "original_orientation", "")
+            acquisition = names.get(acquisition, acquisition if isinstance(acquisition, str) else "")
+            return getattr(proj, "patient_orientation", None), str(acquisition).upper()
+        except Exception as e:
+            print(f"ROI Viewer: AI could not read the volume orientation - {e}")
+            return None, ""
 
     def _on_ai_model_changed(self, event):
         self._refresh_ai_devices()
@@ -1295,11 +1359,17 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         has_model = enabled and self._selected_ai_provider_id() is not None
         busy = self._ai_jobs is not None and self._ai_jobs.is_busy()
         running = busy and self._ai_jobs.state in (ai_jobs.AIJobState.PREPARING, ai_jobs.AIJobState.RUNNING)
+        info = self._selected_ai_info() if has_model else None
+        # E6b: a provider that consumes no prompts (e.g. TotalSegmentator) gets
+        # none - the point/box controls are disabled, never faked into it.
+        uses_prompts = enabled and (info is None or bool(info.supported_prompt_types))
         for widget in (self.rb_ai_positive, self.rb_ai_negative, self.btn_ai_pick_point, self.btn_ai_cursor_point,
                        self.btn_ai_corner1, self.btn_ai_corner2, self.btn_ai_clear):
-            widget.Enable(enabled)
+            widget.Enable(uses_prompts)
         self.choice_ai_model.Enable(has_model)
         self.choice_ai_device.Enable(has_model)
+        self.combo_ai_structure.Enable(has_model and bool(self._ai_structures))
+        self.choice_ai_mode.Enable(has_model and len(self._ai_modes) > 1)
         self.btn_ai_run.Enable(has_model and not busy)
         self.btn_ai_cancel.Enable(running)
         self._update_ai_prompt_label()
@@ -1419,18 +1489,35 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.lbl_ai_status.SetLabel(_("No project loaded."))
             return
         spacing = pi.get_spacing()
-        request = AIInferenceRequest(volume=read_only_volume(volume, spacing), prompts=self._ai_prompts.snapshot(),
-                                     device=self._selected_ai_device())
+        info = self._ai_registry.info(pid)
+        options = {}
+        if self._ai_structures:
+            structure = self.combo_ai_structure.GetValue().strip()
+            if structure not in self._ai_structures:
+                self.lbl_ai_status.SetLabel(_("Choose a structure from the list."))
+                return
+            options[ai_provider.OPTION_STRUCTURE] = structure
+        if self._ai_modes:
+            options[ai_provider.OPTION_MODE] = self._selected_ai_mode()
+        orientation, acquisition = self._ai_volume_orientation()
+        options[ai_provider.OPTION_PATIENT_ORIENTATION] = orientation
+        options[ai_provider.OPTION_ACQUISITION] = acquisition
+        from ..core.ai.types import AIPrompts
+
+        prompts = self._ai_prompts.snapshot() if (info and info.supported_prompt_types) else AIPrompts()
+        request = AIInferenceRequest(volume=read_only_volume(volume, spacing), prompts=prompts,
+                                     device=self._selected_ai_device(), options=options)
 
         # A new preview replaces the current one (as for Otsu/Region Growing).
         self._clear_preview_overlay()
         self.preview_mgr.cancel()
         self._ai_preview_generation = self.preview_mgr.new_generation()
-        info = self._ai_registry.info(pid)
         self._ai_run = {
             "provider_id": pid, "provider_name": info.display_name if info else pid,
             "prompt_count": request.prompts.count, "device": request.device,
             "shape": tuple(volume.shape), "spacing": spacing, "started": time.perf_counter(),
+            "structure": options.get(ai_provider.OPTION_STRUCTURE), "mode": options.get(ai_provider.OPTION_MODE),
+            "interruptible": bool(info and Capability.INTERRUPTIBLE in info.capabilities),
         }
         self.lbl_preview_status.SetLabel(_("Computing…"))
         job = self._ai_jobs.start(provider, request)
@@ -1450,7 +1537,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.preview_mgr.cancel()
             self.lbl_preview_status.SetLabel(_("Idle"))
             self._update_preview_buttons()
-        self.lbl_ai_status.SetLabel(_("AI processing cancelled."))
+        if (self._ai_run or {}).get("interruptible", False) or not self._ai_jobs.is_busy():
+            self.lbl_ai_status.SetLabel(_("AI processing cancelled."))
+        else:
+            # E6b: the model cannot be stopped mid-run - say what really happens.
+            self.lbl_ai_status.SetLabel(_(
+                "Cancel requested - the running model finishes in the background and its result is discarded."))
         self._update_ai_controls()
 
     def _on_ai_event(self, event, job, payload):
@@ -1462,11 +1554,24 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 elif payload == ai_jobs.AIJobState.RUNNING:
                     self.lbl_ai_status.SetLabel(_("Running AI…"))
                 elif payload == ai_jobs.AIJobState.CANCELLING:
-                    self.lbl_ai_status.SetLabel(_("Stopping AI…"))
+                    if (self._ai_run or {}).get("interruptible", False):
+                        self.lbl_ai_status.SetLabel(_("Stopping AI…"))
+                    else:
+                        self.lbl_ai_status.SetLabel(_("Waiting for the running model to finish…"))
                 self._update_ai_controls()
             elif event == ai_jobs.EVENT_PROGRESS:
-                fraction = max(0.0, min(1.0, payload[0]))
-                self.lbl_ai_status.SetLabel(_("Running AI… {percent}%").format(percent=int(round(fraction * 100))))
+                fraction, stage = payload
+                if fraction is None:  # the provider reports stages only - no percentage is shown
+                    name = (self._ai_run or {}).get("provider_name") or "AI"
+                    self.lbl_ai_status.SetLabel({
+                        ai_provider.STAGE_PREPARING: _("Preparing data…"),
+                        ai_provider.STAGE_RUNNING: _("Running {name}…").format(name=name),
+                        ai_provider.STAGE_MAPPING: _("Mapping the result…"),
+                    }.get(stage, _("Running AI…")))
+                else:
+                    fraction = max(0.0, min(1.0, fraction))
+                    self.lbl_ai_status.SetLabel(
+                        _("Running AI… {percent}%").format(percent=int(round(fraction * 100))))
             elif event == ai_jobs.EVENT_RESULT:
                 self._on_ai_result(job, payload)
             elif event == ai_jobs.EVENT_FAILED:
@@ -1527,6 +1632,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             "model_name": result.model_name, "model_version": result.model_version,
             "device": result.device_used or run.get("device"), "runtime_seconds": runtime,
             "prompt_count": run.get("prompt_count", 0),
+            "structure": run.get("structure"), "mode": run.get("mode"),
+            "provider_details": dict(getattr(result, "extra", {}) or {}),
         }
         if not self.preview_mgr.set_ai_preview(self._ai_preview_generation, array, metadata, stats, name="AI Preview"):
             try:
@@ -1554,7 +1661,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
             mask_count = len(ProjectInterface().get_mask_dict())
             colour = const.MASK_COLOUR[mask_count % len(const.MASK_COLOUR)]
-            name = f"AI Segmentation {mask_count + 1}"
+            structure = (self.preview_mgr.ai_metadata or {}).get("structure")
+            # E6b: "AI - <canonical class name>" (not translated); generic otherwise.
+            name = f"AI - {structure}" if structure else f"AI Segmentation {mask_count + 1}"
             mask = native_mask.commit_preview_array_to_new_mask(np.asarray(preview_array) > 0, name, colour)
             return name if mask is not None else None
         except Exception as e:

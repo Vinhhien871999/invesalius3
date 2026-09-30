@@ -23,6 +23,31 @@ REQUEST_NEEDS_PROMPT = "needs_prompt"
 REQUEST_PROMPT_UNSUPPORTED = "prompt_unsupported"
 REQUEST_DEVICE_UNSUPPORTED = "device_unsupported"
 REQUEST_NO_VOLUME = "no_volume"
+# E6b: codes for providers with parameters / patient-orientation needs
+REQUEST_STRUCTURE_UNKNOWN = "structure_unknown"
+REQUEST_MODE_UNSUPPORTED = "mode_unsupported"
+REQUEST_ORIENTATION_UNKNOWN = "orientation_unknown"
+
+# AIProviderInfo.unavailable_reason = "<code>: <detail>" (E6b). The UI shows a
+# Vietnamese message per code and prints the detail to the console.
+REASON_PACKAGE_MISSING = "package_missing"
+REASON_DEPENDENCY = "dependency_missing"
+REASON_API = "api_incompatible"
+REASON_WEIGHTS = "weights_missing"
+
+# progress(None, <stage>) - for models with no numeric progress. A provider
+# must never report a percentage it does not really know (E6b).
+STAGE_PREPARING = "preparing"
+STAGE_RUNNING = "running"
+STAGE_MAPPING = "mapping"
+
+# Generic request.options keys filled by the panel (E6b)
+OPTION_STRUCTURE = "target_structure"
+OPTION_MODE = "mode"
+OPTION_PATIENT_ORIENTATION = "patient_orientation"  # Project().patient_orientation: 6 IOP values, LPS
+OPTION_ACQUISITION = "acquisition_orientation"  # "AXIAL" / "CORONAL" / "SAGITTAL" / ""
+MODE_STANDARD = "standard"
+MODE_FAST = "fast"
 
 ProgressCallback = Callable[[float, str], None]
 

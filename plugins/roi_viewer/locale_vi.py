@@ -173,8 +173,33 @@ CATALOG = {
     "AI result rejected: it contains invalid values.": "Kết quả AI bị từ chối: có giá trị không hợp lệ.",
     "AI result rejected: it is not a binary mask.": "Kết quả AI bị từ chối: không phải mặt nạ nhị phân.",
     "AI preview: {info}.": "Đã tạo xem trước AI: {info}.",
-    "Done in {seconds} s.": "Xong trong {seconds} s.",
+    "Done in {seconds} s.": "Đã hoàn thành trong {seconds} s.",
     "AI preview": "Xem trước AI",
+
+    # ---- Phân đoạn: AI - TotalSegmentator / provider parameters (E6b) ----
+    "Structure:": "Cấu trúc:",
+    "Type to search. One structure per preview - the model's other classes are not used.":
+        "Gõ để tìm. Mỗi lần xem trước một cấu trúc - các lớp khác của mô hình không được dùng.",
+    "Mode:": "Chế độ:",
+    "Standard accuracy": "Chính xác tiêu chuẩn",
+    "Fast / less memory": "Nhanh / ít bộ nhớ hơn",
+    "Fast uses the model's lower-resolution version: less time and memory, less accurate.":
+        "Chế độ Nhanh dùng phiên bản độ phân giải thấp của mô hình: ít thời gian và bộ nhớ hơn, kém chính xác hơn.",
+    "Choose a structure from the list.": "Hãy chọn một cấu trúc trong danh sách.",
+    "This model does not support the selected mode.": "Mô hình này không hỗ trợ chế độ đã chọn.",
+    "The patient orientation of this volume is unknown - only axial DICOM series are supported.":
+        "Không xác định được hướng bệnh nhân của khối ảnh - hiện chỉ hỗ trợ chuỗi DICOM lát ngang.",
+    "{name} is not installed.": "{name} chưa được cài đặt.",
+    "The {name} model is not ready.": "Mô hình {name} chưa sẵn sàng.",
+    "{name}: a required library is missing or broken.": "{name}: thiếu hoặc lỗi thư viện phụ thuộc.",
+    "The installed {name} version is not compatible.": "Phiên bản {name} đã cài không tương thích.",
+    "{name} is not available.": "{name} hiện không dùng được.",
+    "Preparing data…": "Đang chuẩn bị dữ liệu…",
+    "Running {name}…": "Đang chạy {name}…",
+    "Mapping the result…": "Đang ánh xạ kết quả…",
+    "Waiting for the running model to finish…": "Đang chờ mô hình đang chạy kết thúc…",
+    "Cancel requested - the running model finishes in the background and its result is discarded.":
+        "Đã yêu cầu hủy - mô hình đang chạy sẽ tự kết thúc ở chế độ nền, kết quả sẽ bị bỏ qua.",
 
     # ---- ROI & 3D ----
     "ROI management": "Quản lý ROI",

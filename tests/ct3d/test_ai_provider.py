@@ -164,10 +164,34 @@ def test_feature_flag_default_off():
     assert ENABLE_AI_SEGMENTATION is False
 
 
-def test_no_production_provider_shipped():
-    assert ai_registry.KNOWN_PROVIDER_MODULES == ()
+def test_only_the_totalsegmentator_provider_is_shipped():
+    """E6 shipped none; E6b adds exactly the real TotalSegmentator provider
+    (no fake one). Loading it works whether or not the package is installed."""
+    assert ai_registry.KNOWN_PROVIDER_MODULES == (
+        "plugins.roi_viewer.core.ai.providers.totalsegmentator_provider",)
     reg = ai_registry.load_known_providers(ai_registry.AIProviderRegistry())
-    assert reg.list_providers() == [] and reg.load_errors == []
+    assert [i.provider_id for i in reg.list_providers()] == ["totalsegmentator"] and reg.load_errors == []
+
+
+def test_loading_and_probing_providers_imports_no_framework_when_package_missing():
+    """Fresh interpreter: load the production registry (what ticking AI does)
+    and probe it. Without TotalSegmentator installed nothing heavy loads."""
+    import importlib.util
+
+    if importlib.util.find_spec("totalsegmentator") is not None:
+        pytest.skip("TotalSegmentator is installed here - its probe legitimately imports torch")
+    code = (
+        "import sys\n"
+        "from plugins.roi_viewer.core.ai import registry as r\n"
+        "reg = r.load_known_providers(r.AIProviderRegistry()); info = reg.probe_all()[0]\n"
+        "print(info.available, info.unavailable_reason.split(':')[0])\n"
+        f"print([m for m in {_HEAVY!r} + ('nnunetv2', 'nibabel') if m in sys.modules])\n"
+    )
+    root = pathlib.Path(__file__).resolve().parents[2]
+    out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr[-2000:]
+    lines = out.stdout.strip().splitlines()
+    assert lines[-2] == "False package_missing" and lines[-1] == "[]"
 
 
 def test_no_fake_provider_in_plugin_source():

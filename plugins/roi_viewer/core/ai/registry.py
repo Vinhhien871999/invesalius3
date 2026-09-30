@@ -10,9 +10,12 @@ from .provider import AISegmentationProvider
 from .types import AIProviderInfo
 
 # Production providers, as importable module names exposing
-# create_provider() -> AISegmentationProvider. EMPTY in E6: there is no
-# real model yet, and no fake one is shipped. E6b adds its module here.
-KNOWN_PROVIDER_MODULES: Tuple[str, ...] = ()
+# create_provider() -> AISegmentationProvider. Each module must import
+# without any AI framework (frameworks load in probe()/infer()). E6 shipped
+# none; E6b adds TotalSegmentator. No fake provider is ever listed here.
+KNOWN_PROVIDER_MODULES: Tuple[str, ...] = (
+    "plugins.roi_viewer.core.ai.providers.totalsegmentator_provider",  # E6b
+)
 
 
 def _unavailable(provider_id: str, reason: str) -> AIProviderInfo:

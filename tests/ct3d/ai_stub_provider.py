@@ -37,7 +37,7 @@ def stub_candidate(shape_zyx, prompts) -> np.ndarray:
 
 
 class StubAIProvider(AISegmentationProvider):
-    def __init__(self, provider_id="stub", available=True, capabilities=(Capability.PROMPTS,),
+    def __init__(self, provider_id="stub", available=True, capabilities=(Capability.PROMPTS, Capability.INTERRUPTIBLE),
                  prompt_types=PromptType.SUPPORTED, devices=(DeviceKind.CPU,), requires_weights=False,
                  reason="", block=False, fail=False, output=None):
         self.provider_id = provider_id

@@ -35,6 +35,9 @@ class PromptType:
 class Capability:
     AUTOMATIC = "automatic"  # can run with no prompt at all
     PROMPTS = "prompts"  # uses the prompt types in supported_prompt_types
+    # infer() really stops when cancel_event is set. Without it a cancel only
+    # discards the late result - the UI must say so (E6b).
+    INTERRUPTIBLE = "interruptible"
 
 
 @dataclass(frozen=True)
@@ -48,6 +51,11 @@ class AIProviderInfo:
     supported_prompt_types: Tuple[str, ...] = ()
     supported_devices: Tuple[str, ...] = ()
     requires_weights: bool = False
+    # Provider-specific selectable parameters, e.g. {"target_structure":
+    # ("spleen", ...), "mode": ("standard", "fast")}. The chosen values go
+    # into AIInferenceRequest.options under the same keys (E6b) - keeps
+    # model-specific options out of the generic types.
+    parameter_choices: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
