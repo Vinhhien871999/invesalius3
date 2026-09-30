@@ -215,7 +215,7 @@ def test_project_interface_delegates_to_canonical_convention():
     one convention, not two independent implementations."""
     from plugins.roi_viewer.interface.project_interface import ProjectInterface
 
-    pi = ProjectInterface.__new__(ProjectInterface)
+    pi = object.__new__(ProjectInterface)  # a private instance - never mutate the singleton
     pi._spacing, pi._shape = SPACING_0051, SHAPE_0051
     mgr = _mgr(spacing=SPACING_0051, dimensions=SHAPE_0051)
     for world in ((10.0, 20.0, 30.0), (122.3, 122.3, 80.2), (244.0, 1.0, 160.0)):

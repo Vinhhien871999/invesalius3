@@ -45,7 +45,11 @@ VIEW_POS = (X * SX, -Y * SY, Z * SZ)  # the same point in the y-flipped 3D view
 
 
 def _real_project_interface():
-    pi = ProjectInterface.__new__(ProjectInterface)
+    # object.__new__, not ProjectInterface.__new__: the latter returns the
+    # process-wide singleton, and the attributes set here (and the
+    # get_volume_data stub below) then leaked into every later test
+    # (found 30/09/2026 by the E6b TotalSegmentator tests).
+    pi = object.__new__(ProjectInterface)
     pi._spacing, pi._shape = SPACING, SHAPE
     pi._slice = None
     return pi
