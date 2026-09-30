@@ -524,3 +524,14 @@ Full writeup: `docs/CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md`.
 - **Grid contract**: NIfTI array = `Slice().matrix` transposed to (x, y, z); affine = LPS→RAS of [row cosine · sx | −column cosine · sy | normal · sz] from `Project().patient_orientation`, translation 0 — follows InVesalius's axial DICOM import (IPPSorter ascending, rows flipped). Only AXIAL imports with a valid IOP are accepted. Output accepted only if its shape and affine equal the input's; mapped back by exact transposition; one label → bool candidate.
 - **Isolation of third-party behaviour**: during the run `download_pretrained_weights` raises and `send_usage_stats` is a no-op in the loaded `totalsegmentator.*` modules; both restored afterwards.
 - **UI**: structure combo (search-as-you-type), mode choice, prompt controls disabled for prompt-less providers, stage texts without percentages, truthful cancel text for non-interruptible providers, mask name "AI - <structure>".
+
+---
+
+# Sidebar host and 4-tab layout — 30/09/2026 (UI review)
+
+Supersedes the "6 tabs" layout above. Full writeup: `docs/CT3D_UI_SIDEBAR_REVIEW_REPORT.md`.
+
+- `gui/roi_panel.ROIViewerPanel` (a `wx.Panel`, formerly the `ROIViewerFrame` window) is the controller all pages use; `shutdown()` holds the cleanup that used to run on window close (picker observer, marker, C8 planes, E4 mesh, E5 textures/clipping, AI) and is idempotent.
+- `gui/sidebar.py` docks it into InVesalius's `frame.aui_manager` as pane `roi_viewer` (right, 400 px, min 340, floatable, close → `shutdown()` then AUI `DestroyOnClose`); plain-frame fallback without AUI. `main.load()` reuses an open pane; `unload()` → `close_viewer()`. No InVesalius file changed; auto-show at start would need one.
+- Tabs: Phân đoạn · ROI & 3D · Hiển thị · Công cụ (Đo lường, Ghi chú, Xuất dữ liệu stacked). Tab labels go through `tab_label()` (doubles `&`, a wx mnemonic).
+- AI rows are shown only when the selected model uses them; hints follow the page width (`ui_helpers.follow_width`); ROI colour swatch scales InVesalius's 0..1 colours (`mask_colour_to_wx`).

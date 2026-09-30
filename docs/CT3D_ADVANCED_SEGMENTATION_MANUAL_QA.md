@@ -769,3 +769,31 @@ Leave AI off; run the classic workflow.
 **`BLOCKED_MODEL_NOT_AVAILABLE`** — TotalSegmentator/nnunetv2 not installed, no weights.
 
 **E6b_MANUAL_QA_COMPLETE: NOT_RUN** (0/16).
+
+---
+
+## UI review — sidebar (30/09/2026)
+
+> Build: the review commit or later. UI-A..UI-J above still apply, now to the sidebar with 4 tabs (Phân đoạn · ROI & 3D · Hiển thị · Công cụ). Checked automatically in a stand-in AUI window only - these items need the real InVesalius.
+
+### TEST UI-K — Opens as a right sidebar
+Plugins → ROI Viewer.
+**Expected**: pane "ROI Viewer" docked on the right of the InVesalius window; Tasks panel and viewers still usable; choosing the menu again does not open a second pane.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-L — Float and re-dock
+Drag the "ROI Viewer" caption out, then back to an edge.
+**Expected**: floats as its own window and docks again; content keeps working.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-M — Close cleans up, reopen works
+With C8 planes / texture / a live 3D preview visible, press the pane's [X], then open it again from the menu.
+**Expected**: marker, planes, textures, preview mesh disappear on close; no crash; reopening gives a working, fresh pane.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST UI-N — Current-ROI colour
+Select ROIs of different colours (tab ROI & 3D).
+**Expected**: the small swatch shows the mask's real colour (it used to be black for every mask).
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+**UI_SIDEBAR_MANUAL_QA_COMPLETE: NOT_RUN** (0/4).

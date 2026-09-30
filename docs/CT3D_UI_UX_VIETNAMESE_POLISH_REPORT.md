@@ -1,5 +1,7 @@
 # CT3D — Pre-E6 Product Polish: ROI Viewer UI/UX + Vietnamese Localization
 
+> **Superseded in part (30/09/2026, later the same day)**: the 6-tab window described here became a docked sidebar pane with 4 tabs (Phân đoạn · ROI & 3D · Hiển thị · Công cụ) after a review of real rendered screenshots - see `docs/CT3D_UI_SIDEBAR_REVIEW_REPORT.md`. The text below is the record of that earlier run.
+
 **Branch**: `enhancement/advanced-segmentation` · **Date**: 30/09/2026 · **Code commit**: `4d0ca6e5` "Polish ROI Viewer UI and Vietnamese localization" · **Preceded by** the coordinate fix `7b245865` / `c9f220bd` / `89ef7f19` (`docs/CT3D_COORDINATE_SPACING_FIX_REPORT.md`).
 
 Not an E-milestone. No new feature, no backend change, no E6/AI work. Stable `thesis-ct-roi-tools` / tag `ct3d-rc1` (`aa1b3ad3`) untouched: the stable UI stays English with 5 tabs.

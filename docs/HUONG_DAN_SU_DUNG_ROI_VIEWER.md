@@ -7,7 +7,7 @@
 > | Phạm vi | Nhánh / tag | Nội dung |
 > |---|---|---|
 > | **Bản ổn định (stable baseline)** | `thesis-ct-roi-tools` / tag **`ct3d-rc1`** | Phần mềm sau Phase 14 (`CT3D_P14_FINAL_AUDIT_REPORT`, 17/09/2026), gồm C8 mặt phẳng 2D→3D (`core/slice_planes_3d.SlicePlanes3D`, Phase 13.5). Mọi mục **không** gắn nhãn "chỉ nhánh `enhancement/advanced-segmentation`" thuộc phạm vi này. **Giao diện bản ổn định vẫn là tiếng Anh, 5 tab** — xem bảng đối chiếu tên nút ở mục 1.2. |
-> | **Nhánh nâng cao (enhancement-only)** | `enhancement/advanced-segmentation` | Các mục gắn nhãn **"chỉ nhánh `enhancement/advanced-segmentation`"**: hiện gồm **E1–E6b** (2.3, 2.4, 2.7, 2.8, 3.1 phần Khóa/Chỉ hiện, 3.3, 4.3), sửa lỗi toạ độ 3D↔voxel (mục 8) và **giao diện tiếng Việt, 6 tab sắp theo quy trình làm việc** (30/09/2026). **Tag `ct3d-rc1` KHÔNG chứa E1–E6, không chứa sửa lỗi toạ độ và không có giao diện tiếng Việt.** |
+> | **Nhánh nâng cao (enhancement-only)** | `enhancement/advanced-segmentation` | Các mục gắn nhãn **"chỉ nhánh `enhancement/advanced-segmentation`"**: hiện gồm **E1–E6b** (2.3, 2.4, 2.7, 2.8, 3.1 phần Khóa/Chỉ hiện, 3.3, 4.3), sửa lỗi toạ độ 3D↔voxel (mục 8) và **giao diện tiếng Việt dạng thanh bên (sidebar) trong cửa sổ InVesalius, 4 tab sắp theo quy trình làm việc** (30/09/2026). **Tag `ct3d-rc1` KHÔNG chứa E1–E6, không chứa sửa lỗi toạ độ và không có giao diện tiếng Việt.** |
 >
 > **Tên nút trong tài liệu này là tên trên nhánh `enhancement/advanced-segmentation`** (tiếng Việt). Lần đầu nhắc tới một chức năng, tên tiếng Anh cũ ghi trong ngoặc, ví dụ "Phát triển vùng (Region Growing)"; sau đó chỉ dùng tên tiếng Việt.
 >
@@ -38,11 +38,13 @@ Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở 
    - Cách 1: `python app.py` rồi vào **File → Import DICOM...** để chọn thư mục ảnh.
    - Cách 2 (nhanh hơn khi test): `python app.py -i <đường dẫn thư mục DICOM>` — tự import ngay khi khởi động.
 2. Đợi import xong (progress bar chạy hết, 3 khung Axial/Coronal/Sagittal hiện ảnh thật).
-3. Vào menu **Plugins → ROI Viewer** để mở cửa sổ plugin (tên menu "ROI Viewer" là tên sản phẩm, giữ nguyên).
-   - Cửa sổ có tiêu đề **"ROI Viewer – Trực quan hóa CT 3D"**, gồm 6 tab theo đúng thứ tự làm việc: **Phân đoạn / ROI & 3D / Tương tác & Hiển thị / Đo lường / Ghi chú / Xuất dữ liệu**.
+3. Vào menu **Plugins → ROI Viewer** (tên menu là tên sản phẩm, giữ nguyên).
+   - **Nhánh nâng cao**: ROI Viewer mở thành **thanh bên (sidebar) "ROI Viewer" gắn ở mép phải cửa sổ InVesalius** — không còn là cửa sổ riêng. Có thể kéo thanh tiêu đề để **tách ra thành cửa sổ nổi** hoặc gắn sang mép khác (cơ chế AUI chuẩn của InVesalius). Gồm 4 tab theo thứ tự làm việc: **Phân đoạn / ROI & 3D / Hiển thị / Công cụ** (Công cụ = Đo lường, Ghi chú, Xuất dữ liệu).
+   - InVesalius chỉ nạp plugin khi bấm menu, nên thanh bên **không tự hiện khi vừa mở InVesalius**; mỗi phiên cần bấm **Plugins → ROI Viewer** một lần.
+   - (Bản ổn định `ct3d-rc1`: cửa sổ riêng "ROI Viewer - CT 3D Visualization", 5 tab tiếng Anh.)
    - Có thể mở plugin **trước hay sau** khi import DICOM đều được — nếu mở SAU khi đã có sẵn mặt nạ/project, tab **ROI & 3D** sẽ **tự nạp đúng danh sách mặt nạ đã có** ngay khi cửa sổ hiện ra (không cần thao tác gì thêm).
-   - Nếu bấm **Plugins → ROI Viewer** lần nữa trong khi cửa sổ đang mở, InVesalius chỉ đưa cửa sổ cũ ra trước (`Raise`), không mở cửa sổ thứ hai.
-4. Đóng cửa sổ plugin bằng nút **[X]** như bình thường — an toàn để mở lại nhiều lần trong cùng phiên làm việc (không rò rỉ, không gây crash khi mở/đóng lặp lại).
+   - Nếu bấm **Plugins → ROI Viewer** lần nữa trong khi thanh bên đang mở, plugin chỉ đưa thanh bên hiện có ra trước, không mở cái thứ hai.
+4. Đóng bằng nút **[X]** trên thanh tiêu đề "ROI Viewer" — plugin dọn dẹp đầy đủ (bỏ marker/mặt phẳng 3D, dừng xử lý AI…), an toàn để mở lại nhiều lần trong cùng phiên làm việc.
 
 ### 1.1 Bố cục giao diện (chỉ nhánh `enhancement/advanced-segmentation`, 30/09/2026)
 
@@ -50,8 +52,8 @@ Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở 
 |---|---|---|
 | **Phân đoạn** | Tạo mặt nạ (Ngưỡng, Phát triển vùng, Phân đoạn AI) → Xem trước / Chấp nhận → Hậu xử lý → Chỉnh sửa thủ công → Lịch sử chỉnh sửa | 2 |
 | **ROI & 3D** | Quản lý ROI (danh sách, đổi tên, xóa, khóa, chỉ hiện ROI này, hiện/ẩn tất cả) và Bề mặt 3D (cập nhật bề mặt cuối, xem trước 3D thời gian thực) | 3 |
-| **Tương tác & Hiển thị** | Đồng bộ 2D – 3D, Chọn điểm 3D, Hiển thị 3D nâng cao (ảnh lát cắt trên mặt phẳng 3D, cắt hiển thị 3D) | 4 |
-| **Đo lường** / **Ghi chú** / **Xuất dữ liệu** | Như bản ổn định, chỉ đổi sang tiếng Việt | 5, 6, 7 |
+| **Hiển thị** | Đồng bộ 2D – 3D, Chọn điểm 3D, Hiển thị 3D nâng cao (ảnh lát cắt trên mặt phẳng 3D, cắt hiển thị 3D) | 4 |
+| **Công cụ** | Ba phần xếp dọc (cuộn): **Đo lường**, **Ghi chú**, **Xuất dữ liệu** — như bản ổn định, chỉ đổi sang tiếng Việt | 5, 6, 7 |
 
 - Đầu tab **Phân đoạn** có dòng gợi ý quy trình: *"1. Tạo / xem trước → 2. Chấp nhận → 3. Hậu xử lý → 4. Cập nhật bề mặt 3D"*, và dòng **"ROI hiện tại:"** cho biết thao tác sẽ áp dụng lên ROI nào.
 - Các mục nâng cao/thử nghiệm được **thu gọn mặc định** (bấm vào tiêu đề có mũi tên để mở): *Phân đoạn AI (thử nghiệm)*, *Hậu xử lý (ROI hiện tại)*, *Chỉnh sửa thủ công (cọ vẽ)*, *Xem trước 3D thời gian thực (thử nghiệm)*, *Hiển thị 3D nâng cao (thử nghiệm)*. Khi thu gọn, tab **Phân đoạn** vừa một màn hình; khi mở, chỉ có thanh cuộn dọc (không có thanh cuộn ngang).
@@ -65,7 +67,7 @@ Dùng khi đọc các tài liệu/kịch bản Manual QA cũ viết theo tên ti
 
 | Tên cũ (tiếng Anh) | Tên mới (tiếng Việt) |
 |---|---|
-| Tab Segmentation / Interaction / Measurements / Annotations / Export | Tab Phân đoạn (+ tab mới ROI & 3D) / Tương tác & Hiển thị / Đo lường / Ghi chú / Xuất dữ liệu |
+| Tab Segmentation / Interaction / Measurements / Annotations / Export | Tab Phân đoạn (+ tab mới ROI & 3D) / Hiển thị / Công cụ → Đo lường, Ghi chú, Xuất dữ liệu |
 | Auto threshold (Otsu) · Min / Max · Create Mask from Threshold | Tự động xác định ngưỡng (Otsu) · Từ / đến · Tạo mặt nạ |
 | Tolerance · Pick Seed Point (3D) · Preview Region Growing | Độ dung sai · Chọn điểm hạt giống (3D) · Xem trước (khung Phát triển vùng) |
 | Enable Preview Workflow · Preview Otsu · Accept Preview · Cancel Preview · Preview status | Bật chế độ xem trước · Xem trước Otsu · Chấp nhận · Hủy xem trước · Trạng thái |
@@ -177,7 +179,7 @@ Mục thu gọn — bấm tiêu đề **"Chỉnh sửa thủ công (cọ vẽ)"*
 2. Chọn **Kiểu điểm**: **Thuộc vùng** (điểm nằm trong cấu trúc cần tách) hoặc **Loại trừ**.
 3. Thêm điểm: **"Chọn điểm (3D)"** rồi nhấp lên khối 3D, hoặc đưa con trỏ 2D tới vị trí rồi bấm **"Điểm tại con trỏ 2D"**.
 4. (Tùy chọn) **Hộp giới hạn**: đưa con trỏ 2D tới một góc → **"Chọn góc 1"**, tới góc đối diện → **"Chọn góc 2"**.
-5. Dòng tóm tắt cho biết số điểm và trạng thái hộp; **"Xóa điểm AI"** để làm lại. Điểm nằm ngoài khối ảnh bị bỏ qua (không tự kéo vào mép).
+5. Dòng tóm tắt cho biết số điểm và trạng thái hộp; **"Xóa điểm AI"** để làm lại. (Các ô điểm/hộp chỉ hiện khi mô hình đang chọn dùng gợi ý điểm/hộp; ô Cấu trúc/Chế độ chỉ hiện khi mô hình có các tùy chọn đó; khi chưa có mô hình chỉ hiện dòng hướng dẫn cài đặt.) Điểm nằm ngoài khối ảnh bị bỏ qua (không tự kéo vào mép).
 6. Bấm **"Xem trước bằng AI"** (cần có một mặt nạ hiện hành, như mục 2.3). Mô hình chạy nền, giao diện không bị treo; **"Hủy xử lý AI"** để dừng — kết quả đến muộn sẽ bị bỏ.
 7. Kiểm tra lớp phủ → **Chấp nhận** (tạo mặt nạ mới "AI Segmentation N", có thể hậu xử lý mục 2.4 như mặt nạ thường) hoặc **Hủy xem trước**.
 
@@ -252,7 +254,7 @@ Nút **"Cập nhật bề mặt 3D từ ROI hiện tại"** dựng lại (hoặc
 
 ---
 
-## 4. Tab **Tương tác & Hiển thị** — liên kết 2D – 3D
+## 4. Tab **Hiển thị** — liên kết 2D – 3D
 
 ### 4.1 Đồng bộ 2D – 3D
 
@@ -310,7 +312,7 @@ Di chuyển crosshair chỉ cập nhật vị trí/nội dung, không làm thay 
 
 ---
 
-## 5. Tab **Đo lường** (Measurements)
+## 5. Tab **Công cụ** → phần **Đo lường** (Measurements)
 
 | Điều khiển | Cách dùng | Ghi chú |
 |---|---|---|
@@ -322,10 +324,10 @@ Di chuyển crosshair chỉ cập nhật vị trí/nội dung, không làm thay 
 
 ---
 
-## 6. Tab **Ghi chú** (Annotations)
+## 6. Tab **Công cụ** → phần **Ghi chú** (Annotations)
 
-1. Gõ nội dung vào ô **Nội dung:**, chọn **Màu:** (bảng màu hoặc 5 nút màu nhanh 1–5).
-2. Bấm **Thêm tại vị trí hiện tại** → ghi chú được gắn vào vị trí thật gần nhất bạn đã tương tác: ưu tiên điểm chọn 3D (tab Tương tác & Hiển thị hoặc lúc chọn hạt giống Phát triển vùng), nếu chưa chọn điểm 3D lần nào thì dùng vị trí crosshair 2D gần nhất (click/kéo chuột trên khung 2D). **Nếu chưa có vị trí hợp lệ nào cả**, plugin **từ chối tạo ghi chú** và hiện thông báo *"Chưa chọn vị trí"* yêu cầu chọn vị trí trước — không còn tạo nhầm ghi chú tại gốc toạ độ `(0,0,0)` như trước (đã sửa ở Phase 09, 14/09/2026).
+1. Gõ nội dung vào ô **Nội dung:**, chọn **Màu:** (bảng màu hoặc 5 ô màu nhanh: Đỏ, Xanh lá, Xanh dương, Cam, Tím — rê chuột để xem tên).
+2. Bấm **Thêm tại vị trí hiện tại** → ghi chú được gắn vào vị trí thật gần nhất bạn đã tương tác: ưu tiên điểm chọn 3D (tab Hiển thị hoặc lúc chọn hạt giống Phát triển vùng), nếu chưa chọn điểm 3D lần nào thì dùng vị trí crosshair 2D gần nhất (click/kéo chuột trên khung 2D). **Nếu chưa có vị trí hợp lệ nào cả**, plugin **từ chối tạo ghi chú** và hiện thông báo *"Chưa chọn vị trí"* yêu cầu chọn vị trí trước — không còn tạo nhầm ghi chú tại gốc toạ độ `(0,0,0)` như trước (đã sửa ở Phase 09, 14/09/2026).
 3. Danh sách bên dưới hiện tất cả ghi chú. Chọn 1 dòng rồi dùng:
    - **Đi tới**: nhảy đúng slice 2D chứa ghi chú đó.
    - **Sửa**: sửa nội dung.
@@ -337,7 +339,7 @@ Di chuyển crosshair chỉ cập nhật vị trí/nội dung, không làm thay 
 
 ---
 
-## 7. Tab **Xuất dữ liệu** (Export) — lưu/xuất kết quả
+## 7. Tab **Công cụ** → phần **Xuất dữ liệu** (Export) — lưu/xuất kết quả
 
 | Nút | Kết quả | So với InVesalius gốc |
 |---|---|---|
@@ -385,12 +387,12 @@ InVesalius tính mặt nạ ngưỡng "lười" (chỉ tính lát cắt khi khun
 1. Import DICOM (`python app.py -i <thư mục DICOM>`) → mở **Plugins → ROI Viewer**.
 2. Tab **Phân đoạn** (2.1): tick *Tự động xác định ngưỡng (Otsu)* → **Tạo mặt nạ** → thấy mặt nạ mới ở tab **ROI & 3D**, danh sách **Quản lý ROI**.
 3. Tab **ROI & 3D** (3.2): bấm **Cập nhật bề mặt 3D từ ROI hiện tại** → thấy khối 3D hiện ra ở khung "Volume".
-4. Tab **Tương tác & Hiển thị** (4.2): **Chọn điểm trong 3D** → click vào khối 3D → quan sát toạ độ + 3 khung 2D tự nhảy.
+4. Tab **Hiển thị** (4.2): **Chọn điểm trong 3D** → click vào khối 3D → quan sát toạ độ + 3 khung 2D tự nhảy.
 5. Tab **Phân đoạn** (2.2): nhập độ dung sai vừa phải (vd. 30) → **Chọn điểm hạt giống (3D)** → click 1 điểm khác trên khối 3D → thấy mặt nạ "Region Growing 1" mới xuất hiện trong danh sách Quản lý ROI.
 6. Tab **Phân đoạn** (2.5): mở *Chỉnh sửa thủ công (cọ vẽ)* → **Bật cọ vẽ** → vẽ thêm/xoá bớt vài nét trên khung 2D → tab **ROI & 3D** → **Cập nhật bề mặt 3D từ ROI hiện tại** lần nữa → quan sát khối 3D đổi hình theo đúng nét vừa vẽ.
-7. Tab **Đo lường**: chọn **3D** → **Bắt đầu đo** → click 2 điểm trên khối 3D → xem kết quả mm.
-8. Tab **Ghi chú**: **Thêm tại vị trí hiện tại** → thấy ghi chú xuất hiện đúng vị trí vừa chọn.
-9. Tab **Xuất dữ liệu**: **Lưu** project → đóng InVesalius → mở lại, **File → Open Project** đúng file vừa lưu → mở lại **Plugins → ROI Viewer** → kiểm chứng: danh sách ROI còn nguyên, ghi chú còn nguyên.
-10. Tab **Xuất dữ liệu**: **Xuất bề mặt** → chọn STL → lưu file → mở bằng phần mềm xem STL bất kỳ để kiểm chứng.
+7. Tab **Công cụ** → **Đo lường**: chọn **3D** → **Bắt đầu đo** → click 2 điểm trên khối 3D → xem kết quả mm.
+8. Tab **Công cụ** → **Ghi chú**: **Thêm tại vị trí hiện tại** → thấy ghi chú xuất hiện đúng vị trí vừa chọn.
+9. Tab **Công cụ** → **Xuất dữ liệu**: **Lưu** project → đóng InVesalius → mở lại, **File → Open Project** đúng file vừa lưu → mở lại **Plugins → ROI Viewer** → kiểm chứng: danh sách ROI còn nguyên, ghi chú còn nguyên.
+10. Tab **Công cụ** → **Xuất dữ liệu**: **Xuất bề mặt** → chọn STL → lưu file → mở bằng phần mềm xem STL bất kỳ để kiểm chứng.
 
 > Trên bản ổn định `ct3d-rc1` các bước trên giống hệt, chỉ khác tên tab/nút tiếng Anh (bảng mục 1.2) và không có tab "ROI & 3D" (danh sách ROI và nút Update 3D Surface nằm trong tab Segmentation).

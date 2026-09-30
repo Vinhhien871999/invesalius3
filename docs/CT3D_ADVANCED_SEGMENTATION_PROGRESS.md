@@ -156,6 +156,10 @@ Label mapping for older docs and Manual QA steps: `docs/HUONG_DAN_SU_DUNG_ROI_VI
 
 Found while auditing the commit path E6 Accept reuses. Three real defects (commit lost voxels on the first view of a coronal/sagittal slice; whole-mask reads skipped the native lazy-threshold completion; brush-erased voxels counted as foreground) fixed through one module, `core/native_mask.py`, used by Region Growing commit, E2 Region Growing Accept, E3 cleanup, E4 Current ROI, Measure Volume and NumPy/NRRD export. `tests/ct3d/test_native_mask_contract.py` (10 tests; the 7 handler-level ones fail on the pre-fix code with value mismatches, e.g. Measure Volume 54.4 vs 210.4 mm³). Report: `docs/CT3D_NATIVE_MASK_CONTRACT_FIX_REPORT.md`. Stable `ct3d-rc1` keeps the defects (documented known issue).
 
+## Post-E6b UI/flow review — sidebar (30/09/2026)
+
+Real rendered screenshots found what the headless tests had not: tab labels losing "&", six tabs overflowing a ~420 px window, the current-ROI colour swatch always black (InVesalius colours are 0..1 floats), cluttered AI rows, fixed-width hint wrapping, "1…5" colour buttons. Fixed; the ROI Viewer is now a **docked sidebar pane** in InVesalius's main window (`gui/sidebar.py`, `ROIViewerPanel`) with 4 tabs. `tests/ct3d` **610 passed / 1 skipped / 0 failed** ×3 (+11: 9 sidebar/colour, 2 UI). Manual UI-K..UI-N `NOT_RUN`. Report: `docs/CT3D_UI_SIDEBAR_REVIEW_REPORT.md`.
+
 ## E6 — AI segmentation architecture (30/09/2026)
 
 | ID | Feature | Implementation | Tests | Manual | Status |
@@ -224,3 +228,4 @@ One row per development/validation run on this branch - including runs that chan
 | 30/09/2026 | Pre-E6 fix: native mask read/write contract | native-mask commit (see `git log`) | 465 / 1 | 94 | Commit/cleanup/E4/measure/export follow InVesalius's lazy-threshold, sentinel and foreground rules; 10 new tests (7 fail on pre-fix code). Manual E2-G/E3/E4 items to be run on this build |
 | 30/09/2026 | E6 - AI segmentation architecture | E6 commit (see `git log`) | 540 / 1 | 94 | **E6_GATE PASS** (architecture only). No production provider; real inference `BLOCKED_NO_REAL_PROVIDER`; E6-A..L `NOT_RUN`; E6b not started |
 | 30/09/2026 | E6b - TotalSegmentator provider | `6b491799` (test isolation fix), `098e284e` (provider) + docs commit | 599 / 1 | 94 | Provider code WORKING; affine hard gate PASS; package/weights absent → real inference `BLOCKED_MODEL_NOT_AVAILABLE`; **E6b_GATE PARTIAL_REAL_INFERENCE_PENDING**; E6b-A..P `NOT_RUN` |
+| 30/09/2026 | UI/flow review: sidebar docking, 4 tabs, colour swatch fix | review commit (see `git log`) | 610 / 1 | 94 | ROI Viewer docked as a right sidebar pane; 7 screen-only UI defects fixed; UI-K..UI-N `NOT_RUN` |
