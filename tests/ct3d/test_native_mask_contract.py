@@ -50,6 +50,11 @@ def env(real_slice_and_project_singleton):
     s.current_mask = None
     s.matrix = _volume()
     s._spacing = (0.5, 0.8, 2.0)
+    # What "Load project data" does in the app: ProjectInterface (a
+    # singleton) re-reads shape/spacing - otherwise it keeps an earlier test's.
+    from plugins.roi_viewer.interface.project_interface import ProjectInterface
+
+    ProjectInterface()._refresh_project_data()
     _reset_buffers(s)
     return s, proj
 
