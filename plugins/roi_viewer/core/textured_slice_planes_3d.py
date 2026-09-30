@@ -99,10 +99,11 @@ def build_textured_plane_polydata(origin, point1, point2):
     coordinates - NOT vtkPlaneSource's auto-generated TCoords, so the
     image-to-world mapping is fully explicit and independently testable
     (Section 10 - "must catch horizontal mirror / vertical mirror /
-    axis swap / 90-degree rotation", verified for real by this module's
-    own tests/ct3d/test_textured_slice_planes_3d.py orientation tests
-    using a deliberately non-symmetric synthetic image and a real
-    off-screen VTK render, not just constructed-and-trusted).
+    axis swap / 90-degree rotation"): corner <-> voxel correspondence is
+    checked in tests/ct3d/test_textured_slice_planes_3d.py, and the
+    rendered result (real off-screen render + framebuffer read-back, all
+    3 orientations, anisotropic spacing, mirrored controls) in
+    tests/ct3d/test_texture_orientation_render.py).
 
     Point order / TCoord convention (matches vtkTexture's real,
     documented sampling: texture coordinate (0,0) samples the image's

@@ -339,3 +339,35 @@ Two existing test doubles were updated to match the real frame (not weakened): `
 ### Status
 
 E5-A: `FAIL` (29/09/2026) → fixed → **`NEEDS_RETEST`** (only the operator can make it PASS). E5-B/C/D: `NOT_RUN`. **`E5_GATE = PARTIAL`**. **E6 blocked.**
+
+---
+
+## E5 closure — rendered texture-orientation proof (30/09/2026)
+
+*Appended during the E6 run's pre-E6 validation. Everything above is left as written.*
+
+### What changed since the last E5 status
+
+- The coordinate fix (`7b245865`, `c9f220bd`) put the textured planes on the correct slice and in the y-flipped 3D view frame; the UI polish (`4d0ca6e5`) did not touch E5 logic.
+- The operator reported on 30/09/2026 that the features just tested basically pass, **including E4 live 3D preview and E5 texture/clipping (basic use)**. This is a group-level statement: it does not name E5-B/C/D or say that each plane was compared against its 2D view, so no manual item was changed on its strength (see `CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md`).
+- The read-back crash that blocked the render proof **no longer reproduces outside the pytest/wx process**: a standalone `vtkRenderWindow` + `vtkWindowToImageFilter` works here, both off-screen (64×64 read back) and on-screen. The crash recorded above happened inside the test process; the new test therefore renders in a subprocess.
+
+### Rendered proof (`tests/ct3d/test_texture_orientation_render.py` + `render_texture_orientation_probe.py`)
+
+- Volume 12×16×20 (z, y, x) with spacing (0.4785, 0.4785, 1.5) mm (0051's anisotropy); every 4×4×4 block has its own grey value, distinct within any axial/coronal/sagittal slice.
+- Each per-slice image is built the way the native 2D viewer's source builds it (`Slice.get_image_slice()` slicing for normal projection, then `converters.to_vtk(slice, spacing, index, orientation)`), then passed to the **production** `TexturedSlicePlanes3D.update_plane()` (which applies `slice_to_view`).
+- The plane is rendered off-screen (head-on orthographic camera), the framebuffer is read back, and at the centre of every block the rendered grey at the 3D view point P must equal the volume value at `view_to_slice(P)` — i.e. each texel is drawn where the native surface puts its own voxel. Lighting and interpolation are switched off on the probe's actor only, so rendered grey = texel value; orientation does not depend on them.
+- Result: **AXIAL 0/20, CORONAL 0/15, SAGITTAL 0/12 mismatches** (axial slice 7, coronal 10, sagittal 13). Plane positions: axial z = 7 × 1.5 = 10.5 mm, coronal y = −10 × 0.4785 = −4.785 mm (view frame), sagittal x = 13 × 0.4785 = 6.2205 mm.
+- Controls: the same check on a deliberately mirrored texture fails — u-mirror 16/20, 12/15, 12/12; v-mirror 20/20, 10/15, 8/12 mismatches (the unchanged blocks are the middle row/column of an odd block count, which a mirror maps onto itself). A mirror, axis swap or rotation cannot pass.
+- 10 tests, all pass. If a machine cannot render off-screen, the subprocess's crash becomes a skip with its exit code; a Python error inside the probe is a failure.
+- Grey-scale images are used; the production image is the output of `do_ww_wl`/`do_colour_image` (grey, or RGB when a colour table is active, optionally blended with the mask) on the same `to_vtk` geometry. The texture-coordinate mapping does not depend on the scalar type.
+
+### E5A status
+
+Source, geometry, corner↔voxel correspondence, **rendered pixel orientation (all 3 planes)**, lifecycle, pickability, crosshair updates, W/L refresh, visibility switching: `WORKING`. **`E5_TEXTURED_PLANES = PASS`**.
+
+### Final E5 gate
+
+Gate criterion #8 ("texture orientation proven") was the only unmet criterion. Operator E5-B/C/D had been named as the way to meet it only because the rendered proof could not run in this environment. The rendered proof now runs and is reproducible, and it checks orientation more strictly than a visual comparison could (every block, all 3 planes, with controls). All other criteria were already met and the full regression passes.
+
+**`E5_GATE = PASS`** (30/09/2026). This is the technical gate, the same basis on which E1-E4 passed. Manual items stay what they are: E5-A `PASS`; E5-B/C/D/E/J/K/L `RETEST_REQUIRED`; the others `NOT_RUN`. `ADVANCED_FULL_MANUAL_QA_COMPLETE` stays `NO`. The roadmap's E6 precondition (E5 gate `PASS`) is now met.

@@ -12,7 +12,7 @@
 | E2 | Preview / Confirm segmentation workflow | P1 | **WORKING** |
 | E3 | Segmentation cleanup tools | P1 | **WORKING** (Current ROI target; Active Preview target deferred — see below) |
 | E4 | Fast live 3D preview | P1 | **WORKING** |
-| E5 | Advanced 3D visualization (textured planes, clipping) | P2 | **PARTIAL** (clipping WORKING; textured planes implemented, orientation proof PARTIAL - see below) |
+| E5 | Advanced 3D visualization (textured planes, clipping) | P2 | **WORKING** (gate PASS 30/09/2026 after the rendered texture-orientation proof - see below) |
 | E6 | AI segmentation architecture | P2/Experimental | PLANNED |
 | E6b | TotalSegmentator integration | P3/Experimental | PLANNED |
 
@@ -73,3 +73,5 @@ This run implements **E5** (Advanced 3D visualization: E5A textured slice planes
 **E5A (textured slice planes) is `PARTIAL`**: reuses the real, already-correct `Slice().GetSlices()` output (Window/Level + mask blend already baked in) rather than reimplementing colour math, with geometry mathematically proven coincident with the existing C8 geometric planes. The specific pixel-level texture-ORIENTATION claim could not be additionally proven via a live off-screen VTK render in this dev environment - `vtkWindowToImageFilter`'s framebuffer read-back reproducibly segfaults here, confirmed environment-level (not texture-code-related) by reproducing it with a plain untextured actor. Per this run's own explicit instruction ("if textured slice planes cannot be implemented safely... DO NOT fake them... set PARTIAL"), this is reported honestly rather than claimed as fully proven. Real operator manual QA is the authoritative verification, not yet run. See `docs/CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md` for the full writeup. E6/E6b remain planned only - no E6/E6b code exists yet.
 
 **E5 finalization (28/09/2026)**: added immediate texture refresh on a native Window/Level change (the original E5 run only proved fresh-data correctness), fixed textured planes being built at the live crosshair instead of C8's frozen plane position when Sync 2D->3D is off, and synchronized docs. No operator evidence for E5-B/C/D was supplied, so **E5 remains `PARTIAL`** and, per the rule above, **E6 is blocked** until the E5 gate is `PASS`.
+
+**E5 closure (30/09/2026)**: after the world↔voxel fix (`7b245865`, `c9f220bd`), the texture orientation was proven by a real rendered test (`tests/ct3d/test_texture_orientation_render.py`: off-screen render + framebuffer read-back in a subprocess; all 3 planes match their voxels; mirrored controls fail). **E5_GATE = PASS**, so E6 may start. Manual E5-B/C/D/E/J/K/L remain operator items (`RETEST_REQUIRED`).

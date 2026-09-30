@@ -15,18 +15,12 @@
 # geometry/TCoord code would fail these tests (Section 10's explicit
 # requirement).
 #
-# Documented, honest limitation (see docs/CT3D_ADVANCED_E5_VISUALIZATION
-# _REPORT.md's "Texture orientation proof" section for the full
-# writeup): this does NOT additionally prove how VTK's own GPU texture
-# unit samples a TCoord against the uploaded image at actual render
-# time - attempting that via a real off-screen vtkWindowToImageFilter
-# render was tried during this milestone's audit and reproducibly
-# segfaults in this dev environment (isolated to the framebuffer
-# read-back step, reproduced even for a plain untextured sphere actor
-# with no texture code involved at all - a real, environment-level VTK/
-# graphics limitation, not a defect in this module). Real operator
-# manual QA (E5-B/C/D in CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md) is the
-# authoritative verification of live-rendered pixel orientation.
+# These tests do not show how VTK samples a TCoord at render time. That
+# was the gap recorded in docs/CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md
+# ("Texture orientation proof") while off-screen read-back crashed in this
+# environment; it is closed by test_texture_orientation_render.py
+# (30/09/2026), which renders the production planes and reads the real
+# framebuffer back in a subprocess.
 # --------------------------------------------------------------------------
 import numpy as np
 import pytest

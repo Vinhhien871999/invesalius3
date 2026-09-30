@@ -6,7 +6,9 @@
 
 > **UI labels changed (30/09/2026, `4d0ca6e5`)**: the plugin UI is now Vietnamese and reorganised into 6 tabs (Phân đoạn / ROI & 3D / Tương tác & Hiển thị / Đo lường / Ghi chú / Xuất dữ liệu). The E1-E5 steps below were written with the old English labels and are kept verbatim; map each label with the table in `docs/HUONG_DAN_SU_DUNG_ROI_VIEWER.md` §1.2 (e.g. "Segmentation Set" / "Active ROI" → tab **ROI & 3D**, "Quản lý ROI" / "ROI hiện tại"; "Lock" → "Khóa"; "Solo" → "Chỉ hiện ROI này"; "Enable Preview Workflow" → "Bật chế độ xem trước"; "Show CT texture on slice planes" → "Hiển thị ảnh lát cắt trên mặt phẳng 3D", now in the collapsed section "Hiển thị 3D nâng cao (thử nghiệm)" of tab **Tương tác & Hiển thị**; "Enable Clipping" → "Bật cắt hiển thị 3D"). Status messages quoted in the old steps are now Vietnamese too (e.g. "No final surface for selected ROI." → "ROI hiện tại chưa có bề mặt 3D cuối."). Behaviour behind every control is unchanged - only labels and layout moved.
 >
-> **Reconciliation note (30/09/2026)**: Operator reports previous feature groups passed during manual use; item-level reconciliation pending. The operator's statement was general (per feature group, not per item), so no item below was changed to PASS on the strength of it: only items with specific evidence recorded in this file are marked PASS (currently E5-A). E5-B/C/D/E/J/K/L are `RETEST_REQUIRED` because they depend on world↔voxel coordinates fixed in `7b245865`/`c9f220bd` - any earlier result for them is void.
+> **Reconciliation note (30/09/2026)**: Operator reports previous feature groups passed during manual use; item-level reconciliation pending. The operator's statement was general (per feature group, not per item), so no item below was changed to PASS on the strength of it: only items with specific evidence recorded in this file are marked PASS (currently E5-A).
+>
+> **Operator report, 30/09/2026 (E6 instruction)**: "the parts just tested basically PASS, including E4 Live 3D Preview and E5 texture/clipping (basic)", after the coordinate fix and UI polish. Recorded as *operator-confirmed, group level* on the E4 and E5 sections below. It names no item, so item statuses are unchanged. The E5 technical gate was closed separately by a rendered automated proof (`tests/ct3d/test_texture_orientation_render.py`) - not by this statement. E5-B/C/D/E/J/K/L are `RETEST_REQUIRED` because they depend on world↔voxel coordinates fixed in `7b245865`/`c9f220bd` - any earlier result for them is void.
 
 ## E1 — Advanced ROI Manager
 
@@ -223,6 +225,8 @@ With no cleanup operations run, verify the rest of the classic workflow (Thresho
 
 ## E4 - Fast live 3D preview
 
+> **Operator-confirmed, group level (30/09/2026)**: E4 live 3D preview basic use reported working. No item named; statuses below unchanged.
+
 ### TEST E4-A — Enable live 3D preview shows Current ROI mesh
 With a real mask already segmented (Current ROI), check "Enable Live 3D Preview". Wait for the debounce window.
 **Expected**: a preview mesh appears in the 3D view tracking the Current ROI's shape; status label shows source "Current ROI".
@@ -316,6 +320,8 @@ With live 3D preview left at its default (OFF), verify the rest of the classic w
 ---
 
 ## E5 - Advanced 3D visualization (textured slice planes + clipping/cutaway)
+
+> **Operator-confirmed, group level (30/09/2026)**: E5 texture and clipping basic use reported working after the coordinate fix. No item named; statuses below unchanged. Automated: texture orientation proven by a real render (`test_texture_orientation_render.py`, all 3 planes) - E5-B/C/D remain the operator's own visual check.
 
 > ⚠️ **Retest policy (30/09/2026)**: two world↔voxel bugs (spacing order; 2D slice frame vs y-flipped 3D view frame) were fixed on this branch in `7b245865` / `c9f220bd` - see `docs/CT3D_COORDINATE_SPACING_FIX_REPORT.md`. Before the fix, textured planes showed the wrong slice on anisotropic data and every plugin 3D actor (C8 marker/planes, textured planes, clipping origin) was mirrored in y relative to the surface. **E5-B/C/D/E/J/K/L are `RETEST_REQUIRED`**: run them only on a build that includes `c9f220bd`, preferably on anisotropic `0051`, and do not reuse any earlier result for them. E5-A's PASS stays valid (it checks visibility only). Quick sanity check while retesting: the C8 planes and marker should now cut *through* the surface, not sit beside it.
 
@@ -598,4 +604,4 @@ With every experimental option left OFF: Tạo mặt nạ (threshold), Phát tri
 
 **ADVANCED_FULL_MANUAL_QA_COMPLETE: NO** (1/89 passed: E1-E5 1/79 = 0/14 + 0/12 + 0/13 + 0/18 + 1/22, plus UI polish 0/10 - only E5-A, which failed once, was fixed, and passed on operator retest). This is separate from any single milestone's technical gate - even if E5-B/C/D later pass and E5 reaches `PASS`, this stays `NO` until every intended item has actually been run by an operator.
 
-**E5_MANUAL_QA_COMPLETE: NO** (1/22 passed - E5-A: FAIL 29/09 → fixed → PASS 30/09; the other 21 `NOT_RUN`, including the gate-blocking E5-B/C/D) — same discipline, same reasoning. Does not block E5's automated gate. Real operator confirmation of E5-B/C/D (texture orientation) is the authoritative verification for the one claim this milestone's own automated evidence could not additionally prove via live rendering (see `CT3D_ADVANCED_E5_VISUALIZATION_REPORT.md`'s "Texture orientation proof" section).
+**E5_MANUAL_QA_COMPLETE: NO** (1/22 passed - E5-A: FAIL 29/09 → fixed → PASS 30/09; E5-B/C/D/E/J/K/L `RETEST_REQUIRED` after the coordinate fix; the other 14 `NOT_RUN`; group-level operator statement 30/09/2026 that texture/clipping basically work recorded above, no item changed) — same discipline, same reasoning. Does not block E5's automated gate. *[Updated 30/09/2026: E5-B/C/D were described here as gate-blocking; the gate's texture-orientation criterion is now met by the rendered test `tests/ct3d/test_texture_orientation_render.py` (E5 report, "E5 closure"), so E5-B/C/D are the operator's own visual confirmation, no longer the only available proof.]*
