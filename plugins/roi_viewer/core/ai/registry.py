@@ -13,8 +13,16 @@ from .types import AIProviderInfo
 # create_provider() -> AISegmentationProvider. Each module must import
 # without any AI framework (frameworks load in probe()/infer()). E6 shipped
 # none; E6b adds TotalSegmentator. No fake provider is ever listed here.
+#
+# Names starting with "." are relative to this package. They MUST be
+# relative: InVesalius's PluginManager imports the plugin as the package
+# "ROI Viewer" (invesalius/plugins.py, import_source), not as
+# "plugins.roi_viewer". An absolute "plugins.roi_viewer..." name loaded a
+# second copy of core/ai, whose AIProviderInfo is a different class, so the
+# registry rejected every probe ("probe returned invalid provider info") -
+# seen in the real application on 30/09/2026, never under pytest.
 KNOWN_PROVIDER_MODULES: Tuple[str, ...] = (
-    "plugins.roi_viewer.core.ai.providers.totalsegmentator_provider",  # E6b
+    ".providers.totalsegmentator_provider",  # E6b
 )
 
 
@@ -94,7 +102,7 @@ def load_known_providers(registry: AIProviderRegistry, module_names=None) -> AIP
     its provider is recorded in registry.load_errors and skipped."""
     for name in KNOWN_PROVIDER_MODULES if module_names is None else module_names:
         try:
-            module = importlib.import_module(name)
+            module = importlib.import_module(name, package=__package__ if name.startswith(".") else None)
             registry.register(module.create_provider())
         except Exception as e:
             print(f"ROI Viewer: AI provider module '{name}' not loaded - {e}")

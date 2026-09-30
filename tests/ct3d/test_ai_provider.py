@@ -167,8 +167,7 @@ def test_feature_flag_default_off():
 def test_only_the_totalsegmentator_provider_is_shipped():
     """E6 shipped none; E6b adds exactly the real TotalSegmentator provider
     (no fake one). Loading it works whether or not the package is installed."""
-    assert ai_registry.KNOWN_PROVIDER_MODULES == (
-        "plugins.roi_viewer.core.ai.providers.totalsegmentator_provider",)
+    assert ai_registry.KNOWN_PROVIDER_MODULES == (".providers.totalsegmentator_provider",)
     reg = ai_registry.load_known_providers(ai_registry.AIProviderRegistry())
     assert [i.provider_id for i in reg.list_providers()] == ["totalsegmentator"] and reg.load_errors == []
 
@@ -231,3 +230,32 @@ def test_importing_plugin_loads_no_ai_framework():
     out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr[-2000:]
     assert out.stdout.strip().splitlines()[-1] == "[]"
+
+
+def test_provider_loads_when_invesalius_imports_the_plugin_as_roi_viewer():
+    """Regression (30/09/2026, seen in the real application): InVesalius's
+    PluginManager imports the plugin as the package "ROI Viewer"
+    (invesalius.plugins.import_source). An absolute "plugins.roi_viewer..."
+    provider module then loaded a second copy of core/ai and the registry
+    rejected the probe ("probe returned invalid provider info"). Fresh
+    interpreter, same loader as the application."""
+    code = chr(10).join([
+        "import sys, importlib",
+        "import invesalius.data.slice_",
+        "from invesalius.plugins import import_source",
+        "sys.modules['ROI Viewer'] = import_source('ROI Viewer', 'plugins/roi_viewer/__init__.py')",
+        "r = importlib.import_module('ROI Viewer.core.ai.registry')",
+        "reg = r.load_known_providers(r.AIProviderRegistry())",
+        "info = reg.probe_all()[0]",
+        "print(repr(info.display_name))",
+        "print(repr(info.unavailable_reason.split(':')[0]) if not info.available else 'AVAILABLE')",
+        "print(any(m.startswith('plugins.roi_viewer') for m in sys.modules))",
+    ])
+    root = pathlib.Path(__file__).resolve().parents[2]
+    out = subprocess.run([sys.executable, "-c", code], cwd=root, capture_output=True, text=True, timeout=180)
+    assert out.returncode == 0, out.stderr[-2000:]
+    name, state, duplicate = out.stdout.strip().splitlines()[-3:]
+    assert name == "'TotalSegmentator'"  # the provider's own info, not the registry's rejection
+    assert state in ("AVAILABLE", "'package_missing'", "'dependency_missing'", "'api_incompatible'",
+                     "'weights_missing'")
+    assert duplicate == "False"  # no second copy of the plugin package

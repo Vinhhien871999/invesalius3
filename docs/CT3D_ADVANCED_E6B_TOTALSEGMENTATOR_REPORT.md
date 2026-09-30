@@ -166,3 +166,7 @@ The E6b guard replaced `download_pretrained_weights` with a function that **alwa
 `REAL_AI_INFERENCE = BLOCKED` (package not installed). **`E6b_GATE = PARTIAL_REAL_INFERENCE_PENDING`** (unchanged). Setup steps: user guide §2.8 and `docs/CT3D_ADVANCED_RC_READINESS_REPORT.md` §6.
 
 **First real run plan**: dataset 0051 is a head CT, so use structure `brain` (2.18.0 class id 90; `skull` = 91) - not `spleen`/`liver`, which are outside its field of view. 2.18.0's `total` map has 117 classes.
+
+### Real-application defect (30/09/2026, from an operator screenshot)
+
+In the real InVesalius the AI status read "totalsegmentator hiện không dùng được." instead of "TotalSegmentator chưa được cài đặt.". Cause: InVesalius's PluginManager imports the plugin as the package **"ROI Viewer"** (`invesalius.plugins.import_source`), while `KNOWN_PROVIDER_MODULES` named the provider absolutely (`plugins.roi_viewer...`). That loaded a second copy of `core/ai`; the provider's `AIProviderInfo` was a different class, and the registry rejected every probe ("probe returned invalid provider info"). pytest imports the plugin as `plugins.roi_viewer`, so no test saw it. Fix: provider modules are named relative to the registry's package (`.providers.totalsegmentator_provider`). New test loads the plugin exactly like the application (fresh interpreter, `import_source("ROI Viewer", ...)`) and checks the provider's own info and that no second package copy exists; it fails on the old code with the operator's symptom.

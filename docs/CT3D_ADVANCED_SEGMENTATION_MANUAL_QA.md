@@ -779,7 +779,7 @@ Leave AI off; run the classic workflow.
 ### TEST UI-K — Opens as a right sidebar
 Plugins → ROI Viewer.
 **Expected**: pane "ROI Viewer" docked on the right of the InVesalius window; Tasks panel and viewers still usable; choosing the menu again does not open a second pane.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result (30/09/2026, operator screenshot, real InVesalius, project "0801 - InVesalius Sample")**: pane with caption "ROI Viewer" docked on the right, 4 tabs (Phân đoạn · ROI & 3D · Hiển thị · Công cụ), Tasks panel and all four viewers visible and in use. The "menu again reuses the pane" part was not shown. | **PASS/FAIL**: `PARTIAL` (docking confirmed; reuse not yet observed)
 
 ### TEST UI-L — Float and re-dock
 Drag the "ROI Viewer" caption out, then back to an edge.

@@ -8,7 +8,7 @@
 
 Release blockers:
 1. **E6b real inference has not been run** (`E6b_GATE = PARTIAL_REAL_INFERENCE_PENDING`): TotalSegmentator is not installed in the InVesalius environment. Installing it needs the constrained command in §6 — a plain install would break the environment.
-2. **Sidebar not yet verified in a real InVesalius** (manual UI-K..UI-N `NOT_RUN`); it was verified in a stand-in AUI window only.
+2. **Sidebar only partly verified in a real InVesalius**: an operator screenshot (30/09/2026, project 0801) shows the pane docked on the right with the viewers usable (UI-K `PARTIAL`); UI-L..UI-N `NOT_RUN`. The same screenshot exposed an AI status defect (provider loaded twice under InVesalius's plugin loader), fixed and covered by a test that uses the application's loader.
 
 Everything else automated is green. The remaining manual items below are coverage, not blockers, except where marked.
 
@@ -27,7 +27,7 @@ Everything else automated is green. The remaining manual items below are coverag
 
 ## 3. Automated evidence (this run)
 
-- `tests/ct3d`: 615 passed / 1 skipped (optional `pynrrd`) / 0 failed, 3 consecutive runs; upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
+- `tests/ct3d`: 616 passed / 1 skipped (optional `pynrrd`) / 0 failed, 3 consecutive runs; upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
 - All test and helper processes use a temporary `XDG_CONFIG_HOME`; verified that a full run leaves `%USERPROFILE%\.config\invesalius\config.json` / `state.json` untouched.
 
 ## 4. Manual QA status
@@ -37,7 +37,7 @@ Everything else automated is green. The remaining manual items below are coverag
 | Group | Status | Blocking? |
 |---|---|---|
 | E6b-A..P (real TotalSegmentator) | NOT_RUN — real inference BLOCKED (not installed) | **yes** (E6b-D/F/G/I/J/M at minimum) |
-| UI-K..UI-N (sidebar in real InVesalius) | NOT_RUN | **yes** (UI-K, UI-M) |
+| UI-K..UI-N (sidebar in real InVesalius) | UI-K PARTIAL (screenshot: docked right); UI-L..N NOT_RUN | **yes** (UI-K reuse, UI-M) |
 | E5-B/C/D/E/J/K/L | RETEST_REQUIRED (after the coordinate fix) | no — orientation is proven by a rendered automated test; operator confirmation recommended |
 | E1-A..N, E2-A..L, E3-A..M, E4-A..R, E5 others, E6-A..L, UI-A..J | NOT_RUN | no (coverage) |
 
