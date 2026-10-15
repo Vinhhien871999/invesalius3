@@ -183,10 +183,33 @@ def fill_holes(mask, connectivity: int = DEFAULT_CONNECTIVITY) -> Tuple[np.ndarr
 # smoothing at that scale, documented here and in the E3 report rather
 # than hidden. Full comparison numbers: docs/CT3D_ADVANCED_E3_CLEANUP_
 # REPORT.md's "Smooth algorithm selection" section.
+#
+# In-plane by default (15/10/2026): the structuring element acts within each
+# axial slice only (no z neighbours). Measured on real CT, 1 pass: with the
+# 3D element an ROI drawn on 2 axial slices vanished completely - 0051
+# (1.5 mm slices) 174,504 -> 0 voxels, 0543 (1 mm slices) liver on 2 slices
+# 106,260 -> 0 - because an opening removes anything thinner than 3 voxels
+# along z. In-plane it is kept (Dice 0.998 to the original on 0543); on
+# whole organs (0543, TotalSegmentator masks of liver, spleen, kidney,
+# aorta, pancreas) the in-plane result also stays closer to the original
+# (Dice 0.986-0.998, |volume change| <= 0.63 %) than the 3D one (Dice
+# 0.966-0.992, up to 1.06 %). CT slices are usually as thick as or thicker
+# than the pixel size, so a one-voxel step along z is the coarsest one.
 MAX_SMOOTH_ITERATIONS = 5
 
 
-def smooth_binary_mask(mask, iterations: int = 1, connectivity: int = DEFAULT_CONNECTIVITY) -> Tuple[np.ndarray, Dict]:
+def smoothing_structure(connectivity: int = DEFAULT_CONNECTIVITY, in_plane: bool = True) -> np.ndarray:
+    """3x3x3 structuring element for (z, y, x) arrays; in_plane keeps only
+    the middle z plane (neighbours within the same axial slice)."""
+    if not in_plane:
+        return ndimage.generate_binary_structure(3, connectivity)
+    structure = np.zeros((3, 3, 3), dtype=bool)
+    structure[1] = ndimage.generate_binary_structure(2, min(connectivity, 2))
+    return structure
+
+
+def smooth_binary_mask(mask, iterations: int = 1, connectivity: int = DEFAULT_CONNECTIVITY,
+                       in_plane: bool = True) -> Tuple[np.ndarray, Dict]:
     """
     Binary closing (fills small crevices / connects near-touching
     foreground) followed by binary opening (removes small protrusions /
@@ -194,7 +217,9 @@ def smooth_binary_mask(mask, iterations: int = 1, connectivity: int = DEFAULT_CO
     of this module, `iterations` times each (scipy's own `iterations`
     parameter - NOT a hand-rolled loop, so scipy's own well-tested
     iterative-erosion/dilation semantics apply). Deterministic, shape-
-    preserving, bounded (see MAX_SMOOTH_ITERATIONS).
+    preserving, bounded (see MAX_SMOOTH_ITERATIONS). `mask` is (z, y, x);
+    with in_plane (the default) each axial slice is smoothed on its own -
+    see smoothing_structure() and the note above it.
 
     Raises ValueError if iterations is not in [1, MAX_SMOOTH_ITERATIONS]
     (Section 11's explicit "no uncontrolled/unbounded iteration control"
@@ -209,7 +234,8 @@ def smooth_binary_mask(mask, iterations: int = 1, connectivity: int = DEFAULT_CO
         )
 
     fg = _binary(mask)
-    structure = ndimage.generate_binary_structure(3, connectivity)
+    structure = smoothing_structure(connectivity, in_plane) if fg.ndim == 3 else \
+        ndimage.generate_binary_structure(fg.ndim, connectivity)
     closed = ndimage.binary_closing(fg, structure=structure, iterations=iterations)
     smoothed = ndimage.binary_opening(closed, structure=structure, iterations=iterations)
 

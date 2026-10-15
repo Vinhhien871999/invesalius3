@@ -12,10 +12,20 @@
 # Nifti1Image on the INPUT grid (it reorients to canonical, predicts,
 # then undoes the reorientation/resampling back to the input shape and
 # affine); label values are the ids of
-# totalsegmentator.map_to_binary.class_map["total"]; roi_subset restricts
-# prediction to a list of class names; device is "gpu", "cpu" or
-# "gpu:N"; fast selects the lower-resolution model. probe() re-checks the
-# installed version's real signature before anything is used.
+# totalsegmentator.map_to_binary.class_map["total"]; device is "gpu",
+# "cpu" or "gpu:N"; fast selects the lower-resolution model; ml returns
+# one multi-label image. probe() re-checks the installed version's real
+# signature before anything is used.
+#
+# Full task, no roi_subset (15/10/2026): with roi_subset TotalSegmentator
+# first crops with a rough 6 mm model, and on dataset 0543 (thorax +
+# upper abdomen, 0.59 x 0.59 x 1 mm) that gave, against the full task,
+# Dice 0.28 for vertebrae_L1 (6 ml instead of 35 ml), 0.48 for the
+# inferior vena cava, 0.82 for the pancreas and an empty gallbladder
+# (docs/CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md section 15). The full
+# task is TotalSegmentator's standard configuration; it labels all classes
+# in one run (80 s there vs 28-45 s per roi_subset structure), so the
+# result is kept for the volume and later structures need no new run.
 #
 # Grid contract (docs/CT3D_ADVANCED_E6B_TOTALSEGMENTATOR_REPORT.md, "NIfTI
 # affine"): Slice().matrix is (z, y, x). For a single-frame axial DICOM
@@ -73,13 +83,12 @@ PARAM_MODE = OPTION_MODE
 PARAM_PATIENT_ORIENTATION = OPTION_PATIENT_ORIENTATION
 PARAM_ACQUISITION = OPTION_ACQUISITION
 
-REQUIRED_API_PARAMETERS = ("input", "output", "task", "roi_subset", "device")
+REQUIRED_API_PARAMETERS = ("input", "output", "task", "device", "ml")
 
-# TotalSegmentator 2.18.0 python_api: a CT run with roi_subset (always used
-# here) first predicts a rough 6 mm "total" segmentation for cropping - task
-# 298 - before the selected sub-mode's own task ids (map_tasks_config.
-# TASK_CONFIGS["total"]["sub_modes"]: default 291-295, fast 297).
-CROP_TASK_ID = 298
+# TotalSegmentator 2.18.0 python_api: a full "total" run uses only the
+# selected sub-mode's task ids (map_tasks_config.TASK_CONFIGS["total"]
+# ["sub_modes"]: default 291-295, fast 297); the 6 mm crop model (298) is
+# only for roi_subset/crop runs, which this provider does not make.
 SUB_MODE_KEYS = {MODE_STANDARD: "default", MODE_FAST: "fast"}
 
 
@@ -134,16 +143,23 @@ def from_nifti_data(data_xyz):
     return np.transpose(np.asarray(data_xyz), (2, 1, 0))
 
 
-def extract_structure(seg_img, label_id: int, shape_zyx, expected_affine) -> np.ndarray:
-    """Binary (z, y, x) mask of one label from TotalSegmentator's output,
-    after proving the output is on the input grid. Never resamples,
-    reshapes or flips to make it fit."""
+def check_output_grid(seg_img, shape_zyx, expected_affine):
+    """(label array (x, y, z), affine) of TotalSegmentator's output after
+    proving it is on the input grid. Never resamples, reshapes or flips to
+    make it fit."""
     data = np.asanyarray(seg_img.dataobj)
     expected_shape = tuple(int(n) for n in shape_zyx)[::-1]
     if tuple(data.shape) != expected_shape:
         raise OutputGridMismatch(f"output shape {data.shape} != input {expected_shape}")
     if not np.allclose(np.asarray(seg_img.affine, dtype=float), expected_affine, atol=1e-3):
         raise OutputGridMismatch(f"output affine differs from the input affine:\n{seg_img.affine}\n{expected_affine}")
+    return np.asarray(data), np.asarray(seg_img.affine, dtype=float)
+
+
+def extract_structure(seg_img, label_id: int, shape_zyx, expected_affine) -> np.ndarray:
+    """Binary (z, y, x) mask of one label from TotalSegmentator's output,
+    on the proven input grid (check_output_grid)."""
+    data, _ = check_output_grid(seg_img, shape_zyx, expected_affine)
     return np.ascontiguousarray(from_nifti_data(data == int(label_id)))
 
 
@@ -155,6 +171,9 @@ class TotalSegmentatorProvider(AISegmentationProvider):
         """`modules`/`version` replace real imports - for tests only."""
         self._modules = modules
         self._version = version
+        # (key, multi-label (x, y, z) array, affine, run seconds) of the last
+        # full run - see infer(); one volume only, cleared by close().
+        self._cache = None
 
     # ---- imports
     def _module(self, name):
@@ -211,14 +230,14 @@ class TotalSegmentatorProvider(AISegmentationProvider):
 
     def _weights_status(self):
         """(modes whose weights are all on disk, detail). A mode needs its
-        sub-mode task ids plus the crop model (CROP_TASK_ID)."""
+        sub-mode task ids (no crop model: see the module header)."""
         weights_dir, sub_modes, table = self._weights_table()
         ready, missing = [], []
         for mode, key in SUB_MODE_KEYS.items():
             if key not in sub_modes:
                 continue
             ids = sub_modes[key]["task_id"]
-            needed = (list(ids) if isinstance(ids, (list, tuple)) else [ids]) + [CROP_TASK_ID]
+            needed = list(ids) if isinstance(ids, (list, tuple)) else [ids]
             absent = [t for t in needed if t not in table or not self._weights_folder(weights_dir, table, t).is_dir()]
             if absent:
                 missing.append(f"{mode}: task {absent}")
@@ -359,27 +378,34 @@ class TotalSegmentatorProvider(AISegmentationProvider):
         device = self.ts_device(request.device, cuda)
 
         affine = nifti_affine(request.volume.spacing_xyz, options[PARAM_PATIENT_ORIENTATION])
-        data = np.ascontiguousarray(to_nifti_data(request.volume.array))
-        image = nib.Nifti1Image(data, affine)
-        image.set_qform(affine, code=1)
-        image.set_sform(affine, code=1)
+        key = self.volume_key(request.volume.array, affine, fast, device)
+        cached = self._cache is not None and self._cache[0] == key
         t_prepared = time.perf_counter()
-        if cancel_event.is_set():  # the only point before the model where stopping is real
-            return AIInferenceResult(mask=np.zeros(request.volume.shape_zyx, dtype=bool))
-
-        progress(None, STAGE_RUNNING)
-        kwargs = {"input": image, "output": None, "task": TASK, "roi_subset": [structure], "device": device}
-        for name, value in (("fast", fast), ("quiet", True), ("ml", True)):
-            if name in params:
-                kwargs[name] = value
-        with self._guard():
-            output = api.totalsegmentator(**kwargs)
-        if isinstance(output, tuple):  # (seg_img, stats) when statistics are on
-            output = output[0]
+        if cached:
+            data, out_affine, run_s = self._cache[1], self._cache[2], self._cache[3]
+        else:
+            self._cache = None  # one volume at a time: free the previous result first
+            if cancel_event.is_set():  # the only point before the model where stopping is real
+                return AIInferenceResult(mask=np.zeros(request.volume.shape_zyx, dtype=bool))
+            image = nib.Nifti1Image(np.ascontiguousarray(to_nifti_data(request.volume.array)), affine)
+            image.set_qform(affine, code=1)
+            image.set_sform(affine, code=1)
+            progress(None, STAGE_RUNNING)
+            kwargs = {"input": image, "output": None, "task": TASK, "device": device}
+            for name, value in (("fast", fast), ("quiet", True), ("ml", True)):
+                if name in params:
+                    kwargs[name] = value
+            with self._guard():
+                output = api.totalsegmentator(**kwargs)
+            if isinstance(output, tuple):  # (seg_img, stats) when statistics are on
+                output = output[0]
+            data, out_affine = check_output_grid(output, request.volume.shape_zyx, affine)
+            run_s = time.perf_counter() - t_prepared
+            self._cache = (key, data, out_affine, run_s)
         t_inferred = time.perf_counter()
 
         progress(None, STAGE_MAPPING)
-        mask = extract_structure(output, label_id, request.volume.shape_zyx, affine)
+        mask = np.ascontiguousarray(from_nifti_data(data == int(label_id)))
         t_mapped = time.perf_counter()
         return AIInferenceResult(
             mask=mask, model_name=f"TotalSegmentator ({TASK})", model_version=self._package_version(),
@@ -388,11 +414,25 @@ class TotalSegmentatorProvider(AISegmentationProvider):
                 "structure": structure, "label_id": int(label_id), "mode": MODE_FAST if fast else MODE_STANDARD,
                 "ts_device": device, "input_conversion_s": t_prepared - t0,
                 "inference_s": t_inferred - t_prepared, "output_mapping_s": t_mapped - t_inferred,
-                "foreground_voxels": int(mask.sum()), "output_affine": np.asarray(output.affine).tolist(),
+                "reused_full_run": cached, "full_run_s": run_s,
+                "foreground_voxels": int(mask.sum()), "output_affine": np.asarray(out_affine).tolist(),
             },
         )
 
+    @staticmethod
+    def volume_key(array, affine, fast, device):
+        """Identity of a full run's input: the voxel values themselves (an
+        edited or different volume never reuses a result), grid, mode and
+        device."""
+        import hashlib
+
+        values = np.ascontiguousarray(array)
+        digest = hashlib.blake2b(memoryview(values).cast("B"), digest_size=16).hexdigest()
+        return (digest, values.shape, str(values.dtype), tuple(np.round(np.asarray(affine), 6).ravel()),
+                bool(fast), device)
+
     def close(self) -> None:
+        self._cache = None
         torch = sys.modules.get("torch") if self._modules is None else self._modules.get("torch")
         try:
             if torch is not None and torch.cuda.is_available():

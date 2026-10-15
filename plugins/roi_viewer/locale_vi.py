@@ -50,8 +50,8 @@ CATALOG = {
     "Fill holes": "Lấp lỗ",
     "Smoothing passes:": "Số lần làm mịn:",
     "Smooth mask": "Làm mịn mặt nạ",
-    "Edits the real mask (undoable). Can remove very thin structures - use few passes and check the result. The 3D surface is not rebuilt.":
-        "Sửa mặt nạ thật (có thể hoàn tác). Có thể xóa mất cấu trúc rất mảnh - dùng ít lần làm mịn và kiểm tra lại kết quả. Bề mặt 3D không được dựng lại.",
+    "Edits the real mask (undoable). Smooths each axial slice; parts thinner than 3 pixels can disappear - use few passes and check the result. The 3D surface is not rebuilt.":
+        "Sửa mặt nạ thật (có thể hoàn tác). Làm mịn trên từng lát cắt axial; phần mảnh hơn 3 điểm ảnh có thể bị xóa - dùng ít lần làm mịn và kiểm tra lại kết quả. Bề mặt 3D không được dựng lại.",
     "Manual editing (brush)": "Chỉnh sửa thủ công (cọ vẽ)",
     "Draw": "Vẽ",
     "Erase": "Xóa",
@@ -179,8 +179,8 @@ CATALOG = {
 
     # ---- Phân đoạn: AI - TotalSegmentator / provider parameters (E6b) ----
     "Structure:": "Cấu trúc:",
-    "Type to search. One structure per preview - the model's other classes are not used.":
-        "Gõ để tìm. Mỗi lần xem trước một cấu trúc - các lớp khác của mô hình không được dùng.",
+    "Type to search. One structure per preview. The first preview of a volume runs the whole model (slower); other structures of the same volume then reuse that run.":
+        "Gõ để tìm. Mỗi lần xem trước một cấu trúc. Lần xem trước đầu tiên của một khối ảnh chạy toàn bộ mô hình (lâu hơn); các cấu trúc khác của cùng khối ảnh sau đó dùng lại kết quả này.",
     "Mode:": "Chế độ:",
     "Standard accuracy": "Chính xác tiêu chuẩn",
     "Fast / less memory": "Nhanh / ít bộ nhớ hơn",

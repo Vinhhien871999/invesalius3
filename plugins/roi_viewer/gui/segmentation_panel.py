@@ -266,7 +266,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # the model's own canonical class names - not translated.
         self.combo_ai_structure = wx.ComboBox(p, wx.ID_ANY, choices=[], style=wx.CB_DROPDOWN)
         self.combo_ai_structure.SetToolTip(_(
-            "Type to search. One structure per preview - the model's other classes are not used."))
+            "Type to search. One structure per preview. The first preview of a volume runs the whole model "
+            "(slower); other structures of the same volume then reuse that run."))
         self._ai_structure_row = ui_helpers.labelled_row(p, _("Structure:"), self.combo_ai_structure)
         ai_sizer.Add(self._ai_structure_row, 0, wx.EXPAND)
         self.choice_ai_mode = wx.Choice(p, wx.ID_ANY, choices=[_("Standard accuracy")])
@@ -367,11 +368,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         cleanup_sizer.Add(ui_helpers.labelled_row(p, _("Smoothing passes:"), self.spin_smooth_iterations),
                           0, wx.EXPAND)
         self.btn_cleanup_smooth = wx.Button(p, wx.ID_ANY, _("Smooth mask"))
-        # Measured E3 finding: a 1-voxel-thick structure disappeared
-        # entirely at iterations=1 with both candidate algorithms.
+        # Smoothing is in-plane (segmentation_cleanup.smoothing_structure):
+        # ROIs drawn on 1-2 slices survive; parts thinner than 3 pixels
+        # within a slice can still go.
         self.btn_cleanup_smooth.SetToolTip(_(
-            "Edits the real mask (undoable). Can remove very thin structures - "
-            "use few passes and check the result. The 3D surface is not rebuilt."
+            "Edits the real mask (undoable). Smooths each axial slice; parts thinner than "
+            "3 pixels can disappear - use few passes and check the result. The 3D surface is not rebuilt."
         ))
         cleanup_sizer.Add(self.btn_cleanup_smooth, 0, wx.ALL | wx.EXPAND, 2)
 

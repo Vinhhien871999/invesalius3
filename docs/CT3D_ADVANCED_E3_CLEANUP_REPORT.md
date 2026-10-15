@@ -133,3 +133,7 @@ New: `plugins/roi_viewer/core/segmentation_cleanup.py`, `tests/ct3d/test_segment
 ## Next recommendation
 
 E4 — Fast Live 3D Preview, per the roadmap's priority order (E1→E2→E3→E4 before E5/E6).
+
+## Smoothing made in-plane (15/10/2026)
+
+Measured on real CT (1 pass): the 3D 6-connected element erased ROIs drawn on 1–2 axial slices completely (0051: 174,504 → 0; 0543: 106,260 → 0). `smooth_binary_mask` now uses an in-plane element by default (`smoothing_structure(connectivity, in_plane=True)`: only the middle z plane); the 3D element stays available with `in_plane=False`. On 0543 TotalSegmentator organ masks the in-plane result is also closer to the original (Dice 0.986–0.998, |Δ| ≤ 0.63 %) than the 3D one (0.966–0.992, up to 1.06 %). Details: `docs/CT3D_0543_ACCURACY_REVIEW.md` §4. Tests: `test_smooth_keeps_an_roi_drawn_on_two_slices`, `test_smooth_in_plane_never_mixes_slices`.

@@ -113,6 +113,8 @@ Mọc vùng bán tự động: chọn 1 điểm hạt giống trên khối 3D, t
 >
 > **Nhánh nâng cao**: điểm hạt giống chọn từ 3D giờ rơi đúng voxel (bản ổn định `ct3d-rc1` có lỗi toạ độ làm hạt giống lệch hàng coronal — xem mục 8).
 
+> **Độ chính xác của Phát triển vùng trên tạng (đo 15/10/2026, 0543, so với gan do TotalSegmentator phân đoạn)**: với CT có thuốc cản quang, vùng mọc **rò sang mô lân cận có HU tương tự** — dung sai 20: vùng gấp 1,4 lần gan (Dice ≤ 0,62); dung sai 50 (mặc định): gấp 3,6 lần (Dice ~0,38). Lấy trung bình lân cận hay lọc nhiễu không cải thiện; hạt giống nằm trên biên (khi chọn trong 3D) còn kém hơn. **Dùng Phát triển vùng cho cấu trúc tương phản rõ và tách biệt; với tạng (gan, lách, thận...) dùng Phân đoạn AI (TotalSegmentator).**
+
 ### 2.3 (chỉ nhánh `enhancement/advanced-segmentation`) — Xem trước (Preview, E2)
 
 > **Chỉ có trên nhánh `enhancement/advanced-segmentation`, KHÔNG có trên bản ổn định (`thesis-ct-roi-tools`/tag `ct3d-rc1`).** Mặc định TẮT — khi tắt, Otsu và Phát triển vùng hoạt động y hệt bản ổn định (tạo mặt nạ thật ngay lập tức), không có gì thay đổi.
@@ -142,9 +144,11 @@ Mọc vùng bán tự động: chọn 1 điểm hạt giống trên khối 3D, t
 | **Giữ thành phần liên thông lớn nhất** | Chỉ giữ lại thành phần liên thông LỚN NHẤT của mặt nạ, xoá hết phần còn lại (nhiễu rời rạc) |
 | **Kích thước tối thiểu** (voxel) + **Loại bỏ vùng nhỏ** | Xoá mọi thành phần liên thông có kích thước NHỎ HƠN số voxel nhập (đúng bằng số nhập thì GIỮ LẠI) |
 | **Lấp lỗ** | Lấp đầy khoang rỗng bị bao kín hoàn toàn bên trong mặt nạ (không đụng tới nền bên ngoài) |
-| **Số lần làm mịn** + **Làm mịn mặt nạ** | Làm mượt biên mặt nạ (đóng rồi mở hình thái học — thuật toán chọn qua so sánh thật, xem architecture doc), tối đa 5 lần |
+| **Số lần làm mịn** + **Làm mịn mặt nạ** | Làm mượt biên mặt nạ **trên từng lát cắt axial** (đóng rồi mở hình thái học trong mặt phẳng lát — thuật toán chọn qua so sánh thật, xem architecture doc), tối đa 5 lần |
 
-> ⚠️ **Cảnh báo thật (Làm mịn mặt nạ)**: làm mịn nhị phân có thể **XOÁ HOÀN TOÀN cấu trúc rất mỏng**. Khảo sát tổng hợp thật ở E3 (`CT3D_ADVANCED_E3_CLEANUP_REPORT.md` mục "Smooth algorithm selection") cho thấy: một cấu trúc dày chỉ 1 voxel biến mất hoàn toàn ngay ở lần làm mịn đầu tiên, với CẢ 2 thuật toán từng so sánh. Dùng ít lần làm mịn và **luôn kiểm tra lại kết quả** — đặc biệt với ROI có cấu trúc mảnh (mạch máu nhỏ, thành mỏng...). Tooltip của nút cũng ghi cảnh báo này.
+> **[Sửa 15/10/2026]** Trước đây làm mịn dùng phần tử 3D nên **ROI chỉ vẽ trên 1–2 lát bị xoá hết** (0051: 174.504 → 0 voxel; 0543: 106.260 → 0). Nay làm mịn trong từng lát axial: ROI 2 lát được giữ (Dice 0,998), và với tạng lớn kết quả cũng gần bản gốc hơn (Dice 0,986–0,998 so với 0,966–0,992 trước đây). Chi tiết: `CT3D_0543_ACCURACY_REVIEW.md` mục 4.
+>
+> ⚠️ **Cảnh báo thật (Làm mịn mặt nạ)**: làm mịn nhị phân vẫn có thể **xoá phần mảnh hơn 3 điểm ảnh trong một lát**. Khảo sát tổng hợp thật ở E3 (`CT3D_ADVANCED_E3_CLEANUP_REPORT.md` mục "Smooth algorithm selection") cho thấy: một cấu trúc dày chỉ 1 voxel biến mất hoàn toàn ngay ở lần làm mịn đầu tiên, với CẢ 2 thuật toán từng so sánh. Dùng ít lần làm mịn và **luôn kiểm tra lại kết quả** — đặc biệt với ROI có cấu trúc mảnh (mạch máu nhỏ, thành mỏng...). Tooltip của nút cũng ghi cảnh báo này.
 >
 > **Đo trên dữ liệu thật 0051 (30/09/2026, 1 lần làm mịn)**: khối xương và khối mô mềm lớn chỉ mất khoảng 1,5%; nhưng **một vùng chỉ dày 2 lát trục (như vẽ tay trên vài lát) bị xoá 100%** (174.504 → 0 voxel), vì phép "mở" xoá mọi phần mỏng hơn 3 voxel theo bất kỳ trục nào (ở 0051 là 4,5 mm theo trục z). Nếu dòng trạng thái báo mất nhiều voxel, bấm **Hoàn tác**. Đây là mục đang điều tra, chưa đổi thuật toán.
 
@@ -202,7 +206,11 @@ D:\PyTools\invx-venv\Scripts\python.exe -c "import torch, numpy; print(torch.__v
 D:\PyTools\invx-venv\Scripts\totalseg_download_weights.exe -t total
 ```
 
-Dòng kiểm tra phải in `2.7.1+cu118 True 1.26.4`. `-t total` tải trọng số cho chế độ **Chính xác tiêu chuẩn** (kèm mô hình cắt vùng mà mỗi lần phân đoạn một cấu trúc cần); thêm `-t total_fast` nếu muốn chế độ **Nhanh**. Sau đó khởi động lại InVesalius. (Đường dẫn trên là môi trường của máy phát triển; máy khác thay bằng Python đang chạy InVesalius.) Chi tiết: `CT3D_ADVANCED_RC_READINESS_REPORT.md` mục 6.
+Dòng kiểm tra phải in `2.7.1+cu118 True 1.26.4`. `-t total` tải trọng số cho chế độ **Chính xác tiêu chuẩn** (phiên bản từ 15/10/2026 không còn cần mô hình cắt vùng 298); thêm `-t total_fast` nếu muốn chế độ **Nhanh**. Sau đó khởi động lại InVesalius. (Đường dẫn trên là môi trường của máy phát triển; máy khác thay bằng Python đang chạy InVesalius.) Chi tiết: `CT3D_ADVANCED_RC_READINESS_REPORT.md` mục 6.
+
+**[Nâng cấp 15/10/2026] Chạy toàn bộ mô hình một lần cho mỗi khối ảnh.** Trước đây mỗi lần xem trước chỉ chạy cho một cấu trúc (`roi_subset`): TotalSegmentator cắt vùng bằng mô hình thô 6 mm rồi mới phân đoạn, nên cấu trúc nhỏ/mảnh bị hụt. Trên 0543, so với chạy đầy đủ: L1 chỉ 6 ml thay vì 35 ml (Dice 0,28), tĩnh mạch chủ dưới Dice 0,48, tụy 0,82, túi mật mất hẳn. Nay **lần xem trước đầu tiên chạy toàn bộ 117 cấu trúc** (0543 trên RTX 4060: ~77–81 s), các cấu trúc khác của **cùng khối ảnh** chỉ mất **< 1 s** và giống hệt chạy đầy đủ. Khi khối ảnh thay đổi (giá trị voxel, spacing), chế độ hoặc thiết bị khác, hoặc đóng/mở dự án, mô hình sẽ chạy lại. Chi tiết: `CT3D_0543_ACCURACY_REVIEW.md` mục 3.
+
+**Dữ liệu 0543 (CT ngực–bụng, có cản quang)**: chụp từ đỉnh phổi tới giữa bụng, nên gan, thận, tụy, L1, túi mật **bị cắt ở mép dưới ảnh** — thể tích đo được chỉ là phần trong vùng chụp, không phải cả tạng.
 
 **Lần chạy thật đầu tiên (30/09/2026, người vận hành)**: dữ liệu 0801 (CT cổ–ngực), cấu trúc `trachea`, CUDA, Chính xác tiêu chuẩn — **48,5 s** (chuyển dữ liệu 1,4 s, suy luận 46,8 s, ánh xạ kết quả 0,2 s), 25.953 voxel; mặt nạ "AI - trachea" nằm đúng khí quản trên cả 3 mặt cắt và bề mặt 3D có cả chỗ chia đôi phế quản. Chọn cấu trúc có trong vùng chụp: 0801 → `trachea`, `heart`, `aorta`, các thùy phổi; 0051 (**CT sọ**) → `brain`, `skull` (không chọn `spleen`/`liver` khi chúng nằm ngoài ảnh — kết quả sẽ rỗng).
 

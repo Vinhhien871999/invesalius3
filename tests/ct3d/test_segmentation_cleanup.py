@@ -278,3 +278,26 @@ def test_default_connectivity_is_six_connected():
     # exactly one of them (the tie-break, not both).
     assert info["component_count_before"] == 2
     assert int(result.sum()) // 255 == 1
+
+
+def test_smooth_keeps_an_roi_drawn_on_two_slices():
+    """15/10/2026: with the former 3D element one pass erased ROIs drawn on
+    1-2 axial slices completely (real CT: 0051 174,504 -> 0 voxels, 0543
+    106,260 -> 0). In-plane smoothing keeps them."""
+    m = np.zeros((10, 30, 30), dtype=np.uint8)
+    m[4:6, 5:25, 5:25] = 255
+    result, info = smooth_binary_mask(m, iterations=1)
+    assert info["voxels_after"] >= 0.98 * info["voxels_before"]  # only the 4 square corners per slice go
+    assert (result[4] > 0).any() and (result[5] > 0).any()
+    three_d, info3 = smooth_binary_mask(m, iterations=1, in_plane=False)
+    assert info3["voxels_after"] == 0  # the old behaviour, still available explicitly
+
+
+def test_smooth_in_plane_never_mixes_slices():
+    m = np.zeros((6, 12, 12), dtype=np.uint8)
+    m[1, 2:10, 2:10] = 255
+    m[3, 4:8, 4:8] = 255
+    result, _ = smooth_binary_mask(m, iterations=1)
+    for z in range(6):
+        alone, _ = smooth_binary_mask(m[z:z + 1], iterations=1)
+        assert np.array_equal(result[z], alone[0])

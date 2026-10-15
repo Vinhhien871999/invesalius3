@@ -221,7 +221,9 @@ def test_infer_returns_exactly_the_selected_class_on_the_native_grid(tmp_path, s
     assert result.mask.shape == SHAPE and result.mask.dtype == bool
     assert np.array_equal(result.mask, _volume() == value)
     [call] = calls["ts"]
-    assert call["roi_subset"] == [structure] and call["task"] == "total" and call["output"] is None
+    # Full task, no roi_subset (15/10/2026: roi_subset's 6 mm crop lost
+    # small structures on real data - see the provider's module header).
+    assert call["roi_subset"] is None and call["task"] == "total" and call["output"] is None
     assert call["input_type"] == "Nifti1Image"  # in memory - no temp NIfTI written by the plugin
     assert call["device"] == "cpu" and call["fast"] is False and call["quiet"] is True and call["ml"] is True
     assert result.extra["label_id"] == {"spleen": 1, "kidney_right": 2, "liver": 5}[structure]
@@ -255,7 +257,7 @@ def test_missing_weights_during_the_run_raise_and_never_download(tmp_path):
     provider, calls = _provider(tmp_path)
     api = provider._modules["totalsegmentator.python_api"]
     original_download, original_usage = api.download_pretrained_weights, api.send_usage_stats
-    (tmp_path / "weights" / WEIGHT_FOLDERS[298]).rmdir()  # e.g. deleted after the probe
+    (tmp_path / "weights" / WEIGHT_FOLDERS[293]).rmdir()  # e.g. deleted after the probe
     with pytest.raises(ts.WeightsNotReady):
         _infer(provider, _request())
     assert calls["download"] == 0  # the real download function was never reached
@@ -266,15 +268,49 @@ def test_missing_weights_during_the_run_raise_and_never_download(tmp_path):
     ((), ("standard", "fast")),
     ((297,), ("standard",)),  # fast model absent
     ((293,), ("fast",)),  # one standard part absent
-    ((298,), None),  # the crop model every roi_subset run needs
+    ((298,), ("standard", "fast")),  # the roi_subset crop model is not needed for a full run
+    ((291, 297), None),
 ])
 def test_modes_offered_only_with_their_weights(tmp_path, missing, modes):
     info = _provider(tmp_path, missing=missing)[0].probe()
     if modes is None:
         assert not info.available and info.unavailable_reason.startswith(ai_provider.REASON_WEIGHTS)
-        assert "298" in info.unavailable_reason
+        assert "291" in info.unavailable_reason
     else:
         assert info.available and info.parameter_choices[ai_provider.OPTION_MODE] == modes
+
+
+def test_one_full_run_serves_every_structure_of_the_volume(tmp_path):
+    provider, calls = _provider(tmp_path)
+    for structure, value in (("spleen", 101), ("kidney_right", 102), ("liver", 105), ("spleen", 101)):
+        result = _infer(provider, _request(structure=structure))
+        assert np.array_equal(result.mask, _volume() == value)
+    assert len(calls["ts"]) == 1
+    assert result.extra["reused_full_run"] is True and result.extra["full_run_s"] >= 0
+
+
+def test_full_run_not_reused_for_another_volume_mode_or_device(tmp_path):
+    provider, calls = _provider(tmp_path, cuda=True)
+    _infer(provider, _request())
+    edited = _volume()
+    edited[0, 0, 0] = 1  # one voxel changed
+    request = AIInferenceRequest(volume=read_only_volume(edited, SPACING), options=_request().options)
+    _infer(provider, request)
+    _infer(provider, _request(mode="fast"))
+    _infer(provider, _request(device=DeviceKind.CUDA))
+    assert len(calls["ts"]) == 4
+    other_spacing = AIInferenceRequest(volume=read_only_volume(_volume(), (0.5, 0.8, 2.0)), options=_request().options)
+    _infer(provider, other_spacing)
+    assert len(calls["ts"]) == 5
+
+
+def test_close_releases_the_kept_result(tmp_path):
+    provider, calls = _provider(tmp_path)
+    _infer(provider, _request())
+    provider.close()
+    assert provider._cache is None
+    _infer(provider, _request())
+    assert len(calls["ts"]) == 2
 
 
 def test_usage_stats_not_sent(tmp_path):
@@ -426,7 +462,7 @@ def test_end_to_end_preview_e4_accept(frame_env):
     assert e.s.aux_matrices[e.aux_key] is pm.preview_array  # the E2 overlay
     assert e.panel._select_preview_3d_source()[2] == "ai_preview"  # the E4 source
     assert pm.ai_metadata["structure"] == "kidney_right"
-    assert e.calls["ts"][0]["roi_subset"] == ["kidney_right"]
+    assert e.calls["ts"][0]["roi_subset"] is None  # full task (see the provider header)
     assert e.panel.lbl_ai_status.GetLabel().startswith("Đã hoàn thành trong")
     e.panel._on_preview_accept(None)
     e.panel._on_preview_accept(None)
