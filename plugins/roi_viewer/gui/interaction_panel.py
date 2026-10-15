@@ -126,8 +126,7 @@ class InteractionPanel(scrolled.ScrolledPanel):
         self.Bind(wx.EVT_CHOICE, self._on_clip_target_changed, self.choice_clip_target)
         viz_sizer.Add(ui_helpers.labelled_row(p, _("Target:"), self.choice_clip_target), 0, wx.EXPAND)
 
-        self.lbl_e5_status = wx.StaticText(p, wx.ID_ANY, "")
-        self.lbl_e5_status.Wrap(260)
+        self.lbl_e5_status = ui_helpers.StatusText(p, "")
         viz_sizer.Add(self.lbl_e5_status, 0, wx.ALL | wx.EXPAND, 3)
         p.SetSizer(viz_sizer)
         main_sizer.Add(pane, 0, wx.ALL | wx.EXPAND, 5)

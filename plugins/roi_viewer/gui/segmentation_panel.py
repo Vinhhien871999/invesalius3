@@ -166,6 +166,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._init_ui()
         self.SetupScrolling(scroll_x=False)
         ui_helpers.follow_width(self)
+        if self.roi_page is not self:  # "ROI & 3D" page: its hints and status line too
+            ui_helpers.follow_width(self.roi_page)
 
     def _init_ui(self):
         """
@@ -239,7 +241,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         rg_sizer.Add(self.btn_pick_seed, 0, wx.ALL | wx.EXPAND, 2)
         rg_sizer.Add(self.btn_preview_region_growing, 0, wx.ALL | wx.EXPAND, 2)
 
-        self.rg_status = wx.StaticText(self, wx.ID_ANY, "")
+        self.rg_status = ui_helpers.StatusText(self, "")
         rg_sizer.Add(self.rg_status, 0, wx.ALL | wx.EXPAND, 3)
         sizer.Add(rg_sizer, 0, wx.ALL | wx.EXPAND, 3)
 
@@ -311,7 +313,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         ai_sizer.Add(ui_helpers.button_row(self.btn_ai_run, self.btn_ai_cancel), 0, wx.EXPAND)
         ai_state_row = wx.BoxSizer(wx.HORIZONTAL)
         ai_state_row.Add(wx.StaticText(p, wx.ID_ANY, _("State:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        self.lbl_ai_status = wx.StaticText(p, wx.ID_ANY, _("Off"))
+        self.lbl_ai_status = ui_helpers.StatusText(p, _("Off"), indent=90)
         ai_state_row.Add(self.lbl_ai_status, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         ai_sizer.Add(ai_state_row, 0, wx.EXPAND)
         self.lbl_ai_help = ui_helpers.hint(p, _(
@@ -335,7 +337,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         preview_status_row = wx.BoxSizer(wx.HORIZONTAL)
         preview_status_row.Add(wx.StaticText(self, wx.ID_ANY, _("State:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        self.lbl_preview_status = wx.StaticText(self, wx.ID_ANY, _("Idle"))
+        self.lbl_preview_status = ui_helpers.StatusText(self, _("Idle"), indent=90)
         preview_status_row.Add(self.lbl_preview_status, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         preview_sizer.Add(preview_status_row, 0, wx.EXPAND)
 
@@ -377,7 +379,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         ))
         cleanup_sizer.Add(self.btn_cleanup_smooth, 0, wx.ALL | wx.EXPAND, 2)
 
-        self.lbl_cleanup_status = wx.StaticText(p, wx.ID_ANY, "")
+        self.lbl_cleanup_status = ui_helpers.StatusText(p, "")
         cleanup_sizer.Add(self.lbl_cleanup_status, 0, wx.ALL | wx.EXPAND, 3)
         p.SetSizer(cleanup_sizer)
         sizer.Add(pane_cleanup, 0, wx.ALL | wx.EXPAND, 3)
@@ -554,7 +556,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         live_sizer.Add(e4_row, 0, wx.EXPAND)
         e4_state_row = wx.BoxSizer(wx.HORIZONTAL)
         e4_state_row.Add(wx.StaticText(p, wx.ID_ANY, _("State:")), 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
-        self.lbl_e4_state = wx.StaticText(p, wx.ID_ANY, _("Idle"))
+        self.lbl_e4_state = ui_helpers.StatusText(p, _("Idle"), indent=90)
         e4_state_row.Add(self.lbl_e4_state, 1, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 3)
         live_sizer.Add(e4_state_row, 0, wx.EXPAND)
         self.lbl_e4_mesh_info = wx.StaticText(p, wx.ID_ANY, "")
@@ -563,7 +565,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         surface_sizer.Add(pane_live, 0, wx.ALL | wx.EXPAND, 2)
         sizer.Add(surface_sizer, 0, wx.ALL | wx.EXPAND, 5)
 
-        self.roi_status = wx.StaticText(page, wx.ID_ANY, _("Ready."), style=wx.ST_NO_AUTORESIZE)
+        self.roi_status = ui_helpers.StatusText(page, _("Ready."))
         sizer.Add(self.roi_status, 0, wx.ALL | wx.EXPAND, 5)
 
         if page is not self:
@@ -1998,11 +2000,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.roi_color_swatch.Refresh()
 
     def _region_info(self, stats) -> str:
-        """Short, localized region summary: '12.345 voxels (3,2% of volume), 1.234,5 mm³'."""
+        """Short, localized region summary: '12.345 voxels (3,2% of volume), 35,3 ml'.
+        Volumes in ml (mm³ made organ volumes 9+ characters long - e.g.
+        '3.278.229 voxel ..., 1.125.404,6 mm³' - and cut off in the sidebar)."""
         info = _("{voxels} voxels ({percent}% of volume)").format(
             voxels=fmt_int(stats["voxel_count"]), percent=fmt_float(stats["fraction"] * 100, 1))
         if "volume_mm3" in stats:
-            info += ", " + fmt_float(stats["volume_mm3"], 1) + " mm³"
+            ml = stats["volume_mm3"] / 1000.0
+            info += ", " + fmt_float(ml, 1 if ml >= 10 else 2) + " ml"
         return info
 
     def _e4_source_label(self, kind) -> str:

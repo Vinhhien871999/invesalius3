@@ -832,3 +832,21 @@ Evidence: 4 screenshots (pip install tail + environment check `2.7.1+cu118 True 
 ## Accuracy review on 0543 (15/10/2026) — automated, not operator QA
 
 Headless study with InVesalius's own loader (`docs/CT3D_0543_ACCURACY_REVIEW.md`). No manual item changes status. Behaviour changed for two items that need an operator re-test: **E6b** (AI now runs the full model once per volume; first preview ~80 s on 0543, later structures < 1 s) and **E3 smoothing** (now in-plane). Suggested operator check on 0543: AI `vertebrae_L1`, then `pancreas` and `liver` — the second and third must appear in about a second.
+
+## Operator run 15/10/2026 — 0543 in the real InVesalius (3 screenshots)
+
+TotalSegmentator, CUDA, standard, after the full-task change (`880f48bf`):
+
+| Structure | Status line | Preview | Headless reference (same data) |
+|---|---|---|---|
+| vertebrae_L1 (first preview: full run) | "Đã hoàn thành trong 129,4 s." | 102,861 voxels, 35.3 ml | 102,870 voxels, 76.6 s |
+| pancreas (reused run) | **"Đã hoàn thành trong 1,3 s."** | 93,824 voxels | 93,832 voxels, 0.68 s |
+| liver (reused run) | **"Đã hoàn thành trong 1,3 s."** | 3,278,229 voxels | 3,278,210 voxels, 0.67 s |
+
+Voxel differences of 8–19 come from GPU non-determinism between runs. Orange preview overlays on the right anatomy: L1 at the lowest vertebra (sagittal, cut by the lower image edge), pancreas tail at patient left and liver at patient right (coronal). "AI - vertebrae_L1" and "AI - pancreas" were accepted, one mask each. The first run took 129 s in the application against 77 s headless (InVesalius open with a bone surface; free RAM about 2.6 GB at the time — not measured during the run).
+
+Item updates (only what the screenshots show): **E6b-F** — overlay seen on the right anatomy in sagittal and coronal for 3 structures; the axial view was at another level → stays `PARTIAL`. **E6b-I** — one ROI per Accept for 2 structures; the quick double-click not tested → stays `PARTIAL`. New behaviour **"one full run, then reuse" confirmed in the real application** (1.3 s for the second and third structure).
+
+Findings from the same screenshots:
+1. **Fixed** — the preview status line was cut at the sidebar edge ("…(0,1% thể tích), 35.31" — the volume, in mm³, was 9+ characters). Volumes are now shown in ml ("35,3 ml") and status lines wrap to the sidebar width (`ui_helpers.StatusText`; `tests/ct3d/test_ui_status_text.py`).
+2. **Not a plugin defect — the bone threshold includes contrast blood**: Mask 1 (InVesalius's "Bone" preset, 226–3071 HU) also covers the heart chambers and the aorta, because contrast-enhanced blood in this portal-venous scan is above 226 HU. For bone only, raise the lower threshold or use the AI bone classes (vertebrae_*, rib_*, sternum, …). Not quantified here (re-running TotalSegmentator while the application was open would have competed for the 2.6 GB of free RAM).

@@ -210,7 +210,9 @@ Dòng kiểm tra phải in `2.7.1+cu118 True 1.26.4`. `-t total` tải trọng s
 
 **[Nâng cấp 15/10/2026] Chạy toàn bộ mô hình một lần cho mỗi khối ảnh.** Trước đây mỗi lần xem trước chỉ chạy cho một cấu trúc (`roi_subset`): TotalSegmentator cắt vùng bằng mô hình thô 6 mm rồi mới phân đoạn, nên cấu trúc nhỏ/mảnh bị hụt. Trên 0543, so với chạy đầy đủ: L1 chỉ 6 ml thay vì 35 ml (Dice 0,28), tĩnh mạch chủ dưới Dice 0,48, tụy 0,82, túi mật mất hẳn. Nay **lần xem trước đầu tiên chạy toàn bộ 117 cấu trúc** (0543 trên RTX 4060: ~77–81 s), các cấu trúc khác của **cùng khối ảnh** chỉ mất **< 1 s** và giống hệt chạy đầy đủ. Khi khối ảnh thay đổi (giá trị voxel, spacing), chế độ hoặc thiết bị khác, hoặc đóng/mở dự án, mô hình sẽ chạy lại. Chi tiết: `CT3D_0543_ACCURACY_REVIEW.md` mục 3.
 
-**Dữ liệu 0543 (CT ngực–bụng, có cản quang)**: chụp từ đỉnh phổi tới giữa bụng, nên gan, thận, tụy, L1, túi mật **bị cắt ở mép dưới ảnh** — thể tích đo được chỉ là phần trong vùng chụp, không phải cả tạng.
+**Dữ liệu 0543 (CT ngực–bụng, có cản quang)**: chụp từ đỉnh phổi tới giữa bụng, nên gan, thận, tụy, L1, túi mật **bị cắt ở mép dưới ảnh** — thể tích đo được chỉ là phần trong vùng chụp, không phải cả tạng. Người vận hành đã kiểm tra trong InVesalius (15/10/2026): L1 lần đầu 129,4 s, sau đó tụy và gan mỗi cấu trúc **1,3 s**.
+
+> **Ngưỡng xương trên CT có thuốc cản quang**: preset "Bone" của InVesalius (226–3071 HU) **tô cả máu có thuốc cản quang** (buồng tim, aorta, các mạch lớn). Muốn chỉ lấy xương: nâng ngưỡng dưới, hoặc dùng Phân đoạn AI với các lớp xương (`vertebrae_*`, `rib_*`, `sternum`, …).
 
 **Lần chạy thật đầu tiên (30/09/2026, người vận hành)**: dữ liệu 0801 (CT cổ–ngực), cấu trúc `trachea`, CUDA, Chính xác tiêu chuẩn — **48,5 s** (chuyển dữ liệu 1,4 s, suy luận 46,8 s, ánh xạ kết quả 0,2 s), 25.953 voxel; mặt nạ "AI - trachea" nằm đúng khí quản trên cả 3 mặt cắt và bề mặt 3D có cả chỗ chia đôi phế quản. Chọn cấu trúc có trong vùng chụp: 0801 → `trachea`, `heart`, `aorta`, các thùy phổi; 0051 (**CT sọ**) → `brain`, `skull` (không chọn `spleen`/`liver` khi chúng nằm ngoài ảnh — kết quả sẽ rỗng).
 

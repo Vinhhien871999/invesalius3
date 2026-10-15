@@ -33,13 +33,73 @@ def hint(parent, text, wrap=250):
     return label
 
 
+class StatusText(wx.StaticText):
+    """A status line that wraps to the page width (follow_width()) instead of
+    being cut off at the sidebar edge - seen in the real application on
+    15/10/2026 ("Đã tạo xem trước AI: 102.861 voxel (0,1% thể tích), 35.31"
+    with the volume cut). GetLabel() returns the text as set, without the
+    line breaks Wrap() inserts, so callers and tests see the plain text.
+    `indent` is the width taken by a label before it on the same row."""
+
+    def __init__(self, parent, text="", indent=0, style=0):
+        self._status_text = text
+        self._indent = indent
+        self._wrap_width = 250 - indent
+        self._wrapping = False
+        super().__init__(parent, wx.ID_ANY, text, style=style)
+        self._wrap()
+
+    def _wrap(self):
+        self._wrapping = True  # Wrap() may call SetLabel() back
+        try:
+            wx.StaticText.SetLabel(self, self._status_text)
+            self.Wrap(self._wrap_width)
+        finally:
+            self._wrapping = False
+
+    def SetLabel(self, text):
+        if self._wrapping:
+            wx.StaticText.SetLabel(self, text)
+            return
+        before = self.GetSize().height
+        self._status_text = str(text)
+        self._wrap()
+        if self.GetBestSize().height != before:
+            _relayout(self)
+
+    def GetLabel(self):
+        return self._status_text
+
+    def set_wrap_width(self, width):
+        width = max(120, int(width) - self._indent)
+        if width != self._wrap_width:
+            self._wrap_width = width
+            self._wrap()
+
+
+def _relayout(window):
+    """Re-run the sizers from `window` up to its scrolled page (a wrapped
+    status line can change height)."""
+    parent = window.GetParent()
+    while parent is not None:
+        parent.Layout()
+        if hasattr(parent, "SetupScrolling") or parent.IsTopLevel():
+            if hasattr(parent, "FitInside"):
+                parent.FitInside()
+            break
+        parent = parent.GetParent()
+
+
 def rewrap_hints(page, width):
-    """Re-wrap every hint() under `page` to fit `width` px."""
+    """Re-wrap every hint() and StatusText under `page` to fit `width` px."""
     target = max(160, int(width) - 48)
     stack = list(page.GetChildren())
     while stack:
         window = stack.pop()
         stack.extend(window.GetChildren())
+        if isinstance(window, StatusText):
+            window.set_wrap_width(target)
+            continue
         text = getattr(window, "_hint_text", None)
         if text is not None:
             window.SetLabel(text)

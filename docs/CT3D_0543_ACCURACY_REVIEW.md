@@ -92,3 +92,7 @@ It leaks into neighbouring tissue of similar HU through thin bridges. Tested var
 | Smoothing | improved: in-plane |
 | Region growing on organs | limited by the method; documented |
 | Clinical accuracy | not assessed (no ground truth) |
+
+## 7. Confirmed in the real application (15/10/2026, operator)
+
+0543 in InVesalius, CUDA: vertebrae_L1 129.4 s (first preview, full run), then pancreas and liver **1.3 s each** (reused run); voxel counts within 8–19 voxels of the headless results; overlays on the right anatomy. The cut status line seen in the same screenshots was fixed (ml, wrapping status lines). Details: Manual QA "Operator run 15/10/2026".
