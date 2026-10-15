@@ -703,7 +703,7 @@ Pick e.g. "spleen"; also type a name not in the list and press Xem trước bằ
 ### TEST E6b-D — CPU inference without GUI freeze
 Thiết bị CPU, Xem trước bằng AI on 0051.
 **Expected**: Stage texts (no %), window stays responsive, finishes with "Đã hoàn thành trong … s.".
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator, 15/10/2026, real InVesalius, project 0543): Device CPU was used: pancreas, liver and vertebrae_L1 previews on CPU finished in 1.3–1.4 s, which is only possible after a completed CPU full run (the reused run is keyed by device, so a CUDA run is not reused). The CPU run itself (its duration, the stage texts and whether the window stayed responsive) was not shown. | **PASS/FAIL**: `PARTIAL`
 
 ### TEST E6b-E — CUDA inference if available
 Thiết bị CUDA (only listed when available).
@@ -723,7 +723,7 @@ Enable Xem trước 3D thời gian thực.
 ### TEST E6b-H — Cancel does not create a mask
 Hủy xử lý AI during a run; also Hủy xem trước after one.
 **Expected**: Truthful text (model finishes in background, result discarded); no new mask; no overlay appears later.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator, 15/10/2026, real InVesalius, project 0543): Operator statement: cancel checked ("đã kiểm tra hết Hủy"). No screenshot of the cancel itself. | **PASS/FAIL**: `PASS (operator statement)`
 
 ### TEST E6b-I — Accept creates exactly one ROI
 Chấp nhận (click twice quickly).
@@ -743,12 +743,12 @@ Run Hậu xử lý on the accepted ROI.
 ### TEST E6b-L — Final 3D surface works after Accept
 Cập nhật bề mặt 3D từ ROI hiện tại.
 **Expected**: Surface matches the accepted mask.
-**Actual Result** (operator screenshots + console log, 30/09/2026, real InVesalius, project 0801 (neck/chest CT), structure `trachea`, CUDA, standard): The surface built from "AI - trachea" showed the trachea with the carina and main bronchi (matches the mask). **The same action exposed a defect**: the button always sent overwrite=True, and InVesalius overwrites its last surface whatever its mask — the operator's bone surface was no longer shown. Fixed (the ROI's own surface is replaced, otherwise a new one named after the ROI is added); the changed path needs a re-test. | **PASS/FAIL**: `RETEST_REQUIRED`
+**Actual Result** (operator, 15/10/2026, real InVesalius, project 0543): Re-test after the surface fix (`ab0638f6`): the 3D view shows the AI ROI surfaces ("AI - pancreas", "AI - liver") **together with the bone surface** of Mask 1, i.e. building an ROI's surface no longer replaces another ROI's surface; each surface matches its mask's position. Operator statement: re-test done. | **PASS/FAIL**: `PASS`
 
 ### TEST E6b-M — Save/Open preserves the accepted AI ROI
 Save, close, reopen the project.
 **Expected**: ROI present and unchanged; no AI state restored.
-**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+**Actual Result** (operator, 15/10/2026, real InVesalius, project 0543): Operator statement: save and reopen checked. The mask list after it still holds the AI masks of the earlier session ("AI - vertebrae_L1", "AI - pancreas", "AI - liver") next to the new ones, with their names and colours; no AI state was restored (a new run/reuse was needed). | **PASS/FAIL**: `PASS (operator statement + mask list)`
 
 ### TEST E6b-N — Project close during inference is safe
 Close the project while TotalSegmentator runs.
@@ -768,7 +768,7 @@ Leave AI off; run the classic workflow.
 ### Real inference
 **`DONE` (1 run, operator, 30/09/2026)** — 0801, `trachea`, CUDA, standard: 48.5 s total, 25,953 voxels, accepted as "AI - trachea". (Before: `BLOCKED_MODEL_NOT_AVAILABLE`.)
 
-**E6b_MANUAL_QA_COMPLETE: NO** — 1 PASS (E), 4 PARTIAL (A, C, F, I), 2 RETEST_REQUIRED (G, L), 9 NOT_RUN (B, D, H, J, K, M, N, O, P).
+**E6b_MANUAL_QA_COMPLETE: NO** — 4 PASS (E, H, L, M; H and M on the operator's statement), 5 PARTIAL (A, C, D, F, I), 1 RETEST_REQUIRED (G), 6 NOT_RUN (B, J, K, N, O, P).
 
 ---
 
@@ -850,3 +850,9 @@ Item updates (only what the screenshots show): **E6b-F** — overlay seen on the
 Findings from the same screenshots:
 1. **Fixed** — the preview status line was cut at the sidebar edge ("…(0,1% thể tích), 35.31" — the volume, in mm³, was 9+ characters). Volumes are now shown in ml ("35,3 ml") and status lines wrap to the sidebar width (`ui_helpers.StatusText`; `tests/ct3d/test_ui_status_text.py`).
 2. **Not a plugin defect — the bone threshold includes contrast blood**: Mask 1 (InVesalius's "Bone" preset, 226–3071 HU) also covers the heart chambers and the aorta, because contrast-enhanced blood in this portal-venous scan is above 226 HU. For bone only, raise the lower threshold or use the AI bone classes (vertebrae_*, rib_*, sternum, …). Not quantified here (re-running TotalSegmentator while the application was open would have competed for the 2.6 GB of free RAM).
+
+## Operator run 15/10/2026 (second set, 3 screenshots) — cancel, save/open, surface re-test, CPU
+
+Item results: E6b-D `PARTIAL`, E6b-H `PASS (operator statement)`, E6b-L `PASS`, E6b-M `PASS (operator statement + mask list)` — see the E6b section. Six AI masks in the project (two rounds of vertebrae_L1, pancreas, liver), each Accept one mask.
+
+Finding: **UI defect, fixed** — in the first screenshot the "Hậu xử lý (ROI hiện tại)" section header was an empty grey bar. Likely cause: the wrapping status line (`0a2fd594`) went from two lines back to one, the widgets below moved up, and the moved collapsible header was not repainted. `ui_helpers._relayout()` now repaints the whole page after a height change (`test_height_change_repaints_the_whole_page`). Needs confirmation in the real application.

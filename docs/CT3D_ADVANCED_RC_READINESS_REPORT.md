@@ -7,7 +7,7 @@
 **`ADVANCED_RC_READY = NO`.**
 
 Release blockers:
-1. **E6b manual QA incomplete** (`E6b_GATE = PARTIAL_MANUAL_QA_PENDING`): the first real inference was run by the operator on 30/09/2026 (0801, `trachea`, CUDA, 48.5 s, correct anatomy in all views), but the release checks E6b-D/G/J/M are not run and E6b-L needs a re-test after the surface fix.
+1. **E6b manual QA incomplete** (`E6b_GATE = PARTIAL_MANUAL_QA_PENDING`): real inference verified by the operator on 0801 and 0543 (CUDA and CPU; full-task reuse 1.3 s); cancel, save/open and the surface re-test done 15/10/2026. Still missing: E6b-G (live 3D preview of the AI candidate before Accept), E6b-J (Accept equals the preview), the CPU run itself (E6b-D), and N/O (closing during inference).
 2. **Sidebar only partly verified in a real InVesalius**: an operator screenshot (30/09/2026, project 0801) shows the pane docked on the right with the viewers usable (UI-K `PARTIAL`); UI-L..UI-N `NOT_RUN`. The same screenshot exposed an AI status defect (provider loaded twice under InVesalius's plugin loader), fixed and covered by a test that uses the application's loader.
 
 Everything else automated is green. The remaining manual items below are coverage, not blockers, except where marked.
@@ -36,7 +36,7 @@ Everything else automated is green. The remaining manual items below are coverag
 
 | Group | Status | Blocking? |
 |---|---|---|
-| E6b-A..P (real TotalSegmentator) | E PASS; A, C, F, I PARTIAL; G, L RETEST_REQUIRED; 9 NOT_RUN — first real run done | **yes** (E6b-D/G/J/L/M at minimum) |
+| E6b-A..P (real TotalSegmentator) | E, H, L, M PASS (H, M on operator statement); A, C, D, F, I PARTIAL; G RETEST_REQUIRED; B, J, K, N, O, P NOT_RUN | **yes** (E6b-D/G/J at minimum) |
 | UI-K..UI-N (sidebar in real InVesalius) | UI-K PARTIAL (screenshot: docked right); UI-L..N NOT_RUN | **yes** (UI-K reuse, UI-M) |
 | E5-B/C/D/E/J/K/L | RETEST_REQUIRED (after the coordinate fix) | no — orientation is proven by a rendered automated test; operator confirmation recommended |
 | E1-A..N, E2-A..L, E3-A..M, E4-A..R, E5 others, E6-A..L, UI-A..J | NOT_RUN | no (coverage) |

@@ -43,3 +43,34 @@ def test_region_info_in_ml(wx_app):
     assert info.endswith(", 35,3 ml") and "102.861" in info
     small = SegmentationPanel._region_info(fake, {"voxel_count": 4169, "fraction": 0.00005, "volume_mm3": 1431.4})
     assert small.endswith(", 1,43 ml")
+
+
+def test_height_change_repaints_the_whole_page(wx_app, monkeypatch):
+    """A status line going from two lines to one moves the widgets below it;
+    every one of them must be repainted (15/10/2026: a collapsible section
+    header was left blank)."""
+    import wx.lib.scrolledpanel as scrolled
+
+    frame = wx.Frame(None)
+    try:
+        page = scrolled.ScrolledPanel(frame)
+        sizer = wx.BoxSizer(wx.VERTICAL)
+        label = ui_helpers.StatusText(page, LONG)
+        pane = wx.CollapsiblePane(page, wx.ID_ANY, "Hậu xử lý (ROI hiện tại)")
+        sizer.Add(label, 0, wx.EXPAND)
+        sizer.Add(pane, 0, wx.EXPAND)
+        page.SetSizer(sizer)
+        page.SetupScrolling(scroll_x=False)
+        label.set_wrap_width(200)
+        refreshed = []
+        original = ui_helpers._refresh_tree
+
+        def spy(window):
+            refreshed.append(window)
+            original(window)
+
+        monkeypatch.setattr(ui_helpers, "_refresh_tree", spy)
+        label.SetLabel("Sẵn sàng.")  # two lines -> one
+        assert page in refreshed and pane in refreshed
+    finally:
+        frame.Destroy()

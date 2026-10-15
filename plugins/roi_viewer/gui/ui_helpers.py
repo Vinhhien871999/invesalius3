@@ -79,7 +79,11 @@ class StatusText(wx.StaticText):
 
 def _relayout(window):
     """Re-run the sizers from `window` up to its scrolled page (a wrapped
-    status line can change height)."""
+    status line can change height), then repaint the page and everything
+    on it: moved native children are not repainted by Layout() alone - seen
+    in the real application on 15/10/2026, where the "Hậu xử lý" section
+    header was left as an empty grey bar after the preview status went from
+    two lines back to one."""
     parent = window.GetParent()
     while parent is not None:
         parent.Layout()
@@ -88,6 +92,14 @@ def _relayout(window):
                 parent.FitInside()
             break
         parent = parent.GetParent()
+    if parent is not None:
+        _refresh_tree(parent)
+
+
+def _refresh_tree(window):
+    window.Refresh()
+    for child in window.GetChildren():
+        _refresh_tree(child)
 
 
 def rewrap_hints(page, width):
