@@ -1,0 +1,2 @@
+$ python -m compileall -q plugins/roi_viewer
+exit 0

@@ -1,0 +1,34 @@
+Generated 2026-11-04 22:20 by a headless script using the plugin's core functions on D:\PyTools\dicom_samples,3_slc_01_300 (loaded with InVesalius's reader; lungs from the plugin's TotalSegmentator provider).
+Technical validation only - not ground truth. Counts, hashes (sha256 prefix of packed masks) and timings are the script's output verbatim.
+
+dataset 0543 shape (300, 512, 512) spacing (0.5859375, 0.5859375, 1.0) voxel_mm3 0.34332275390625 volume sha f4093baf0202598b
+load_seconds (InVesalius reader) 9.57 TotalSegmentator seconds {'lung_upper_lobe_left': 158.51, 'lung_lower_lobe_left': 1.38, 'lung_upper_lobe_right': 1.18, 'lung_middle_lobe_right': 1.14, 'lung_lower_lobe_right': 1.02}
+
+== 04 statistics / volume / histogram ==
+Mask 1 (226..3071 HU): voxels 3814341 sha d68ce14a202932e3 volume 1309550.0564575195 mm3 = 1309.550056 ml; exact formula True; Measure Volume diff 0.000e+00 mm3; HU min 226.0 max 3070.0 mean 405.387581 median 317.0 std 216.105919; stats==numpy True; seconds 1.071
+  histogram auto [226.0, 3071.0) bins 100 sum+below+above 3814341 == 3814341: True; manual [-500,500] in 2939496 below 0 above 874845 invariant True; numpy below 0 above 874845; seconds 0.153
+AI - lung_left: voxels 3408753 sha 0e25958924c04708 volume 1170302.4673461914 mm3 = 1170.302467 ml; exact formula True; Measure Volume diff 0.000e+00 mm3; HU min -1000.0 max 777.0 mean -734.386479 median -792.0 std 174.365916; stats==numpy True; seconds 1.476
+  histogram auto [-1000.0, 778.0) bins 100 sum+below+above 3408753 == 3408753: True; manual [-500,500] in 317440 below 3091291 above 22 invariant True; numpy below 3091291 above 22; seconds 0.155
+AI - lung_right: voxels 6178307 sha d9925d30d4a94232 volume 2121153.3737182617 mm3 = 2121.153374 ml; exact formula True; Measure Volume diff 0.000e+00 mm3; HU min -1000.0 max 590.0 mean -762.542709 median -804.0 std 140.605381; stats==numpy True; seconds 1.59
+  histogram auto [-1000.0, 591.0) bins 100 sum+below+above 6178307 == 6178307: True; manual [-500,500] in 332866 below 5845432 above 9 invariant True; numpy below 5845432 above 9; seconds 0.187
+
+== positive control: Mask 1 ==
+  226-400: 2590583 voxels (67.9169 %), numpy 2590583, equal True
+  400-700: 815478 voxels (21.3793 %), numpy 815478, equal True
+  700-1200: 382345 voxels (10.0239 %), numpy 382345, equal True
+  1200-2000: 23237 voxels (0.6092 %), numpy 23237, equal True
+  2000-3071: 2698 voxels (0.0707 %), numpy 2698, equal True
+  unclassified 0 (HU == 3071 voxels in ROI: 0; ROI max 3070)
+  accounting 3814341 == 3814341: True; labels sha bf454afe8a40f4a7; classify seconds 0.582
+
+== negative control: Mask 1 with -1000..-500 classes ==
+  class voxels [0, 0, 0, 0, 0]; unclassified 3814341 = 100.0 %; warning none
+
+== lung density preset on AI - lung_left ==
+  Emphysema [-1050.0, -950.0): 4187 voxels 1.437 ml 0.123 %
+  Inflated [-950.0, -750.0): 2229749 voxels 765.524 ml 65.412 %
+  Infiltrated [-750.0, -400.0): 961505 voxels 330.107 ml 28.207 %
+  Collapsed [-400.0, 0.0): 183377 voxels 62.957 ml 5.380 %
+  Vessels / dense [0.0, 3071.0): 29935 voxels 10.277 ml 0.878 %
+  unclassified 0; accounting True; analyse seconds 3.136
+  3D class meshes: 5 non-empty, points [7722, 868098, 1260350, 439988, 51928]; seconds 2.767

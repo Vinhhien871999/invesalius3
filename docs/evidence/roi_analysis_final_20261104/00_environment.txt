@@ -1,0 +1,8 @@
+date: 2026-11-04 21:56:29 +0700
+python 3.11.7
+Windows-10-10.0.26200-SP0
+numpy 1.26.4 scipy 1.14.0 vtk 9.3.0 wx 4.2.5 msw (phoenix) wxWidgets 3.2.9 matplotlib 3.9.0
+torch 2.7.1+cu118 cuda True
+Version: 2.18.0
+RAM total 15.3 GB available 1.4 GB
+XDG_CONFIG_HOME for tests: temporary directory per run (mktemp -d)

@@ -1,0 +1,25 @@
+Generated 2026-11-04 22:20 by a headless script using the plugin's core functions on D:\PyTools\dicom_samples,3_slc_01_300 (loaded with InVesalius's reader; lungs from the plugin's TotalSegmentator provider).
+Technical validation only - not ground truth. Counts, hashes (sha256 prefix of packed masks) and timings are the script's output verbatim.
+
+
+== comparison disjoint control (lungs): A=AI - lung_left B=AI - lung_right ==
+  A 3408753 vox 1170.302467 ml | B 6178307 vox 2121.153374 ml
+  A+B (arithmetic) 9587060 vox 3291.455841 ml | A∪B 9587060 vox 3291.455841 ml
+  intersection 0 vox 0.000000 ml | only A 3408753 (1170.302467 ml) | only B 6178307 (2121.153374 ml)
+  Dice 0.0 IoU 0.0
+  HU mean A -734.3865 B -762.5427 A+B -752.5315 A∪B -752.5315
+  independent numpy (inter, union, onlyA, onlyB, dice, iou) (0, 9587060, 3408753, 6178307, 0.0, 0.0); equal True; seconds 5.961
+  class Emphysema: A 0.123 % B 0.014 % A∪B 0.053 % (1.739 ml)
+  class Inflated: A 65.412 % B 77.046 % A∪B 72.910 % (2399.789 ml)
+  class Infiltrated: A 28.207 % B 19.306 % A∪B 22.471 % (739.625 ml)
+  class Collapsed: A 5.380 % B 3.011 % A∪B 3.853 % (126.821 ml)
+  class Vessels / dense: A 0.878 % B 0.623 % A∪B 0.713 % (23.482 ml)
+  class Chưa phân lớp: A 0.000 % B 0.000 % A∪B 0.000 % (0.000 ml)
+
+== comparison overlap control (A subset B): A=Mask 1 B=Superset 100..3071 HU (constructed) ==
+  A 3814341 vox 1309.550056 ml | B 9461500 vox 3248.348236 ml
+  A+B (arithmetic) 13275841 vox 4557.898293 ml | A∪B 9461500 vox 3248.348236 ml
+  intersection 3814341 vox 1309.550056 ml | only A 0 (0.000000 ml) | only B 5647159 (1938.798180 ml)
+  Dice 0.5746289067487326 IoU 0.4031433705015061
+  HU mean A 405.3876 B 253.1695 A+B 296.9040 A∪B 253.1695
+  subset True; intersection==A True; union==B True; onlyA==0 True; A+B>union True; Dice==2|A|/(|A|+|B|) True; IoU==|A|/|B| True

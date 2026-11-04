@@ -1,0 +1,12 @@
+Generated 2026-11-04 22:20 by a headless script using the plugin's core functions on D:\PyTools\dicom_samples,3_slc_01_300 (loaded with InVesalius's reader; lungs from the plugin's TotalSegmentator provider).
+Technical validation only - not ground truth. Counts, hashes (sha256 prefix of packed masks) and timings are the script's output verbatim.
+
+
+== reports (patient-derived files kept in the scratchpad) ==
+  A_mask1_positive: pdf 3 pages 209380 bytes, DejaVu font embedded True; pdf seconds 0.908; csv files ['A_mask1_positive.csv'] csv seconds 0.003; csv round trip True; comparison csv round trip True; coverage None
+  B_lung_left_density: pdf 3 pages 273417 bytes, DejaVu font embedded True; pdf seconds 1.022; csv files ['B_lung_left_density.csv'] csv seconds 0.001; csv round trip True; comparison csv round trip True; coverage None
+  C_lung_left_vs_right: pdf 3 pages 281876 bytes, DejaVu font embedded True; pdf seconds 1.275; csv files ['C_lung_left_vs_right.csv', 'C_lung_left_vs_right_comparison.csv'] csv seconds 0.002; csv round trip True; comparison csv round trip True; coverage None
+  D_mask1_negative: pdf 3 pages 220695 bytes, DejaVu font embedded True; pdf seconds 1.086; csv files ['D_mask1_negative.csv', 'D_mask1_negative_comparison.csv'] csv seconds 0.002; csv round trip True; comparison csv round trip True; coverage none
+
+PDF visual QA: every page of A_mask1_positive, B_lung_left_density, C_lung_left_vs_right and D_mask1_negative was rendered with matplotlib Agg from the same Figure objects that were written to the PDF (no PDF rasterizer - PyMuPDF/pdfium/poppler - is installed; none was installed for this run) and inspected. First render: comparison tables ran past the right margin and the slice pictures left a large blank area - fixed (column widths <= text width, asserted in code; smaller pictures) and re-rendered. Final render: sections 1-8 sequential, Vietnamese diacritics correct (DejaVu Sans embedded), no clipping or overlap, overlap note and 100 % unclassified warning visible, axial anterior at top / patient left on image right, coronal and sagittal head at top, mm aspect kept.
+Patient-derived files (not committed): <scratchpad>0543\out\{A_mask1_positive,B_lung_left_density,C_lung_left_vs_right,D_mask1_negative}{.pdf,.csv,_comparison.csv,_pageN.png}

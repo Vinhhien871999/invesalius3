@@ -1,0 +1,24 @@
+user config.json before/after (sha256, stat): unchanged = yes; state.json absent before and after
+
+$ git status -sb (before the docs commit)
+## enhancement/advanced-segmentation...origin/enhancement/advanced-segmentation [ahead 3]
+M  docs/CT3D_ADVANCED_RC_READINESS_REPORT.md
+M  docs/CT3D_ADVANCED_SEGMENTATION_MANUAL_QA.md
+M  docs/CT3D_ADVANCED_SEGMENTATION_PROGRESS.md
+A  docs/CT3D_ROI_ANALYSIS_FINAL_VALIDATION.md
+M  docs/CT3D_ROI_ANALYSIS_REPORT.md
+A  docs/CT3D_ROI_ANALYSIS_WORKLOG.md
+M  docs/HUONG_DAN_SU_DUNG_ROI_VIEWER.md
+?? docs/evidence/
+
+$ git log --oneline -6
+e4b36f72 feat(roi-analysis): sequential PDF report with tables; exact CSV
+c5abf505 fix(roi-analysis): guard unapplied class edits, warn on HU coverage
+221047f3 fix(roi-analysis): overlap-aware ROI comparison with Dice and IoU
+1bd9e2ff Add ROI quantitative analysis and reporting; reconcile docs
+ed2035eb Repaint the page after a status line changes height; record QA
+0a2fd594 Wrap status lines and show region volumes in ml
+
+stable thesis-ct-roi-tools / ct3d-rc1:
+aa1b3ad39f049093b61abe05653e3cbfcec624ef
+aa1b3ad39f049093b61abe05653e3cbfcec624ef

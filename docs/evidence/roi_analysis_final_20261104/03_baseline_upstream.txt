@@ -1,0 +1,10 @@
+$ python -m pytest tests --ignore=tests/ct3d -q
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+94 passed, 15 warnings in 88.76s (0:01:28)
+
+$ python -m pyflakes plugins/roi_viewer
+exit 0
+$ python -m compileall -q plugins/roi_viewer
+exit 0
+$ git diff --check
+exit 0

@@ -28,7 +28,7 @@ Everything else automated is green. The remaining manual items below are coverag
 
 ## 3. Automated evidence (this run)
 
-- `tests/ct3d`: 706 passed / 2 skipped (optional `pynrrd`; the "package missing" probe test, skipped because TotalSegmentator is installed) / 0 failed, 3 consecutive runs (04/11/2026, HEAD of the analysis commit); upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
+- `tests/ct3d`: 730 passed / 2 skipped / 0 failed, 3 consecutive runs (04/11/2026, ROI analysis final validation); upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean. Evidence: `docs/evidence/roi_analysis_final_20261104/`.
 - All test and helper processes use a temporary `XDG_CONFIG_HOME`; verified that a full run leaves `%USERPROFILE%\.config\invesalius\config.json` / `state.json` untouched.
 
 ## 4. Manual QA status
@@ -38,7 +38,7 @@ Everything else automated is green. The remaining manual items below are coverag
 | Group | Status | Blocking? |
 |---|---|---|
 | E6b-A..P (real TotalSegmentator) | E, H, L, M PASS (H, M on operator statement); A, C, D, F, I PARTIAL; G RETEST_REQUIRED; B, J, K, N, O, P NOT_RUN | **yes** (E6b-D/G/J at minimum) |
-| AN-A..AN-P (ROI analysis) | NOT_RUN (new 04/11/2026) | no for the existing product; yes before the analysis is called released |
+| AN-A..AN-T (ROI analysis) | 8 PARTIAL (operator observations from the 04/11 brief), 12 NOT_RUN; automated final gate PARTIAL (all automated criteria PASS) | no for the existing product; yes before the analysis is called released |
 | UI-K..UI-N (sidebar in real InVesalius) | UI-K PARTIAL (screenshot: docked right); UI-L..N NOT_RUN | **yes** (UI-K reuse, UI-M) |
 | E5-B/C/D/E/J/K/L | RETEST_REQUIRED (after the coordinate fix) | no — orientation is proven by a rendered automated test; operator confirmation recommended |
 | E1-A..N, E2-A..L, E3-A..M, E4-A..R, E5 others, E6-A..L, UI-A..J | NOT_RUN | no (coverage) |

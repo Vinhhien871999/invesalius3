@@ -1,0 +1,71 @@
+$ git status
+On branch enhancement/advanced-segmentation
+Your branch is up to date with 'origin/enhancement/advanced-segmentation'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	docs/evidence/
+
+nothing added to commit but untracked files present (use "git add" to track)
+
+$ git status -sb
+## enhancement/advanced-segmentation...origin/enhancement/advanced-segmentation
+?? docs/evidence/
+
+$ git branch --show-current
+enhancement/advanced-segmentation
+
+$ git rev-parse HEAD
+1bd9e2ffc3385f2cd903244cc40f7a6769956359
+
+$ git rev-parse origin/enhancement/advanced-segmentation
+1bd9e2ffc3385f2cd903244cc40f7a6769956359
+
+$ git log --graph --decorate --oneline -40
+* 1bd9e2ff (HEAD -> enhancement/advanced-segmentation, origin/enhancement/advanced-segmentation) Add ROI quantitative analysis and reporting; reconcile docs
+* ed2035eb Repaint the page after a status line changes height; record QA
+* 0a2fd594 Wrap status lines and show region volumes in ml
+* 880f48bf Run TotalSegmentator's full task once per volume; smooth in-plane
+* 1924449f Place the 3D camera once when InVesalius has not yet
+* ab0638f6 Rebuild only the ROI's own 3D surface; record first real AI run
+* 7fea302d Load AI providers relative to the plugin package
+* 1f9e53a4 Record final completion run: setup required, RC readiness NO
+* 42875a5d Fix TotalSegmentator weights guard for the installed 2.18.0 API
+* 8dec29a4 Document UI review and sidebar docking
+* 769aeab8 Dock ROI Viewer as a sidebar pane and fix UI review findings
+* 29a891b6 Update E6b documentation
+* 098e284e Advanced segmentation E6b: add TotalSegmentator provider
+* 6b491799 Stop coordinate tests from mutating the ProjectInterface singleton
+* 1bbfb6a8 Advanced segmentation E6: add AI segmentation architecture
+* 81ad8638 Refresh ProjectInterface in native-mask contract test fixture
+* 36a24d81 Follow InVesalius's native mask read/write contract
+* 9868adec Prove E5 texture orientation by real render and close E5 gate
+* 11dc8e66 Update advanced segmentation documentation
+* 4d0ca6e5 Polish ROI Viewer UI and Vietnamese localization
+* 89ef7f19 Document world-voxel coordinate fix and retest policy
+* c9f220bd Convert between 2D slice and 3D view frames
+* 7b245865 Fix world voxel spacing order for anisotropic volumes
+* 52eb7f85 Record E5-A operator pass and world-voxel spacing-order finding
+* 890e1f50 Fix E5 textured-plane visibility switching
+* f139a5f0 Add enhancement-track run log and progress pointer
+* a9d8874a Finalize advanced segmentation E5 validation
+* 61f6c566 Advanced segmentation E5: add advanced 3D visualization
+* 7611b475 Advanced segmentation E4: add fast live 3D preview
+* dbbc4a50 Advanced segmentation E3: add segmentation cleanup tools
+* 4e28ff0c Advanced segmentation E2: add preview-confirm workflow
+* 11d81dbb Advanced segmentation E1: add enhanced ROI management
+* aa1b3ad3 (tag: ct3d-rc1, origin/thesis-ct-roi-tools, thesis-ct-roi-tools) Finalize CT3D release manifest and freeze documentation
+* 9dc1a593 Release closure docs: fill in self-referencing commit hash (c43fa569)
+* c43fa569 Finalize CT3D release documentation and repository closure
+* 6dae0922 Phase 14 docs: fill in self-referencing commit hash (bed0c624)
+* bed0c624 Phase 14: finalize CT3D software release candidate
+* 54f2f479 Repo housekeeping: finalize pre-existing move of thesis planning docs into docs/
+* e56594c6 Pre-Phase 14 docs: fill in self-referencing commit hash (3d070f7c)
+* 3d070f7c Pre-Phase 14: add live 3D slice planes for 2D crosshair sync
+
+$ git diff --check
+exit 0
+
+stable thesis-ct-roi-tools / ct3d-rc1:
+aa1b3ad39f049093b61abe05653e3cbfcec624ef
+aa1b3ad39f049093b61abe05653e3cbfcec624ef

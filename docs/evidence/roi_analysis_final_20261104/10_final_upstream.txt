@@ -1,0 +1,2 @@
+$ python -m pytest tests --ignore=tests/ct3d -q
+94 passed, 15 warnings in 56.85s
