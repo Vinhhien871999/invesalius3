@@ -2,7 +2,9 @@
 
 **Branch**: `enhancement/advanced-segmentation` · **Date**: 30/09/2026 · Stable `thesis-ct-roi-tools` / tag `ct3d-rc1` (`aa1b3ad3`) not modified. Not Phase 15, not E7.
 
-**Status: `E6b_GATE = PARTIAL_REAL_INFERENCE_PENDING`.** The provider code is complete and tested without the package. **TotalSegmentator is not installed in this environment and no weights exist, so no real inference was run** (`REAL_AI_INFERENCE = BLOCKED_MODEL_NOT_AVAILABLE`). Nothing below claims segmentation quality, runtime or memory figures for real TotalSegmentator runs.
+**Current status (04/11/2026): `E6b_GATE = PARTIAL_MANUAL_QA_PENDING`.** Real inference has succeeded (0801 trachea 30/09/2026; 0543 15/10/2026, also in the real application). Since 15/10/2026 the provider runs TotalSegmentator's **full task once per volume** (no `roi_subset`, no 6 mm crop model / task 298) and reuses the result for further structures of the same volume; standard mode needs weights 291–295, fast mode 297 (§15). Still open: manual E6b-G and E6b-J and the first CPU run. The paragraph below is the status of the first version of this report and is kept as history.
+
+*(History, 30/09/2026 morning:)* **Status: `E6b_GATE = PARTIAL_REAL_INFERENCE_PENDING`.** The provider code is complete and tested without the package. **TotalSegmentator is not installed in this environment and no weights exist, so no real inference was run** (`REAL_AI_INFERENCE = BLOCKED_MODEL_NOT_AVAILABLE`). Nothing below claims segmentation quality, runtime or memory figures for real TotalSegmentator runs.
 
 ## 1. Environment (measured, 30/09/2026)
 
@@ -27,7 +29,7 @@ The package is absent, so the API was read from the official source (github.com/
 | `totalsegmentator(input: str \| Path \| Nifti1Image, output=None, ml=False, fast=False, task="total", roi_subset=None, quiet=False, device="gpu", …)` | Called with an in-memory `Nifti1Image`, `output=None`, `task="total"`, `roi_subset=[structure]`, `device`, and `fast`/`quiet`/`ml` only if the installed signature has them |
 | With `output=None` it returns the segmentation `Nifti1Image` (a tuple if statistics are on) | tuple handled (first element) |
 | `nnUNet_predict_image`: `as_closest_canonical` → predict → `undo_canonical` → resample back to the input shape with the input affine; labels are `class_map` ids; `roi_subset` zeroes other labels | output checked for input shape + affine, then exact transposition |
-| `roi_subset` must be a list of class names; only for task `total`/`total_mr` | one selected structure per run |
+| `roi_subset` must be a list of class names; only for task `total`/`total_mr` | one selected structure per run *(until 15/10/2026; now not used - full task once per volume, §15)* |
 | device: `"gpu"`, `"cpu"`, `"mps"`, `"gpu:N"`; invalid GPU silently falls back to CPU inside TotalSegmentator | plugin only passes `"gpu"` when CUDA is really available; CUDA without a device is refused, never silently CPU |
 | `fast` / `fastest`: lower-resolution models | "Nhanh / ít bộ nhớ hơn" = `fast=True`, only when the user picks it |
 | **no progress callback** | stage texts only, no percentage |

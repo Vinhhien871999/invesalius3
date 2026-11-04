@@ -48,6 +48,7 @@ from .segmentation_panel import SegmentationPanel
 from .measurement_panel import MeasurementPanel
 from .annotation_panel import AnnotationPanel
 from .export_panel import ExportPanel
+from .analysis_panel import AnalysisPanel
 
 
 def tab_label(text: str) -> str:
@@ -77,6 +78,12 @@ class ROIViewerPanel(wx.Panel):
         self.mask_mgr = mask_editor.MaskEditorManager()
         self.measure_mgr = measurement.MeasurementManager()
         self.annotation_mgr = annotation.AnnotationManager()
+        # Where an accepted ROI came from (AI run metadata, analysis class),
+        # keyed by the Mask object; session only - nothing is invented for
+        # ROIs created elsewhere or before this session.
+        import weakref
+
+        self.roi_provenance = weakref.WeakKeyDictionary()
         self.exporter = exporters.ExporterManager()
         # Phase 09 (Sync 2D -> 3D): visual counterpart to the real 2D
         # crosshair - see on_cross_focal_point_changed() below.
@@ -194,6 +201,11 @@ class ROIViewerPanel(wx.Panel):
         except Exception as e:
             print(f"ROI Viewer: AI shutdown on close failed - {e}")
         try:
+            # Analysis: overlay, 3D class actors, worker results, callback.
+            self.analysis_panel.shutdown()
+        except Exception as e:
+            print(f"ROI Viewer: analysis shutdown on close failed - {e}")
+        try:
             self.picker.cleanup()
         except Exception as e:
             print(f"ROI Viewer: picker cleanup on close failed - {e}")
@@ -254,8 +266,10 @@ class ROIViewerPanel(wx.Panel):
         self.measurement_panel = MeasurementPanel(self.tools_page, self)
         self.annotation_panel = AnnotationPanel(self.tools_page, self)
         self.export_panel = ExportPanel(self.tools_page, self)
+        self.analysis_panel = AnalysisPanel(self.tools_page, self)
         tools_sizer = wx.BoxSizer(wx.VERTICAL)
-        for index, tool in enumerate((self.measurement_panel, self.annotation_panel, self.export_panel)):
+        for index, tool in enumerate((self.measurement_panel, self.annotation_panel, self.export_panel,
+                                      self.analysis_panel)):
             if index:
                 tools_sizer.Add(wx.StaticLine(self.tools_page), 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 8)
             tools_sizer.Add(tool, 0, wx.EXPAND | wx.BOTTOM, 4)
@@ -372,6 +386,8 @@ class ROIViewerPanel(wx.Panel):
             self.segmentation_panel.cancel_preview()
             # E6: prompts/jobs refer to the old volume's grid.
             self.segmentation_panel.reset_ai_session()
+        if hasattr(self, "analysis_panel"):
+            self.analysis_panel.reset()
         # E4: same reasoning - a fast preview mesh built for the OLD
         # project's voxel data is meaningless (wrong shape/coordinate
         # space) once a different project is loaded. detach() (not just
@@ -444,6 +460,8 @@ class ROIViewerPanel(wx.Panel):
             self.segmentation_panel.cancel_preview()
             # E6: no AI job, prompt or loaded model survives a project close.
             self.segmentation_panel.reset_ai_session()
+        if hasattr(self, "analysis_panel"):
+            self.analysis_panel.reset()
         if hasattr(self, "annotation_panel"):
             self.annotation_panel.refresh_from_manager()
         print("ROI Viewer: Project closed")
@@ -490,6 +508,8 @@ class ROIViewerPanel(wx.Panel):
         self.roi_mgr.rebuild_from_project_masks()
         if hasattr(self, "segmentation_panel"):
             self.segmentation_panel._refresh_roi_list()
+        if hasattr(self, "analysis_panel"):
+            self.analysis_panel.on_roi_source_changed()
 
     def _try_load_annotation_sidecar(self):
         """See on_project_load()'s NOTE on why this is deferred."""

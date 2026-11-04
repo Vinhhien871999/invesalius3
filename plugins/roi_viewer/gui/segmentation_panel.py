@@ -1717,7 +1717,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # E6b: "AI - <canonical class name>" (not translated); generic otherwise.
             name = f"AI - {structure}" if structure else f"AI Segmentation {mask_count + 1}"
             mask = native_mask.commit_preview_array_to_new_mask(np.asarray(preview_array) > 0, name, colour)
-            return name if mask is not None else None
+            if mask is None:
+                return None
+            # Recorded for the analysis report (session only, never guessed later).
+            metadata = dict(self.preview_mgr.ai_metadata or {})
+            provenance = getattr(self.controller, "roi_provenance", None)
+            if provenance is not None:
+                provenance[mask] = {"source": "AI", "ai": metadata}
+            return name
         except Exception as e:
             print(f"ROI Viewer: committing AI preview failed - {e}")
             return None

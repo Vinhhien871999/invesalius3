@@ -26,7 +26,7 @@ InVesalius gốc (chưa cài `roi_viewer`) đã có sẵn: đọc DICOM, hiển 
 - Chủ động dựng lại bề mặt 3D sau khi sửa mặt nạ (cọ vẽ/hoàn tác/phát triển vùng) mà không phải vào lại task panel gốc
 - Hoàn tác/làm lại nhanh bằng 1 nút riêng cho việc chỉnh mặt nạ (InVesalius có undo/redo nhưng nằm trong luồng brush riêng, không có nút lưu điểm khôi phục tường minh)
 
-Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở ra một cửa sổ riêng, đóng vai trò "bảng điều khiển tổng hợp", bấm nút trong đó sẽ **điều khiển trực tiếp** đúng tính năng thật của InVesalius (không phải bản sao/giả lập). Vì vậy mọi kết quả (mặt nạ, bề mặt, số đo...) đều hiện luôn trong giao diện chính InVesalius như bình thường, và Save/Open project vẫn dùng đúng cơ chế `.inv3` gốc.
+Plugin `ROI Viewer` **không viết lại** các tính năng gốc — nó mở ra một bảng điều khiển (nhánh nâng cao: **thanh bên gắn ở mép phải** cửa sổ InVesalius; bản ổn định `ct3d-rc1`: cửa sổ riêng), đóng vai trò "bảng điều khiển tổng hợp", bấm nút trong đó sẽ **điều khiển trực tiếp** đúng tính năng thật của InVesalius (không phải bản sao/giả lập). Vì vậy mọi kết quả (mặt nạ, bề mặt, số đo...) đều hiện luôn trong giao diện chính InVesalius như bình thường, và Save/Open project vẫn dùng đúng cơ chế `.inv3` gốc.
 
 > Thuật ngữ: **mặt nạ** = mask của InVesalius (khối voxel đánh dấu vùng); **ROI** = một mặt nạ được quản lý trong plugin; **bề mặt 3D** = surface dựng từ mặt nạ; **ROI hiện tại** = mặt nạ đang được chọn (current mask) — mọi thao tác hậu xử lý, cọ vẽ, hoàn tác đều áp dụng lên ROI này.
 
@@ -150,7 +150,7 @@ Mọc vùng bán tự động: chọn 1 điểm hạt giống trên khối 3D, t
 >
 > ⚠️ **Cảnh báo thật (Làm mịn mặt nạ)**: làm mịn nhị phân vẫn có thể **xoá phần mảnh hơn 3 điểm ảnh trong một lát**. Khảo sát tổng hợp thật ở E3 (`CT3D_ADVANCED_E3_CLEANUP_REPORT.md` mục "Smooth algorithm selection") cho thấy: một cấu trúc dày chỉ 1 voxel biến mất hoàn toàn ngay ở lần làm mịn đầu tiên, với CẢ 2 thuật toán từng so sánh. Dùng ít lần làm mịn và **luôn kiểm tra lại kết quả** — đặc biệt với ROI có cấu trúc mảnh (mạch máu nhỏ, thành mỏng...). Tooltip của nút cũng ghi cảnh báo này.
 >
-> **Đo trên dữ liệu thật 0051 (30/09/2026, 1 lần làm mịn)**: khối xương và khối mô mềm lớn chỉ mất khoảng 1,5%; nhưng **một vùng chỉ dày 2 lát trục (như vẽ tay trên vài lát) bị xoá 100%** (174.504 → 0 voxel), vì phép "mở" xoá mọi phần mỏng hơn 3 voxel theo bất kỳ trục nào (ở 0051 là 4,5 mm theo trục z). Nếu dòng trạng thái báo mất nhiều voxel, bấm **Hoàn tác**. Đây là mục đang điều tra, chưa đổi thuật toán.
+> **[Hành vi cũ, trước 15/10/2026 — làm mịn 3D]** **Đo trên dữ liệu thật 0051 (30/09/2026, 1 lần làm mịn)**: khối xương và khối mô mềm lớn chỉ mất khoảng 1,5%; nhưng **một vùng chỉ dày 2 lát trục (như vẽ tay trên vài lát) bị xoá 100%** (174.504 → 0 voxel), vì phép "mở" xoá mọi phần mỏng hơn 3 voxel theo bất kỳ trục nào (ở 0051 là 4,5 mm theo trục z). Nếu dòng trạng thái báo mất nhiều voxel, bấm **Hoàn tác**. Đây là mục đang điều tra, chưa đổi thuật toán.
 
 **Hành vi quan trọng, giống hệt cọ vẽ/Hoàn tác/Làm lại**:
 - Bị **chặn nếu ROI đang Khóa (E1)** — hiện cảnh báo, không đổi gì.
@@ -384,6 +384,24 @@ Di chuyển crosshair chỉ cập nhật vị trí/nội dung, không làm thay 
 > **Danh sách ROI không cần lưu riêng**: tên/màu/hiển thị trong danh sách Quản lý ROI (mục 3.1) chính là dữ liệu thật của mặt nạ, đã tự động nằm trong `.inv3` khi Lưu — mở lại project sẽ thấy danh sách tự dựng lại đúng như cũ, không cần thao tác gì thêm. (Trạng thái Khóa/Chỉ hiện ROI này của nhánh nâng cao là trạng thái phiên làm việc, không lưu.)
 
 ---
+
+## 7A. (chỉ nhánh `enhancement/advanced-segmentation`) — Tab **Công cụ** → phần **Phân tích ROI** (04/11/2026)
+
+> **Chỉ dùng cho nghiên cứu / thử nghiệm, chưa được kiểm định lâm sàng.** Phân lớp HU **không phải chẩn đoán**.
+
+Phân tích làm trên **ROI hiện tại** (mặt nạ đang chọn) sau khi đã tạo/Chấp nhận/hậu xử lý xong. Phân tích **không bao giờ sửa ROI**, bản xem trước, lưới 3D hay bề mặt; chỉ nút **"Chuyển lớp đang chọn thành ROI"** mới tạo một mặt nạ mới.
+
+1. Mở mục thu gọn **"Phân tích ROI"** (cuối tab Công cụ). Dòng **"ROI phân tích:"** cho biết ROI hiện tại.
+2. (Tuỳ chọn) mở **"Phân lớp theo HU"** → **Mẫu có sẵn**: *Tùy chỉnh* (tự thêm lớp) hoặc *Mật độ phổi (thử nghiệm)* — 5 lớp: Emphysema [−1050, −950), Inflated [−950, −750), Infiltrated [−750, −400), Collapsed [−400, 0), Vessels / dense [0, 3071). Mẫu này chỉ để **tham khảo / thử nghiệm**, mọi khoảng đều sửa được.
+   - Mỗi lớp: chọn dòng → sửa Tên, Từ HU, Đến HU, màu, "Hiện", độ trong suốt → **Áp dụng thay đổi**. **+ Thêm lớp** / **Xóa lớp**.
+   - Quy tắc: voxel thuộc lớp khi **Từ HU ≤ HU < Đến HU** (đầu trên thuộc lớp kế tiếp). Hai lớp **chồng lấn** bị từ chối; khoảng trống được phép — voxel trong khoảng trống tính là **"Chưa phân lớp"**. Luôn đúng: tổng voxel các lớp + chưa phân lớp = voxel của ROI.
+3. Bấm **Tính toán** (chạy nền, không treo giao diện). Kết quả: số voxel, thể tích (ml và mm³ — **tính bằng voxel × spacing**, giống hệt nút "Đo thể tích"), HU nhỏ nhất/lớn nhất/trung bình/trung vị/độ lệch chuẩn, số thành phần liên thông, lát axial có ROI; **histogram HU bên trong ROI** (bỏ tick "Khoảng HU tự động" để tự đặt khoảng, rồi "Vẽ lại histogram"); bảng ml / % của từng lớp.
+4. **Hiển thị phân lớp trên 2D**: lớp phủ nhiều màu tạm thời trên Axial/Coronal/Sagittal (bỏ tick là về như cũ). Nếu đang có bản xem trước phân đoạn (cam), phải Chấp nhận/Hủy nó trước. **Hiển thị phân lớp trong 3D**: lưới tạm thời của các lớp đang "Hiện" (không tạo bề mặt trong dự án, không chọn được bằng chuột, không đổi camera).
+5. **Chuyển lớp đang chọn thành ROI**: tạo **đúng một** mặt nạ mới tên "<ROI> - <lớp>", không tự dựng bề mặt; ROI gốc không đổi (kể cả khi ROI gốc đang Khóa). Xoá ROI mới bằng nút **Xóa** trong danh sách ROI (nút Hoàn tác của ROI gốc không liên quan).
+6. **So sánh ROI**: chọn ROI A, ROI B (ví dụ phổi trái/phải) → **So sánh**: thể tích, HU, % từng lớp của A, B và tổng (Tổng = A + B; nếu hai ROI có voxel chung thì có dòng cảnh báo).
+7. **Xuất số liệu CSV** / **Tạo báo cáo phân tích** (PDF: dữ liệu ảnh, ROI, thống kê HU, bảng lớp, so sánh, thông tin AI nếu ROI được tạo bằng AI trong phiên này, histogram, 3 ảnh lát cắt qua trọng tâm ROI vẽ từ dữ liệu, dòng miễn trừ). Tên file mặc định chỉ gồm tên ROI + ngày — **không** chứa tên dự án/bệnh nhân. Mọi thứ lưu trên máy, không gửi đi đâu.
+
+**Khi ROI bị sửa sau khi phân tích** (cọ vẽ, hậu xử lý, hoàn tác…) hoặc bị xoá: dòng trạng thái báo *"ROI đã thay đổi. Hãy tính lại phân tích."*, lớp phủ 2D/3D tắt và các nút xuất bị khoá cho tới khi bấm Tính toán lại. Đóng/mở dự án hoặc đóng plugin xoá toàn bộ phân tích (không lưu vào dự án).
 
 ## 8. Giới hạn đã biết / quyết định thiết kế (nói rõ để không hiểu nhầm là bug)
 

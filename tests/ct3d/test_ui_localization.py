@@ -156,7 +156,7 @@ def test_tabs_are_vietnamese_in_workflow_order(frame):
 
 def test_tools_page_holds_measurements_annotations_export(frame):
     tools = frame.notebook.GetPage(3)
-    for panel in (frame.measurement_panel, frame.annotation_panel, frame.export_panel):
+    for panel in (frame.measurement_panel, frame.annotation_panel, frame.export_panel, frame.analysis_panel):
         assert panel.GetParent() is tools
 
 
@@ -201,6 +201,9 @@ def test_advanced_sections_collapsed_by_default():
             "Chỉnh sửa thủ công (cọ vẽ)": True,
             "Xem trước 3D thời gian thực (thử nghiệm)": True,
             "Hiển thị 3D nâng cao (thử nghiệm)": True,
+            "Phân tích ROI": True,  # ROI analysis (04/11/2026) and its two sub-sections
+            "Phân lớp theo HU": True,
+            "So sánh ROI": True,
         }
     finally:
         fresh.Destroy()

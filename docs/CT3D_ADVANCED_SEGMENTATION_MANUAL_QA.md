@@ -4,7 +4,9 @@
 
 **Branch**: `enhancement/advanced-segmentation`. **Preconditions (common to all items below)**: real CT project imported (e.g. dataset `0051`, see `CT3D_DATASET_REGISTRY.md`), plugin open on the **Segmentation** tab, at least 2-3 masks created via Threshold/Region Growing so the "Segmentation Set" list has multiple real ROIs to exercise.
 
-> **UI labels changed (30/09/2026, `4d0ca6e5`)**: the plugin UI is now Vietnamese and reorganised into 6 tabs (Phân đoạn / ROI & 3D / Tương tác & Hiển thị / Đo lường / Ghi chú / Xuất dữ liệu). The E1-E5 steps below were written with the old English labels and are kept verbatim; map each label with the table in `docs/HUONG_DAN_SU_DUNG_ROI_VIEWER.md` §1.2 (e.g. "Segmentation Set" / "Active ROI" → tab **ROI & 3D**, "Quản lý ROI" / "ROI hiện tại"; "Lock" → "Khóa"; "Solo" → "Chỉ hiện ROI này"; "Enable Preview Workflow" → "Bật chế độ xem trước"; "Show CT texture on slice planes" → "Hiển thị ảnh lát cắt trên mặt phẳng 3D", now in the collapsed section "Hiển thị 3D nâng cao (thử nghiệm)" of tab **Tương tác & Hiển thị**; "Enable Clipping" → "Bật cắt hiển thị 3D"). Status messages quoted in the old steps are now Vietnamese too (e.g. "No final surface for selected ROI." → "ROI hiện tại chưa có bề mặt 3D cuối."). Behaviour behind every control is unchanged - only labels and layout moved.
+> **Current UI (04/11/2026)**: ROI Viewer is a **docked sidebar** (pane "ROI Viewer" on the right of the InVesalius window, not a separate window) with **4 tabs**: Phân đoạn · ROI & 3D · Hiển thị · Công cụ (measurements, annotations, export and "Phân tích ROI" stacked on "Công cụ").
+>
+> **UI labels changed (30/09/2026, `4d0ca6e5`)**: the plugin UI is now Vietnamese and reorganised into 6 tabs (Phân đoạn / ROI & 3D / Tương tác & Hiển thị / Đo lường / Ghi chú / Xuất dữ liệu) - *historical; the same day the sidebar replaced them with the 4 tabs above*. The E1-E5 steps below were written with the old English labels and are kept verbatim; map each label with the table in `docs/HUONG_DAN_SU_DUNG_ROI_VIEWER.md` §1.2 (e.g. "Segmentation Set" / "Active ROI" → tab **ROI & 3D**, "Quản lý ROI" / "ROI hiện tại"; "Lock" → "Khóa"; "Solo" → "Chỉ hiện ROI này"; "Enable Preview Workflow" → "Bật chế độ xem trước"; "Show CT texture on slice planes" → "Hiển thị ảnh lát cắt trên mặt phẳng 3D", now in the collapsed section "Hiển thị 3D nâng cao (thử nghiệm)" of tab **Tương tác & Hiển thị**; "Enable Clipping" → "Bật cắt hiển thị 3D"). Status messages quoted in the old steps are now Vietnamese too (e.g. "No final surface for selected ROI." → "ROI hiện tại chưa có bề mặt 3D cuối."). Behaviour behind every control is unchanged - only labels and layout moved.
 >
 > **Reconciliation note (30/09/2026)**: Operator reports previous feature groups passed during manual use; item-level reconciliation pending. The operator's statement was general (per feature group, not per item), so no item below was changed to PASS on the strength of it: only items with specific evidence recorded in this file are marked PASS (currently E5-A).
 >
@@ -447,7 +449,7 @@ With both "Show CT texture on slice planes" and "Enable Clipping" left at their 
 > Build: `4d0ca6e5` or later. Automated evidence (real `ROIViewerFrame` built headlessly, widget tree walked - `tests/ct3d/test_ui_localization.py`, 21 tests) covers labels, tooltips, defaults, IDs and size arithmetic; it cannot judge readability, real DPI/font rendering or whether the workflow is understandable. Those are the items below. All `NOT_RUN` until a real operator runs them - see `docs/CT3D_UI_UX_VIETNAMESE_POLISH_REPORT.md`.
 
 ### TEST UI-A — Every ROI Viewer control is Vietnamese
-Open the plugin and visit all 6 tabs; expand the 4 collapsible sections (Hậu xử lý, Chỉnh sửa thủ công, Xem trước 3D thời gian thực, Hiển thị 3D nâng cao).
+Open the plugin and visit all 4 tabs; expand every collapsible section (Phân đoạn AI, Hậu xử lý, Chỉnh sửa thủ công, Xem trước 3D thời gian thực, Hiển thị 3D nâng cao, Phân tích ROI with Phân lớp theo HU and So sánh ROI).
 **Expected**: every label, button, checkbox, box title, drop-down entry and tab name is Vietnamese, except the documented neutral terms (file formats, units, ROI, Otsu, Window/Level, 2D/3D, InVesalius tool name "Slices' cross intersection", tab name "Measures", Axial/Coronal/Sagittal with Vietnamese in parentheses).
 **Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
 
@@ -808,6 +810,8 @@ Select ROIs of different colours (tab ROI & 3D).
 
 ### E3 smooth safety - investigation item (automated, real 0051)
 
+> **Historical - old 3D smoothing.** The numbers below were measured with the former 3D structuring element. Since 15/10/2026 smoothing is in-plane and a 2-slice ROI is kept (Dice 0.998 on 0543) - `docs/CT3D_0543_ACCURACY_REVIEW.md` §4.
+
 Operator evidence reported earlier: Smooth reduced an ROI 170,405 → 10,127 voxels (~94 % loss). Reproduced mechanism on real 0051 (head CT, 0.4785 × 0.4785 × 1.5 mm), 1 pass, the plugin's own `smooth_binary_mask`:
 
 | ROI | Before | After | Delta |
@@ -856,3 +860,102 @@ Findings from the same screenshots:
 Item results: E6b-D `PARTIAL`, E6b-H `PASS (operator statement)`, E6b-L `PASS`, E6b-M `PASS (operator statement + mask list)` — see the E6b section. Six AI masks in the project (two rounds of vertebrae_L1, pancreas, liver), each Accept one mask.
 
 Finding: **UI defect, fixed** — in the first screenshot the "Hậu xử lý (ROI hiện tại)" section header was an empty grey bar. Likely cause: the wrapping status line (`0a2fd594`) went from two lines back to one, the widgets below moved up, and the moved collapsible header was not repainted. `ui_helpers._relayout()` now repaints the whole page after a height change (`test_height_change_repaints_the_whole_page`). Needs confirmation in the real application.
+
+## Product blockers — status 04/11/2026 (no new operator evidence in this run)
+
+| Item | Manual status | Automated evidence (not a substitute for the operator) |
+|---|---|---|
+| E6b-G E4 shows the AI preview before Accept | `RETEST_REQUIRED` | `test_ai_preview_becomes_e4_source` (source = AI preview), `test_preview_camera_render.py` (mesh visible with InVesalius's own camera placement) |
+| E6b-J Accepted mask == preview | `NOT_RUN` | `test_accept_commits_exactly_the_preview_once`: `np.array_equal(accepted logical mask, preview)` True, also after every slice is shown |
+| E6b-L Surface rebuild keeps other surfaces | `PASS` (operator, 15/10/2026) | `test_surface_rebuild_target.py` (real SurfaceManager) |
+| E6b-M Save / close / open AI ROI | `PASS (operator statement + mask list)`; shape / voxel count / hash were not measured by the operator | `test_ai_accepted_mask_save_open_round_trip` (AI-accepted mask through save / open) and `test_serialization.py` (checksum-exact round trips) |
+| UI-K pane reused | `PARTIAL` (docking seen; reuse not seen) | `test_main_load_uses_the_sidebar_and_reuses_it` |
+| UI-M close / reopen without ghosts | `NOT_RUN` | `test_pane_close_runs_shutdown`, `test_close_viewer_detaches_and_shuts_down`; analysis actors: `test_lifecycle_cleans_everything[plugin_close]` |
+
+To close them the operator needs: E6b-G — run AI, tick "Bật xem trước 3D thời gian thực" before Accept, check "Nguồn: Xem trước AI" and a visible mesh; E6b-J — note the preview voxel count, Accept, compare with Đo thể tích / the ROI's voxel count; UI-K — Plugins → ROI Viewer twice; UI-M — with C8 planes, E4 mesh, E5 texture and analysis classes shown, close the pane and reopen it.
+
+## ROI analysis — manual QA (04/11/2026)
+
+> Automated evidence: `tests/ct3d/test_roi_statistics.py`, `test_hu_classes.py`, `test_analysis_session.py`, `test_analysis_report.py`, `test_analysis_preview_3d.py`, `test_analysis_to_roi.py`, `test_analysis_panel_integration.py`; 0543 technical validation in `docs/CT3D_ROI_ANALYSIS_REPORT.md`. None of that is operator evidence: every item starts `NOT_RUN`.
+
+### TEST AN-A — Open Phân tích ROI
+Tab Công cụ → expand "Phân tích ROI".
+**Expected**: Section opens, all labels Vietnamese, no horizontal scrollbar in the sidebar.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-B — Current ROI selected correctly
+Select a ROI in the ROI list; look at "ROI phân tích:".
+**Expected**: Shows the selected ROI's name; changes when another ROI is selected.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-C — Statistics match a known ROI
+Compute on a ROI; press Đo thể tích (Công cụ → Đo lường) for the same ROI.
+**Expected**: Same volume (both voxel-based); voxel count, HU values plausible.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-D — HU histogram updates with the ROI
+Compute on ROI 1, then on a different ROI 2; then untick "Khoảng HU tự động", set a range, Vẽ lại histogram.
+**Expected**: Histogram changes with the ROI and with the range.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-E — Custom HU classes
+Preset Tùy chỉnh → + Thêm lớp ×2, edit names/ranges/colours → Áp dụng → Tính toán.
+**Expected**: Class table and ml/% follow the edited classes.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-F — Overlap validation
+Give one class a range that overlaps another → Áp dụng.
+**Expected**: Refused with "... chồng lấn khoảng HU."; the list keeps the old range.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-G — 2D multi-class overlay
+Tick Hiển thị phân lớp trên 2D; scroll Axial/Coronal/Sagittal; untick.
+**Expected**: Each class in its colour, only inside the ROI; untick restores the normal display.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-H — 3D multi-class preview
+Tick Hiển thị phân lớp trong 3D.
+**Expected**: One translucent mesh per visible class; no new surface in Data → 3D surfaces; camera unchanged; 3D pick still works.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-I — Opacity / visibility per class
+Select a class, change opacity or untick Hiện → Áp dụng.
+**Expected**: 2D and 3D update; ml/% unchanged.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-J — Convert one class to ROI
+Select a class → Chuyển lớp đang chọn thành ROI.
+**Expected**: Exactly one new ROI "<ROI> - <class>", no surface built.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-K — Source ROI unchanged
+After AN-G..AN-J compare the parent ROI with before (voxel count / view).
+**Expected**: Parent ROI identical.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-L — Edit source ROI → stale
+After Tính toán, brush or post-process the analysed ROI.
+**Expected**: "ROI đã thay đổi. Hãy tính lại phân tích."; overlays off; CSV/report disabled until Tính toán.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-M — ROI A/B comparison
+So sánh ROI: choose two ROIs (e.g. AI lung_left, lung_right) → So sánh.
+**Expected**: Volumes, HU and class % for A, B and total; overlap warning only when they share voxels.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-N — CSV export
+Xuất số liệu CSV.
+**Expected**: File opens in a spreadsheet; columns as documented; default name has no project/patient name.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-O — PDF report
+Tạo báo cáo phân tích.
+**Expected**: PDF with dataset, ROI, HU statistics, classes, comparison (if done), AI info (only for an AI ROI of this session), histogram, slice pictures, disclaimer.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+### TEST AN-P — Project close / reopen lifecycle
+With overlays shown: close the project, open it again; also close and reopen ROI Viewer.
+**Expected**: No overlay or 3D class mesh left, no crash; analysis empty until Tính toán.
+**Actual Result**: `NOT_RUN` | **PASS/FAIL**: `NOT_RUN`
+
+**AN_MANUAL_QA_COMPLETE: NOT_RUN** (0/16).

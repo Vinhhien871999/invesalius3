@@ -22,12 +22,13 @@ Everything else automated is green. The remaining manual items below are coverag
 | E4 | Live 3D preview mesh | PASS |
 | E5 | Textured slice planes, clipping | PASS (rendered orientation proof) |
 | E6 | AI architecture (providers, prompts, jobs, validation, E2/E4 reuse, exact Accept) | PASS |
-| E6b | TotalSegmentator provider | **PARTIAL_REAL_INFERENCE_PENDING** |
+| E6b | TotalSegmentator provider (full task per volume) | **PARTIAL_MANUAL_QA_PENDING** (real inference done) |
 | — | Coordinate contract fix, native mask contract fix, Vietnamese UI, sidebar docking | fixed / tested |
+| Analysis | ROI statistics, HU histogram, HU classes (2D/3D preview), convert class to ROI, ROI comparison, CSV / PDF report (04/11/2026, `docs/CT3D_ROI_ANALYSIS_REPORT.md`) | PASS (automated); manual AN-A..P NOT_RUN |
 
 ## 3. Automated evidence (this run)
 
-- `tests/ct3d`: 626 passed / 2 skipped (optional `pynrrd`; the "package missing" probe test, skipped now that TotalSegmentator is installed) / 0 failed, 3 consecutive runs; upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
+- `tests/ct3d`: 706 passed / 2 skipped (optional `pynrrd`; the "package missing" probe test, skipped because TotalSegmentator is installed) / 0 failed, 3 consecutive runs (04/11/2026, HEAD of the analysis commit); upstream `tests`: 94 passed; `pyflakes` / `compileall plugins/roi_viewer` / `git diff --check` clean.
 - All test and helper processes use a temporary `XDG_CONFIG_HOME`; verified that a full run leaves `%USERPROFILE%\.config\invesalius\config.json` / `state.json` untouched.
 
 ## 4. Manual QA status
@@ -37,6 +38,7 @@ Everything else automated is green. The remaining manual items below are coverag
 | Group | Status | Blocking? |
 |---|---|---|
 | E6b-A..P (real TotalSegmentator) | E, H, L, M PASS (H, M on operator statement); A, C, D, F, I PARTIAL; G RETEST_REQUIRED; B, J, K, N, O, P NOT_RUN | **yes** (E6b-D/G/J at minimum) |
+| AN-A..AN-P (ROI analysis) | NOT_RUN (new 04/11/2026) | no for the existing product; yes before the analysis is called released |
 | UI-K..UI-N (sidebar in real InVesalius) | UI-K PARTIAL (screenshot: docked right); UI-L..N NOT_RUN | **yes** (UI-K reuse, UI-M) |
 | E5-B/C/D/E/J/K/L | RETEST_REQUIRED (after the coordinate fix) | no — orientation is proven by a rendered automated test; operator confirmation recommended |
 | E1-A..N, E2-A..L, E3-A..M, E4-A..R, E5 others, E6-A..L, UI-A..J | NOT_RUN | no (coverage) |
