@@ -262,3 +262,108 @@ def wx_colour(r, g, b):
     import wx
 
     return wx.Colour(r, g, b)
+
+
+# ------------------------------------------------------------------ 04/11/2026 final validation
+def test_unapplied_class_edit_blocks_every_class_action(env):
+    _compute(env)
+    env.panel.list_classes.Select(0)
+    env.panel._on_class_selected(None)
+    assert env.panel._dirty is False and env.panel.lbl_dirty.GetLabel() == ""
+    env.panel.spin_class_min.SetValue(-940)  # changed, not applied
+    env.panel._on_editor_changed()
+    assert env.panel._dirty and env.panel.lbl_dirty.GetLabel() == "Có thay đổi chưa được áp dụng."
+    for w in (env.panel.btn_compute, env.panel.btn_compare, env.panel.cb_show_2d, env.panel.cb_show_3d,
+              env.panel.btn_convert, env.panel.btn_csv, env.panel.btn_report):
+        assert not w.IsEnabled(), w.GetLabel()
+    before = env.panel.session
+    env.panel._on_compute(None)  # even if called, nothing runs on stale definitions
+    assert env.panel.session is before and env.panel.classes[0].min_hu == -950
+    n = len(env.proj.mask_dict)
+    env.panel._on_convert(None)
+    assert len(env.proj.mask_dict) == n
+    env.panel._on_class_apply(None)  # apply: list updated, editor clean, compute enabled
+    assert env.panel.classes[0].min_hu == -940 and not env.panel._dirty and env.panel.btn_compute.IsEnabled()
+
+
+def test_selecting_another_class_discards_unapplied_edit(env):
+    _compute(env)
+    env.panel.list_classes.Select(0)
+    env.panel._on_class_selected(None)
+    env.panel.spin_class_min.SetValue(-940)
+    env.panel._on_editor_changed()
+    env.panel.list_classes.Select(1)
+    env.panel._on_class_selected(None)
+    assert not env.panel._dirty and env.panel.classes[0].min_hu == -950
+
+
+def test_invalid_edit_keeps_previous_valid_configuration(env):
+    _compute(env)
+    env.panel.list_classes.Select(1)
+    env.panel._on_class_selected(None)
+    env.panel.spin_class_min.SetValue(200)  # min > max
+    env.panel._on_editor_changed()
+    env.panel._on_class_apply(None)
+    assert env.panel.classes[1].min_hu == 0 and env.panel.classes[1].max_hu == 100
+    assert "Từ HU" in env.panel.lbl_status.GetLabel()
+
+
+def test_hundred_percent_unclassified_warning_in_ui(env):
+    negative = [HUClass(i + 1, f"c{i}", 500 + 100 * i, 600 + 100 * i) for i in range(5)]
+    _compute(env, negative)
+    c = env.panel.session.classification
+    assert all(r.voxel_count == 0 for r in c.classes) and c.unclassified.percent_of_roi == 100.0
+    assert env.panel.lbl_coverage.GetLabel().startswith("Không có voxel nào của ROI")
+    _compute(env)
+    assert env.panel.lbl_coverage.GetLabel() == ""
+
+
+def test_cleanup_through_the_segmentation_panel_makes_analysis_stale(env, monkeypatch):
+    import plugins.roi_viewer.gui.segmentation_panel as sp_mod
+    from plugins.roi_viewer.core import segmentation_cleanup
+
+    monkeypatch.setattr(sp_mod.wx, "CallAfter", lambda fn, *a, **k: fn(*a, **k))
+    _compute(env)
+    env.panel.cb_show_2d.SetValue(True)
+    env.panel._on_toggle_2d(None)
+    seg = env.frame.segmentation_panel
+    seg._run_cleanup(lambda region: segmentation_cleanup.smooth_binary_mask(region, iterations=1), "Smooth mask")
+    assert env.panel.session.stale
+    assert env.panel.lbl_status.GetLabel() == "ROI đã thay đổi. Hãy tính lại phân tích."
+    assert env.s.to_show_aux == ""
+    for w in (env.panel.btn_convert, env.panel.btn_csv, env.panel.btn_report, env.panel.cb_show_2d):
+        assert not w.IsEnabled()
+
+
+def test_convert_button_is_guarded_while_committing(env, monkeypatch):
+    _compute(env)
+    env.panel.list_classes.Select(0)
+    env.panel._on_class_selected(None)
+    calls = []
+    original = env.panel.convert_class_to_roi
+
+    def reentrant(c):
+        calls.append(c)
+        env.panel._on_convert(None)  # a second click while the first commits
+        return original(c)
+
+    monkeypatch.setattr(env.panel, "convert_class_to_roi", reentrant)
+    n = len(env.proj.mask_dict)
+    env.panel._on_convert(None)
+    assert len(calls) == 1 and len(env.proj.mask_dict) == n + 1
+
+
+def test_comparison_label_separates_sum_and_union(env):
+    from invesalius.pubsub import pub as Publisher
+
+    Publisher.sendMessage("Create new mask", mask_name="ROI B", thresh=(0, 100), colour=(0.0, 1.0, 0.0))
+    env.frame.on_roi_source_changed()
+    env.panel.classes = list(CLASSES)
+    env.panel.combo_roi_a.SetValue("ROI A")
+    env.panel.combo_roi_b.SetValue("ROI B")
+    env.panel._on_compare(None)
+    text = env.panel.lbl_compare.GetLabel()
+    assert "A∪B" in text and "Cộng A + B (có thể đếm trùng)" in text and "Dice" in text and "IoU" in text
+    rel = env.panel.comparison.relation
+    assert rel.intersection_voxels == 160 == rel.b_voxels and rel.union_voxels == 320  # B ⊂ A
+    assert "A và B giao nhau 160 voxel" in text

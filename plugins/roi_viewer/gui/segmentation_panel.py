@@ -1828,6 +1828,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # 16) rather than duplicating the call at every one of those
         # sites individually.
         self._mark_preview_3d_dirty("mask edited")
+        # ROI analysis: a plugin-side edit (cleanup, undo/redo, accept) fires no
+        # native modified() callback - check the analysed source now.
+        analysis = getattr(self.controller, "analysis_panel", None)
+        if analysis is not None:
+            wx.CallAfter(analysis.check_source)
         try:
             import invesalius.data.slice_ as sl
             from invesalius.pubsub import pub as Publisher

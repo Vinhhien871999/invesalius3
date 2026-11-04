@@ -22,7 +22,8 @@ from ..core import native_mask
 from ..core.analysis import analysis_report as report_mod
 from ..core.analysis.analysis_preview_3d import AnalysisPreview3DManager, build_class_meshes
 from ..core.analysis.analysis_session import analyse, compare
-from ..core.analysis.hu_classes import CUSTOM_PRESET, LUNG_DENSITY_PRESET, HUClass, colour_table, validate_classes
+from ..core.analysis.hu_classes import (COVERAGE_LOW, COVERAGE_NONE, CUSTOM_PRESET, LUNG_DENSITY_PRESET, HUClass,
+                                        colour_table, coverage_warning, validate_classes)
 from ..core.analysis.roi_statistics import roi_histogram
 from ..i18n import _, fmt_float, fmt_int
 from . import ui_helpers
@@ -83,6 +84,9 @@ class AnalysisPanel(wx.Panel):
         self.preview_3d = AnalysisPreview3DManager()
         self._generation = 0
         self._compare_generation = 0
+        self._converting = False
+        self._dirty = False  # class editor differs from the selected class
+        self._loading_editor = False
         self._busy = False
         self._callback_mask = None
         # Worker threads + wx.CallAfter in the application; tests set False
@@ -158,12 +162,18 @@ class AnalysisPanel(wx.Panel):
         cs.Add(ui_helpers.button_row(self.btn_class_add, self.btn_class_remove), 0, wx.EXPAND)
         self.btn_class_apply = wx.Button(c, wx.ID_ANY, _("Apply changes"))
         cs.Add(self.btn_class_apply, 0, wx.ALL | wx.EXPAND, 2)
+        self.lbl_dirty = ui_helpers.StatusText(c, "")
+        self.lbl_dirty.SetForegroundColour(wx.Colour(170, 60, 0))
+        cs.Add(self.lbl_dirty, 0, wx.ALL | wx.EXPAND, 3)
         self.cb_show_2d = wx.CheckBox(c, wx.ID_ANY, _("Show classes on 2D"))
         self.cb_show_3d = wx.CheckBox(c, wx.ID_ANY, _("Show classes in 3D"))
         cs.Add(self.cb_show_2d, 0, wx.ALL, 3)
         cs.Add(self.cb_show_3d, 0, wx.ALL, 3)
         self.lbl_classes = ui_helpers.StatusText(c, "")
         cs.Add(self.lbl_classes, 0, wx.ALL | wx.EXPAND, 3)
+        self.lbl_coverage = ui_helpers.StatusText(c, "")
+        self.lbl_coverage.SetForegroundColour(wx.Colour(170, 60, 0))
+        cs.Add(self.lbl_coverage, 0, wx.ALL | wx.EXPAND, 3)
         self.btn_convert = wx.Button(c, wx.ID_ANY, _("Convert selected class to ROI"))
         cs.Add(self.btn_convert, 0, wx.ALL | wx.EXPAND, 2)
         c.SetSizer(cs)
@@ -206,6 +216,13 @@ class AnalysisPanel(wx.Panel):
         self.btn_compare.Bind(wx.EVT_BUTTON, self._on_compare)
         self.btn_csv.Bind(wx.EVT_BUTTON, self._on_export_csv)
         self.btn_report.Bind(wx.EVT_BUTTON, self._on_report)
+        self.txt_class_name.Bind(wx.EVT_TEXT, self._on_editor_changed)
+        for w in (self.spin_class_min, self.spin_class_max):
+            w.Bind(wx.EVT_SPINCTRLDOUBLE, self._on_editor_changed)
+            w.Bind(wx.EVT_TEXT, self._on_editor_changed)
+        self.colour_class.Bind(wx.EVT_COLOURPICKER_CHANGED, self._on_editor_changed)
+        self.cb_class_visible.Bind(wx.EVT_CHECKBOX, self._on_editor_changed)
+        self.slider_opacity.Bind(wx.EVT_SLIDER, self._on_editor_changed)
         self._refresh_class_list()
         self._update_controls()
 
@@ -322,6 +339,9 @@ class AnalysisPanel(wx.Panel):
 
     # ------------------------------------------------------------------ compute
     def _on_compute(self, event):
+        if self._dirty:
+            self.lbl_status.SetLabel(_("There are unapplied changes."))
+            return
         errors = validate_classes(self.classes)
         if errors:
             self.lbl_status.SetLabel(errors[0])
@@ -417,6 +437,7 @@ class AnalysisPanel(wx.Panel):
         cls = self.session.classification if self.session else None
         if cls is None:
             self.lbl_classes.SetLabel("")
+            self.lbl_coverage.SetLabel("")
             return
         lines = [_("{name}: {ml} ml ({percent}%)").format(name=r.display_name, ml=fmt_float(r.volume_ml, 2),
                                                         percent=fmt_float(r.percent_of_roi, 1))
@@ -425,6 +446,10 @@ class AnalysisPanel(wx.Panel):
         lines.append(_("Unclassified: {ml} ml ({percent}%)").format(ml=fmt_float(u.volume_ml, 2),
                                                                     percent=fmt_float(u.percent_of_roi, 1)))
         self.lbl_classes.SetLabel("\n".join(lines))
+        code = coverage_warning(cls)
+        self.lbl_coverage.SetLabel(
+            _("No voxel of the ROI is inside the declared HU ranges. Check the class ranges.") if code == COVERAGE_NONE
+            else _("Most voxels are in no HU class.") if code == COVERAGE_LOW else "")
 
     # ------------------------------------------------------------------ classes
     def _refresh_class_list(self, select=None):
@@ -457,14 +482,42 @@ class AnalysisPanel(wx.Panel):
         i = self._selected_class_index()
         if i is None:
             return
-        c = self.classes[i]
-        self.txt_class_name.SetValue(c.display_name)
-        self.spin_class_min.SetValue(c.min_hu)
-        self.spin_class_max.SetValue(c.max_hu)
-        self.colour_class.SetColour(wx.Colour(*(int(round(v * 255)) for v in c.display_color)))
-        self.cb_class_visible.SetValue(c.visible)
-        self.slider_opacity.SetValue(int(round(c.opacity * 100)))
-        self._update_controls()
+        self._load_editor(self.classes[i])
+
+    def _load_editor(self, c):
+        """Show class `c` in the editor; switching class discards unapplied edits."""
+        self._loading_editor = True
+        try:
+            self.txt_class_name.SetValue(c.display_name)
+            self.spin_class_min.SetValue(c.min_hu)
+            self.spin_class_max.SetValue(c.max_hu)
+            self.colour_class.SetColour(wx.Colour(*(int(round(v * 255)) for v in c.display_color)))
+            self.cb_class_visible.SetValue(c.visible)
+            self.slider_opacity.SetValue(int(round(c.opacity * 100)))
+        finally:
+            self._loading_editor = False
+        self._set_dirty(False)
+
+    def _on_editor_changed(self, event=None):
+        if event is not None:
+            event.Skip()
+        if self._loading_editor:
+            return
+        i = self._selected_class_index()
+        if i is None:
+            self._set_dirty(False)
+            return
+        self._set_dirty(self._editor_class(self.classes[i].class_id) != self.classes[i])
+
+    def _set_dirty(self, dirty):
+        """Unapplied class edits block every action that uses the classes, so
+        nothing runs on definitions other than the ones in the list."""
+        self._dirty = bool(dirty)
+        try:
+            self.lbl_dirty.SetLabel(_("There are unapplied changes.") if self._dirty else "")
+            self._update_controls()
+        except RuntimeError:
+            pass
 
     def _editor_class(self, class_id):
         colour = self.colour_class.GetColour()
@@ -499,17 +552,23 @@ class AnalysisPanel(wx.Panel):
             return
         only_display = (candidate[i].min_hu, candidate[i].max_hu) == (self.classes[i].min_hu, self.classes[i].max_hu)
         self.classes = candidate
+        self._set_dirty(False)
         self._classes_changed(select=i, keep_results=only_display)
 
     def _classes_changed(self, select=None, keep_results=False):
         """Ranges changed: results no longer match the classes - recompute.
         Only colour/visibility/opacity changed: redraw the previews."""
         self._refresh_class_list(select)
+        if select is not None and 0 <= select < len(self.classes):
+            self._load_editor(self.classes[select])
+        else:
+            self._set_dirty(False)
         if self.session is not None and not keep_results:
             self._hide_previews()
             self.session.classification = None
             self.session.labels = None
             self.lbl_classes.SetLabel("")
+            self.lbl_coverage.SetLabel("")
             self.lbl_status.SetLabel(_("Classes changed. Press Compute."))
         elif self.session is not None and keep_results:
             self.session.classes = tuple(self.classes)
@@ -612,12 +671,20 @@ class AnalysisPanel(wx.Panel):
 
     # ------------------------------------------------------------------ convert
     def _on_convert(self, event):
+        if self._converting or self._dirty:
+            return
         i = self._selected_class_index()
         if i is None or not self.ensure_current() or self.session.labels is None:
             if self.session is not None and not self.session.stale and i is None:
                 self.lbl_status.SetLabel(_("Select a class in the list first."))
             return
-        name = self.convert_class_to_roi(self.classes[i])
+        self._converting = True
+        self.btn_convert.Enable(False)
+        try:
+            name = self.convert_class_to_roi(self.classes[i])
+        finally:
+            self._converting = False
+            self._update_controls()
         if name:
             self.lbl_status.SetLabel(_("Created ROI '{name}'.").format(name=name))
         else:
@@ -663,6 +730,9 @@ class AnalysisPanel(wx.Panel):
         return None
 
     def _on_compare(self, event):
+        if self._dirty:
+            self.lbl_compare.SetLabel(_("There are unapplied changes."))
+            return
         a, b = self._mask_by_name(self.combo_roi_a.GetValue()), self._mask_by_name(self.combo_roi_b.GetValue())
         if a is None or b is None:
             self.lbl_compare.SetLabel(_("Choose ROI A and ROI B."))
@@ -705,19 +775,29 @@ class AnalysisPanel(wx.Panel):
             return
         self.comparison = result
         rows = {r.metric: r for r in result.rows}
-        lines = [_("Volume (ml): A {a} · B {b} · total {t}").format(
-            a=fmt_float(rows["volume_ml"].a, 2), b=fmt_float(rows["volume_ml"].b, 2), t=fmt_float(rows["volume_ml"].total, 2))]
-        if "hu_mean" in rows and rows["hu_mean"].total is not None:
+        rel = result.relation
+        vol = rows["volume_ml"]
+        lines = [
+            _("Volume (ml): A {a} · B {b} · A∪B {u}").format(a=fmt_float(vol.a, 2), b=fmt_float(vol.b, 2),
+                                                           u=fmt_float(vol.union, 2)),
+            _("A + B (may double-count): {s} ml").format(s=fmt_float(vol.a_plus_b, 2)),
+            _("Intersection {i} ml · only A {oa} ml · only B {ob} ml").format(
+                i=fmt_float(rel.ml(rel.intersection_voxels), 2), oa=fmt_float(rel.ml(rel.only_a_voxels), 2),
+                ob=fmt_float(rel.ml(rel.only_b_voxels), 2)),
+            _("Dice {dice} · IoU {iou}").format(dice=fmt_float(rel.dice, 4), iou=fmt_float(rel.iou, 4)),
+        ]
+        if "hu_mean" in rows and rows["hu_mean"].union is not None:
             r = rows["hu_mean"]
-            lines.append(_("HU mean: A {a} · B {b} · total {t}").format(
+            lines.append(_("HU mean: A {a} · B {b} · A∪B {u}").format(
                 a=fmt_float(r.a, 1) if r.a is not None else "-", b=fmt_float(r.b, 1) if r.b is not None else "-",
-                t=fmt_float(r.total, 1)))
+                u=fmt_float(r.union, 1)))
         for r in result.class_rows:
-            lines.append(_("{name}: A {a}% · B {b}% · total {t}%").format(
+            lines.append(_("{name}: A {a}% · B {b}% · A∪B {u}%").format(
                 name=r.display_name, a=fmt_float(r.a_percent, 1), b=fmt_float(r.b_percent, 1),
-                t=fmt_float(r.combined_percent, 1)))
-        if result.overlap_voxels:
-            lines.append(_("{n} voxels are in both ROIs.").format(n=fmt_int(result.overlap_voxels)))
+                u=fmt_float(r.union_percent, 1)))
+        if rel.intersection_voxels:
+            lines.append(_("A and B share {n} voxels: A + B counts them twice, A∪B once.").format(
+                n=fmt_int(rel.intersection_voxels)))
         self.lbl_compare.SetLabel("\n".join(lines))
 
     # ------------------------------------------------------------------ export
@@ -739,7 +819,15 @@ class AnalysisPanel(wx.Panel):
         comparison = self.comparison
         return report_mod.build_report_data(
             self.session, dataset, generated or datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-            comparison=comparison, ai_metadata=provenance.get("ai"), source=provenance.get("source", ""))
+            comparison=comparison, ai_metadata=provenance.get("ai"), source=provenance.get("source", ""),
+            class_note=self._class_note())
+
+    def _class_note(self):
+        """The experimental-preset label, when the classes are the lung preset's."""
+        ranges = [(c.display_name, c.min_hu, c.max_hu) for c in self.classes]
+        if ranges and ranges == [(c.display_name, c.min_hu, c.max_hu) for c in LUNG_DENSITY_PRESET.classes]:
+            return LUNG_DENSITY_PRESET.display_name + ": " + LUNG_DENSITY_PRESET.note
+        return ""
 
     def _ask_path(self, wildcard, extension):
         name = report_mod.default_basename(self.session.roi_name, datetime.date.today().isoformat()) + extension
@@ -747,16 +835,26 @@ class AnalysisPanel(wx.Panel):
                            style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
             return dlg.GetPath() if dlg.ShowModal() == wx.ID_OK else None
 
+    def check_source(self):
+        """Called after plugin-side edits (cleanup, undo/redo, accept): an
+        edited source makes the analysis stale right away."""
+        try:
+            if self.session is not None and not self.session.stale:
+                self.ensure_current()
+        except Exception as e:
+            print(f"ROI Viewer: analysis source check failed - {e}")
+
     def _on_export_csv(self, event):
-        if not self.ensure_current():
+        if self._dirty or not self.ensure_current():
             return
         path = self._ask_path("CSV (*.csv)|*.csv", ".csv")
         if path:
-            report_mod.write_csv(self.report_data(), path)
-            self.lbl_status.SetLabel(_("Statistics saved."))
+            written = report_mod.write_csv(self.report_data(), path)
+            self.lbl_status.SetLabel(_("Statistics saved.") if len(written) == 1 else
+                                     _("Statistics and comparison saved."))
 
     def _on_report(self, event):
-        if not self.ensure_current():
+        if self._dirty or not self.ensure_current():
             return
         path = self._ask_path("PDF (*.pdf)|*.pdf", ".pdf")
         if not path:
@@ -792,14 +890,17 @@ class AnalysisPanel(wx.Panel):
     def _update_controls(self):
         ok = self.session is not None and not self.session.stale
         classified = ok and self.session.labels is not None
-        self.btn_compute.Enable(not self._busy)
+        clean = not self._dirty
+        self.btn_compute.Enable(not self._busy and clean)
+        self.btn_compare.Enable(clean)
         self.btn_hist_redraw.Enable(ok and self.histogram is not None)
         for w in (self.spin_hist_min, self.spin_hist_max):
             w.Enable(not self.cb_hist_auto.GetValue())
-        for w in (self.cb_show_2d, self.cb_show_3d, self.btn_convert):
-            w.Enable(classified)
+        for w in (self.cb_show_2d, self.cb_show_3d):
+            w.Enable(classified and clean)
+        self.btn_convert.Enable(classified and clean and not self._converting)
         for w in (self.btn_csv, self.btn_report):
-            w.Enable(ok)
+            w.Enable(ok and clean)
         has = self._selected_class_index() is not None
         for w in (self.btn_class_remove, self.btn_class_apply):
             w.Enable(has)
@@ -828,12 +929,13 @@ class AnalysisPanel(wx.Panel):
         self.session = None
         self.histogram = None
         self.comparison = None
+        self._converting = False
         try:
             self.lbl_status.SetLabel("")
             self.lbl_stats.SetLabel("")
             self.lbl_classes.SetLabel("")
             self.lbl_compare.SetLabel("")
-            self.btn_compare.Enable(True)
+            self.lbl_coverage.SetLabel("")
             self.histogram_view.set_histogram(None)
             self.refresh_roi_choices()
             self._update_controls()
