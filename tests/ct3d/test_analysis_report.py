@@ -56,8 +56,8 @@ def test_comparison_table_in_report():
     c = compare(vol, a, b, SPACING, "A", "B", CLASSES)
     r = rep.build_report_data(s, DATASET, "t", comparison=c)
     metrics = {row[0]: row for row in r.comparison["rows"]}
-    assert metrics["voxel_count"][1:] == (144.0, 144.0, 288.0)
-    assert len(r.comparison["class_rows"]) == 3
+    assert metrics["voxel_count"][1:] == (144.0, 144.0, 288.0, 288.0)  # A, B, A+B, A∪B (disjoint)
+    assert len(r.comparison["class_rows"]) == 3 and r.comparison["dice"] == 0.0
 
 
 def test_csv_is_deterministic_and_complete():
@@ -69,14 +69,14 @@ def test_csv_is_deterministic_and_complete():
     assert tuple(rows[0]) == rep.CSV_COLUMNS
     assert [row[1] for row in rows[1:]] == ["air", "soft", "Chưa phân lớp"]
     assert sum(int(row[4]) for row in rows[1:]) == 144
-    assert rows[1][5] == f"{71 * 0.5:.3f}" and rows[3][2] == "" and rows[3][3] == ""
+    assert rows[1][5] == repr(71 * 0.5) and rows[3][2] == "" and rows[3][3] == ""  # exact repr numbers
 
 
 def test_csv_without_classes_has_one_roi_row():
     vol, a, _ = _session()
     s = analyse(vol, a, SPACING, 1, "ROI", ())
     rows = list(csv.reader(io.StringIO(rep.csv_text(rep.build_report_data(s, DATASET, "t")))))
-    assert len(rows) == 2 and rows[1][4] == "144" and rows[1][7] == "100.0000"
+    assert len(rows) == 2 and rows[1][4] == "144" and rows[1][7] == "100.0"
 
 
 @pytest.mark.parametrize("name, expected", [
