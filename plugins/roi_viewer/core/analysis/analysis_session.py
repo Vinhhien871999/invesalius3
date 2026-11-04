@@ -71,21 +71,64 @@ def analyse(volume, mask, spacing_xyz, mask_index, roi_name, classes: Sequence[H
 
 @dataclass(frozen=True)
 class ComparisonRow:
+    """One quantity for A, B, the arithmetic sum A + B (a voxel in both ROIs
+    counts twice) and the physical union A ∪ B (every voxel once). For
+    voxel counts and volumes `a_plus_b` is the plain sum; for HU statistics
+    it is the statistic of A's values followed by B's (shared voxels twice)."""
     metric: str
     a: Optional[float]
     b: Optional[float]
-    total: Optional[float]
+    a_plus_b: Optional[float]
+    union: Optional[float]
+
+    @property
+    def total(self) -> Optional[float]:  # former name of a_plus_b (arithmetic, not a union)
+        return self.a_plus_b
+
+
+@dataclass(frozen=True)
+class SpatialRelation:
+    """Set relation of the two ROIs on the voxel grid. Dice = 2|A∩B| / (|A|+|B|),
+    IoU (Jaccard) = |A∩B| / |A∪B|; both empty -> 1.0 (identical empty sets),
+    exactly one empty -> 0.0."""
+    a_voxels: int
+    b_voxels: int
+    intersection_voxels: int
+    union_voxels: int
+    only_a_voxels: int
+    only_b_voxels: int
+    voxel_ml: float
+    dice: float
+    iou: float
+
+    def ml(self, voxels: int) -> float:
+        return voxels * self.voxel_ml
 
 
 @dataclass(frozen=True)
 class ClassComparisonRow:
+    """One HU class for A, B, A + B (arithmetic; % of |A| + |B|) and A ∪ B
+    (each voxel once; % of |A ∪ B|)."""
     display_name: str
+    a_voxels: int
     a_ml: float
     a_percent: float
+    b_voxels: int
     b_ml: float
     b_percent: float
-    combined_ml: float
-    combined_percent: float
+    sum_ml: float
+    sum_percent: float
+    union_voxels: int
+    union_ml: float
+    union_percent: float
+
+    @property
+    def combined_ml(self) -> float:  # former name of sum_ml
+        return self.sum_ml
+
+    @property
+    def combined_percent(self) -> float:  # former name of sum_percent
+        return self.sum_percent
 
 
 @dataclass(frozen=True)
@@ -94,39 +137,62 @@ class Comparison:
     name_b: str
     rows: Tuple[ComparisonRow, ...]
     class_rows: Tuple[ClassComparisonRow, ...]
-    overlap_voxels: int  # counted in both A and B; "Total" adds A and B
+    relation: SpatialRelation
+    set_hu: Dict[str, Optional[object]] = field(default_factory=dict)  # HU stats of INTERSECTION / ONLY_A / ONLY_B
+
+    @property
+    def overlap_voxels(self) -> int:
+        return self.relation.intersection_voxels
+
+
+def dice_iou(a_voxels: int, b_voxels: int, intersection: int) -> Tuple[float, float]:
+    union = a_voxels + b_voxels - intersection
+    if a_voxels + b_voxels == 0:
+        return 1.0, 1.0
+    return 2.0 * intersection / (a_voxels + b_voxels), (intersection / union) if union else 0.0
 
 
 def compare(volume, mask_a, mask_b, spacing_xyz, name_a, name_b, classes: Sequence[HUClass] = (),
             hu_available: bool = True) -> Comparison:
-    """Two ROIs side by side (e.g. two lungs - nothing here knows anatomy).
-    Total = A + B: voxels and volumes add, HU statistics are those of all
-    values of A and B together. Voxels in both ROIs are counted twice and
-    reported as overlap_voxels."""
-    vol = np.asarray(volume) if volume is not None else None
+    """Two ROIs side by side (e.g. two lungs - nothing here knows anatomy),
+    overlap-aware: A, B, A + B (arithmetic) and A ∪ B (physical), plus the
+    spatial relation (intersection, only A, only B, Dice, IoU). Inputs are
+    never modified."""
+    from .roi_statistics import voxel_volume_mm3
+
+    vol = np.asarray(volume) if (volume is not None and hu_available) else None
     a = np.asarray(mask_a) != 0
     b = np.asarray(mask_b) != 0
-    sa = compute_roi_statistics(vol if hu_available else None, a, spacing_xyz, name_a, hu_available)
-    sb = compute_roi_statistics(vol if hu_available else None, b, spacing_xyz, name_b, hu_available)
+    if a.shape != b.shape:
+        raise ValueError(f"ROI shapes differ: {a.shape} vs {b.shape}")
+    inter, union = a & b, a | b
+    na, nb, ni, nu = (int(np.count_nonzero(x)) for x in (a, b, inter, union))
+    dice, iou = dice_iou(na, nb, ni)
+    voxel_ml = voxel_volume_mm3(spacing_xyz) / 1000.0
+    relation = SpatialRelation(na, nb, ni, nu, na - ni, nb - ni, voxel_ml, dice, iou)
     rows: List[ComparisonRow] = [
-        ComparisonRow("voxel_count", float(sa.voxel_count), float(sb.voxel_count),
-                      float(sa.voxel_count + sb.voxel_count)),
-        ComparisonRow("volume_ml", sa.volume_ml, sb.volume_ml, sa.volume_ml + sb.volume_ml),
+        ComparisonRow("voxel_count", float(na), float(nb), float(na + nb), float(nu)),
+        ComparisonRow("volume_ml", na * voxel_ml, nb * voxel_ml, (na + nb) * voxel_ml, nu * voxel_ml),
     ]
-    if hu_available and vol is not None:
-        both = hu_statistics(np.concatenate([vol[a].ravel(), vol[b].ravel()]))
+    set_hu: Dict[str, Optional[object]] = {}
+    if vol is not None:
+        va, vb = vol[a].ravel(), vol[b].ravel()
+        ha, hb = hu_statistics(va), hu_statistics(vb)
+        hs, hu = hu_statistics(np.concatenate([va, vb])), hu_statistics(vol[union])
         for key in ("mean", "median", "std", "minimum", "maximum"):
-            rows.append(ComparisonRow(f"hu_{key}", getattr(sa.hu, key) if sa.hu else None,
-                                      getattr(sb.hu, key) if sb.hu else None,
-                                      getattr(both, key) if both else None))
+            rows.append(ComparisonRow(f"hu_{key}", *(getattr(h, key) if h else None for h in (ha, hb, hs, hu))))
+        set_hu = {"INTERSECTION": hu_statistics(vol[inter]), "ONLY_A": hu_statistics(vol[a & ~b]),
+                  "ONLY_B": hu_statistics(vol[b & ~a])}
     class_rows: List[ClassComparisonRow] = []
-    if classes and hu_available and vol is not None:
-        ca = class_statistics(vol, a, classify(vol, a, classes), classes, spacing_xyz)
-        cb = class_statistics(vol, b, classify(vol, b, classes), classes, spacing_xyz)
-        total_voxels = sa.voxel_count + sb.voxel_count
-        for ra, rb in zip(ca.classes + (ca.unclassified,), cb.classes + (cb.unclassified,)):
+    if classes and vol is not None:
+        results = [class_statistics(vol, m, classify(vol, m, classes), classes, spacing_xyz) for m in (a, b, union)]
+        ca, cb, cu = results
+        for ra, rb, ru in zip(ca.classes + (ca.unclassified,), cb.classes + (cb.unclassified,),
+                              cu.classes + (cu.unclassified,)):
             n = ra.voxel_count + rb.voxel_count
             class_rows.append(ClassComparisonRow(
-                ra.display_name, ra.volume_ml, ra.percent_of_roi, rb.volume_ml, rb.percent_of_roi,
-                ra.volume_ml + rb.volume_ml, (100.0 * n / total_voxels) if total_voxels else 0.0))
-    return Comparison(name_a, name_b, tuple(rows), tuple(class_rows), int(np.count_nonzero(a & b)))
+                ra.display_name, ra.voxel_count, ra.volume_ml, ra.percent_of_roi,
+                rb.voxel_count, rb.volume_ml, rb.percent_of_roi,
+                n * voxel_ml, (100.0 * n / (na + nb)) if (na + nb) else 0.0,
+                ru.voxel_count, ru.volume_ml, ru.percent_of_roi))
+    return Comparison(name_a, name_b, tuple(rows), tuple(class_rows), relation, set_hu)

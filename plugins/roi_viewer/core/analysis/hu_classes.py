@@ -66,6 +66,8 @@ PRESETS = (CUSTOM_PRESET, LUNG_DENSITY_PRESET)
 def validate_classes(classes: Sequence[HUClass]) -> List[str]:
     """Errors (Vietnamese, for the UI); an empty list means valid."""
     errors = []
+    if len(classes) > MAX_CLASS_ID:
+        errors.append(f"Tối đa {MAX_CLASS_ID} lớp.")
     ids = [c.class_id for c in classes]
     if len(set(ids)) != len(ids):
         errors.append("Mã lớp bị trùng.")
@@ -159,3 +161,25 @@ def colour_table(classes: Sequence[HUClass]) -> dict:
             r, g, b = (float(v) for v in c.display_color)
             table[value] = (r, g, b, float(c.opacity))
     return table
+
+
+COVERAGE_NONE = "none"  # ROI not empty, no voxel in any class
+COVERAGE_LOW = "low"  # more than LOW_COVERAGE_UNCLASSIFIED of the ROI unclassified
+LOW_COVERAGE_UNCLASSIFIED = 95.0
+COVERAGE_MESSAGES = {
+    COVERAGE_NONE: "Không có voxel nào của ROI nằm trong các khoảng HU đã khai báo. Hãy kiểm tra lại các khoảng phân lớp.",
+    COVERAGE_LOW: "Phần lớn voxel chưa thuộc lớp HU nào.",
+}
+
+
+def coverage_warning(result: Optional[ClassificationResult]) -> Optional[str]:
+    """None, COVERAGE_LOW or COVERAGE_NONE. A warning only - the result is
+    still correct (e.g. a bone ROI with lung-range classes is 100 %
+    unclassified) and the ranges are never changed automatically."""
+    if result is None or result.roi_voxels == 0:
+        return None
+    if result.unclassified.voxel_count == result.roi_voxels:
+        return COVERAGE_NONE
+    if 100.0 * result.unclassified.voxel_count / result.roi_voxels > LOW_COVERAGE_UNCLASSIFIED:
+        return COVERAGE_LOW
+    return None
