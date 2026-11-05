@@ -1,0 +1,7 @@
+# Baseline on DIRECT_CLICK_BASE_HEAD 02c15f9e, isolated XDG_CONFIG_HOME, 2026-11-05 15:59:48
+ct3d: 824 passed, 2 skipped, 26 warnings in 147.18s (0:02:27)
+upstream: 94 passed, 15 warnings in 68.22s (0:01:08)
+pyflakes exit=0
+compileall exit=0
+diff-check exit=0
+invx-venv pip freeze: fb9bb7cb5d547fad18e75fdfd3ced86d0795b9a5de914751bd98d3b93783430c *-

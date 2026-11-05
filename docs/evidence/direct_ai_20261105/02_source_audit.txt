@@ -1,0 +1,30 @@
+# Source audit of the INSTALLED predictor - D:\PyTools\MedSAM2 @ 332f30d420f1d1b08e2a79b3ae6a602458808383, 05/11/2026
+# (sam2/sam2_video_predictor_npz.py, sam2/configs/sam2.1_hiera_t512.yaml, sam2/modeling/sam2_base.py)
+
+Fast 2D (current-frame-only) prediction - SUPPORTED by the real API:
+  add_new_points_or_box(self, inference_state, frame_idx, obj_id, points=None, labels=None,
+                        clear_old_points=True, normalize_coords=True, box=None)       (line 177)
+  -> runs _run_single_frame_inference(..., run_mem_encoder=False) on that frame only (line ~285-300; comment:
+     "Skip the memory encoder when adding clicks or mask. We execute the memory encoder at the beginning of
+     `propagate_in_video`"), consolidates at video resolution and
+  -> return frame_idx, obj_ids, video_res_masks                                      (line 318)
+  i.e. the mask of the clicked slice, without propagating through the volume.
+
+Feature caching - ONE frame only:
+  _get_image_feature(self, inference_state, frame_idx, batch_size)                    (line 883)
+    image, backbone_out = inference_state["cached_features"].get(frame_idx, (None, None))
+    if backbone_out is None: ... backbone_out = self.forward_image(image)
+        # Cache the most recent frame's feature (for repeated interactions with
+        # a frame; we can use an LRU cache for more frames in the future).
+        inference_state["cached_features"] = {frame_idx: (image, backbone_out)}   (dict REASSIGNED)
+  => every propagation re-encodes every frame. The provider wraps this method per session and hands the
+     ORIGINAL method its own stored entry through inference_state["cached_features"] (model code unchanged).
+
+State reset: reset_state(inference_state) (line 852) clears prompts, outputs and object ids, NOT images or
+  "cached_features" -> one init_state per (volume, window, device) can serve every prediction; prompts are
+  replayed in full from the canonical prompt set each time (undo stays exact).
+
+Single click behaviour: config multimask_output_in_sam: true, multimask_min_pt_num: 0, multimask_max_pt_num: 1
+  (sam2.1_hiera_t512.yaml lines 100-117): one click -> 3 masks, the model picks one; a box counts as 2 points.
+
+Not used: add_new_mask (mask prompts), the image predictor path (would need a second model instance).

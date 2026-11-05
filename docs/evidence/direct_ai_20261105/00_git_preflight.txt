@@ -1,0 +1,9 @@
+# Git preflight - direct-click track, 2026-11-05 15:59:47
+source branch: feature/interactive-ai-medsam2 (clean worktree, diff --check clean)
+DIRECT_CLICK_BASE_HEAD=02c15f9ebca6669c08b57ecc283b51f8669e547e
+feature/interactive-ai-direct-click did not exist (local/remote) -> created
+current: feature/interactive-ai-direct-click @ 02c15f9ebca6669c08b57ecc283b51f8669e547e
+enhancement/advanced-segmentation 70720ca8
+feature/interactive-ai-medsam2 02c15f9e
+thesis-ct-roi-tools aa1b3ad3
+ct3d-rc1^{commit} aa1b3ad3
