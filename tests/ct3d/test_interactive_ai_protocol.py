@@ -162,6 +162,22 @@ def test_library_noise_on_stdout_does_not_corrupt_the_protocol(tmp_path):
         p.terminate()
 
 
+def test_lazy_dll_import_after_the_reader_started_does_not_hang():
+    """Windows: a blocking read pending on the stdin pipe made every DLL
+    that brings its own C runtime hang while loading (GetFileType on the
+    standard handles) - the real MedSAM2 worker hung in its first lazy
+    `import numpy` (05/11/2026). scipy.linalg loads its own OpenBLAS/CRT."""
+    p = RuntimeProcess(fake_command())
+    p.start()
+    try:
+        hello(p, lazy_import="scipy.linalg")
+        p.send(P.request(P.PROBE, 2))
+        reply = p.receive(2, 60)
+        assert reply["status"] == P.STATUS_OK and reply["provider_info"]["available"] is True
+    finally:
+        p.terminate()
+
+
 def test_shutdown_is_clean(proc):
     hello(proc)
     assert proc.shutdown(99, timeout=20) is True

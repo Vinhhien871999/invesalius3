@@ -12,7 +12,8 @@
 #
 # provider_config (tests): radius, delay_s (per "slice" step, cancellable),
 # steps, ignore_cancel, crash_on_predict, bad_output ("shape" | "values"),
-# noise (print to stdout - must not corrupt the protocol), fail_probe.
+# noise (print to stdout - must not corrupt the protocol), fail_probe,
+# lazy_import (module imported in PROBE, after the stdin reader started).
 #   python fake_interactive_ai_worker.py
 # --------------------------------------------------------------------------
 import os
@@ -60,6 +61,10 @@ class FakeInteractiveAIProvider:
             print("fake provider: noisy library output on stdout")
 
     def probe(self):
+        if self.config.get("lazy_import"):  # a DLL-bearing module loaded after the stdin reader started
+            import importlib
+
+            importlib.import_module(self.config["lazy_import"])
         if self.config.get("fail_probe"):
             return {"name": "FakeInteractiveAIWorker", "available": False, "reason": "checkpoint_missing",
                     "detail": "fake: no checkpoint", "capabilities": {}, "devices": []}

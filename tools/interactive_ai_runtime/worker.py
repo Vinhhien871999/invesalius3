@@ -31,6 +31,7 @@ if str(HERE) not in sys.path:
 import protocol  # noqa: E402  (this directory's copy; stdlib only)
 
 WORKER_VERSION = "1"
+NEWLINE = b"\n"
 
 
 class WorkerError(Exception):
@@ -234,6 +235,68 @@ class Worker:
             traceback.print_exc(file=sys.stderr)
 
 
+def _windows_pipe_peek(fd):
+    """A function returning the bytes waiting on the pipe `fd` (-1 when the
+    pipe is broken), or None if `fd` is not a pipe / PeekNamedPipe fails."""
+    try:
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        handle = msvcrt.get_osfhandle(fd)
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.PeekNamedPipe.argtypes = [wintypes.HANDLE, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p,
+                                           ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p]
+        kernel32.PeekNamedPipe.restype = wintypes.BOOL
+        avail = wintypes.DWORD()
+        if not kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(avail), None):
+            return None
+    except (OSError, AttributeError, ValueError):
+        return None
+
+    def peek():
+        if not kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(avail), None):
+            return -1  # broken pipe: the host closed its end
+        return avail.value
+
+    return peek
+
+
+def stdin_lines(poll_seconds=0.02):
+    """Yield raw request lines from stdin until EOF.
+
+    Windows: a synchronous ReadFile pending on the stdin pipe makes
+    GetFileType() on that handle block, and every DLL that brings its own C
+    runtime (numpy's OpenBLAS, torch, ...) calls GetFileType on the standard
+    handles while it loads - so a reader thread blocked on stdin deadlocked
+    the first lazy `import numpy` (real MedSAM2 environment, 05/11/2026).
+    On a pipe the reader therefore never blocks: PeekNamedPipe says how
+    many bytes are there and exactly those are read. Elsewhere (and if the
+    handle is not a pipe) the plain blocking read is used."""
+    fd = sys.stdin.fileno()
+    peek = _windows_pipe_peek(fd) if sys.platform == "win32" else None
+    if peek is None:
+        yield from sys.stdin.buffer
+        return
+    pending = b""
+    while True:
+        n = peek()
+        if n < 0:
+            break
+        if n == 0:
+            time.sleep(poll_seconds)
+            continue
+        data = os.read(fd, n)
+        if not data:
+            break
+        pending += data
+        while NEWLINE in pending:
+            line, pending = pending.split(NEWLINE, 1)
+            yield line + NEWLINE
+    if pending.strip():
+        yield pending
+
+
 def main(factories=None):
     # Private protocol stream = the ORIGINAL stdout; everything a library
     # prints (sys.stdout, or fd 1 from C code) goes to stderr instead.
@@ -246,7 +309,7 @@ def main(factories=None):
     stop = object()
 
     def reader():
-        for raw in sys.stdin.buffer:
+        for raw in stdin_lines():
             try:
                 req = protocol.check_request(protocol.decode(raw))
             except protocol.ProtocolError as e:
@@ -274,9 +337,9 @@ def main(factories=None):
     worker.close()
     out.flush()
     sys.stderr.flush()
-    # The stdin reader thread is blocked in a read; a normal interpreter
-    # shutdown would abort on its buffer lock ("could not acquire lock for
-    # <stdin> at interpreter shutdown"). Everything is flushed: leave now.
+    # The stdin reader thread may be blocked in a read (POSIX); a normal
+    # interpreter shutdown would abort on its buffer lock ("could not acquire
+    # lock for <stdin> at interpreter shutdown"). Everything is flushed: leave.
     os._exit(0)
 
 
