@@ -107,7 +107,7 @@ class Worker:
         except protocol.ProtocolError as e:
             self.send(protocol.response(req, protocol.STATUS_ERROR, protocol.E_BAD_REQUEST, str(e)))
         except MemoryError as e:
-            self.send(protocol.response(req, protocol.STATUS_ERROR, protocol.E_INTERNAL, f"out of host memory: {e}"))
+            self.send(protocol.response(req, protocol.STATUS_ERROR, protocol.E_HOST_OOM, f"out of host memory: {e}"))
         except Exception as e:  # never let one request kill the worker
             traceback.print_exc(file=sys.stderr)
             code = protocol.E_CUDA_OOM if "out of memory" in str(e).lower() else protocol.E_INTERNAL

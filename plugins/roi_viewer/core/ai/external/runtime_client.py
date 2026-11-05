@@ -227,6 +227,6 @@ def load_candidate(path, shape_zyx) -> np.ndarray:
         return arr.astype(np.uint8)
     if not np.issubdtype(arr.dtype, np.integer):
         raise RuntimeFailure(protocol.E_INVALID_OUTPUT, f"candidate dtype {arr.dtype} (bool/uint8 expected)")
-    if not np.all((arr == 0) | (arr == 1)):
+    if arr.size and (int(arr.min()) < 0 or int(arr.max()) > 1):  # no full-size temporaries
         raise RuntimeFailure(protocol.E_INVALID_OUTPUT, "candidate values other than 0/1")
     return arr.astype(np.uint8, copy=False)

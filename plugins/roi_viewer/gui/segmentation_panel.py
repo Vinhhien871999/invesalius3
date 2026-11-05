@@ -1471,6 +1471,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             p.E_MODEL_LOAD: _("The model could not be loaded."),
             p.E_CUDA_UNAVAILABLE: _("CUDA was selected but no CUDA device is usable in the AI environment."),
             p.E_CUDA_OOM: _("Not enough GPU memory. Choose CPU, or close other GPU programs, and try again."),
+            p.E_HOST_OOM: _("The AI environment ran out of memory (RAM). Close other programs and try again."),
             p.E_PROMPT_UNSUPPORTED: _("This model does not support this kind of prompt."),
             p.E_NEEDS_PROMPT: _("Add at least one point or a bounding box."),
             p.E_PROTOCOL_VERSION: _("The AI runtime is not compatible with this plugin version."),
@@ -1804,6 +1805,10 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             overlay.set_drag(world1, world2, *(geometry or (None, None)))
 
     def _direct_request(self):
+        if self._direct_sched.busy and (self._ai_jobs is None or not self._ai_jobs.is_busy()):
+            # a stage that is not running any more (defensive: never stay stuck)
+            print("ROI Viewer: direct AI scheduler was waiting for a finished job - released")
+            self._direct_sched.reset()
         action = self._direct_sched.request()
         if action == direct_scheduler.DEFERRED:
             self.lbl_ai_status.SetLabel(_("Updating with the newest prompts…"))
@@ -2212,7 +2217,30 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
     def _on_ai_result(self, job, result):
         """A current (not stale) AI result: validate it on the native grid
-        and show it as an E2 preview. No mask is created here."""
+        and show it as an E2 preview. No mask is created here. Any failure
+        while showing it (e.g. out of RAM, seen in the real app on
+        05/11/2026) leaves the UI usable: no half-shown preview, and the
+        direct-interaction scheduler is released (it would otherwise wait
+        forever for a stage that ended)."""
+        try:
+            self._show_ai_result(job, result)
+        except Exception as e:
+            print(f"ROI Viewer: AI result could not be shown - {e!r}")
+            self._direct_sched.reset()
+            try:
+                self._clear_preview_overlay()
+                if self.preview_mgr.state != segmentation_preview.PreviewState.IDLE:
+                    self.preview_mgr.cancel()
+                self.lbl_preview_status.SetLabel(_("Idle"))
+                self.lbl_ai_status.SetLabel(
+                    _("Not enough memory (RAM) to show the AI result. Close other programs and try again.")
+                    if isinstance(e, MemoryError) else _("AI processing failed."))
+                self._update_preview_buttons()
+                self._update_ai_controls()
+            except RuntimeError:
+                pass
+
+    def _show_ai_result(self, job, result):
         import os
         import time
 
@@ -2261,8 +2289,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self._update_ai_controls()
             return
 
+        if stage:
+            self._clear_preview_overlay()  # the previous (quick) preview is replaced, not stacked
         temp_file, array = sl.Slice().create_temp_mask()
-        array[:] = ai_bridge.preview_values(foreground)
+        self._preview_temp_file = temp_file  # removed by _clear_preview_overlay(), also if anything below fails
+        ai_bridge.preview_values(foreground, out=array)
         stats = self.controller.seg_mgr.region_stats(foreground, run.get("spacing"))
         metadata = {
             "provider_id": run.get("provider_id"), "provider_name": run.get("provider_name"),
@@ -2280,15 +2311,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             # direct interaction: a one-slice result is provisional, never Accept-able
             "provisional": stage == direct_scheduler.STAGE_SLICE, "stage": stage,
         }
-        if stage:
-            self._clear_preview_overlay()  # the previous (quick) preview is replaced, not stacked
         if not self.preview_mgr.set_ai_preview(self._ai_preview_generation, array, metadata, stats, name="AI Preview"):
+            self._preview_temp_file = None
+            del array
             try:
                 os.remove(temp_file)
             except OSError:
                 pass
             return
-        self._preview_temp_file = temp_file
         self._show_preview_overlay(array)
         self.lbl_preview_status.SetLabel(_("AI preview: {info}.").format(info=self._region_info(stats)))
         if run.get("interactive"):

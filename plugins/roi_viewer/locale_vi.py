@@ -496,4 +496,6 @@ CATALOG = {
     'Suggested structure: {name} (overlap {percent}%). Based on the overlap with the existing TotalSegmentator segmentation.': 'Gợi ý cấu trúc: {name} (trùng khớp {percent}%). Gợi ý dựa trên sự chồng lấn với phân đoạn TotalSegmentator đã có.',
     'Structure not identified.': 'Chưa xác định cấu trúc.',
     "The ROI will be named 'AI - MedSAM2 - {name}'.": "ROI sẽ được đặt tên 'AI - MedSAM2 - {name}'.",
+    'Not enough memory (RAM) to show the AI result. Close other programs and try again.': 'Không đủ bộ nhớ (RAM) để hiển thị kết quả AI. Hãy đóng bớt chương trình rồi thử lại.',
+    'The AI environment ran out of memory (RAM). Close other programs and try again.': 'Môi trường AI hết bộ nhớ (RAM). Hãy đóng bớt chương trình rồi thử lại.',
 }

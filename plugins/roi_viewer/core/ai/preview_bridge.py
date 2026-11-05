@@ -30,6 +30,12 @@ def validate_candidate(mask, volume_shape_zyx) -> np.ndarray:
         raise CandidateError(CANDIDATE_SHAPE, f"got {arr.shape}, volume is {expected}")
     if arr.dtype == np.bool_:
         return arr.copy()
+    if arr.dtype == np.uint8 and arr.size:
+        # fast, low-memory path for the common 0/1 or 0/255 uint8 candidate
+        top = int(arr.max())
+        if top <= 1 or (top == 255 and not np.any(arr[arr != 0] != 255)):
+            return arr != 0
+        raise CandidateError(CANDIDATE_NOT_BINARY, "values other than 0/1 or 0/255 (probabilities or labels?)")
     if not (np.issubdtype(arr.dtype, np.integer) or np.issubdtype(arr.dtype, np.floating)):
         raise CandidateError(CANDIDATE_DTYPE, f"unsupported dtype {arr.dtype}")
     if np.issubdtype(arr.dtype, np.floating) and not np.isfinite(arr).all():
@@ -40,6 +46,10 @@ def validate_candidate(mask, volume_shape_zyx) -> np.ndarray:
     return ~zero
 
 
-def preview_values(foreground) -> np.ndarray:
-    """bool candidate -> the 0/255 uint8 values the E2 overlay displays."""
-    return np.where(np.asarray(foreground, dtype=bool), 255, 0).astype(np.uint8)
+def preview_values(foreground, out=None) -> np.ndarray:
+    """bool candidate -> the 0/255 uint8 values the E2 overlay displays.
+    uint8 all the way (np.where(fg, 255, 0) made a full-size int32/int64
+    array first: 300 MB on 0543, which ran out of RAM in the real app).
+    `out`: an existing uint8 array to fill (e.g. the temp mask memmap)."""
+    fg = np.ascontiguousarray(foreground, dtype=bool)
+    return np.multiply(fg.view(np.uint8), np.uint8(255), out=out, dtype=np.uint8)

@@ -82,14 +82,24 @@ def resolve_window(value):
     return lower, upper
 
 
-def window_to_uint8(volume_hu, lower, upper) -> np.ndarray:
+def window_to_uint8(volume_hu, lower, upper, chunk=16) -> np.ndarray:
     """Official: clip, then (x - min) / (max - min) * 255 of the CLIPPED
-    volume, uint8 (truncation, as np.uint8 casting in the script)."""
-    clipped = np.clip(np.asarray(volume_hu, dtype=np.float32), lower, upper)
-    lo, hi = float(clipped.min()), float(clipped.max())
+    volume, uint8 (truncation, as np.uint8 casting in the script).
+    The clipped min/max equal the raw min/max clipped to the window, so the
+    float conversion runs per chunk of slices - same numbers, without a
+    full-volume float32 copy (host RAM: 0543 = 315 MB less)."""
+    vol = np.asarray(volume_hu)
+    lo = min(max(float(vol.min()), float(lower)), float(upper))
+    hi = min(max(float(vol.max()), float(lower)), float(upper))
+    out = np.zeros(vol.shape, dtype=np.uint8)
     if hi <= lo:
-        return np.zeros(clipped.shape, dtype=np.uint8)
-    return ((clipped - lo) / (hi - lo) * 255.0).astype(np.uint8)
+        return out
+    flat = vol.reshape((vol.shape[0], -1)) if vol.ndim > 1 else vol.reshape((1, -1))
+    view = out.reshape(flat.shape)
+    for c0 in range(0, flat.shape[0], chunk):
+        clipped = np.clip(flat[c0:c0 + chunk].astype(np.float32), lower, upper)
+        view[c0:c0 + chunk] = ((clipped - lo) / (hi - lo) * 255.0).astype(np.uint8)
+    return out
 
 
 def to_model_rows(volume_zyx, flip_rows: bool):
@@ -155,24 +165,37 @@ def preprocess_slices(volume_uint8, size=IMAGE_SIZE) -> np.ndarray:
 
 def largest_component(mask) -> np.ndarray:
     """getLargestCC equivalent (skimage measure.label default = full
-    connectivity in 3D)."""
+    connectivity in 3D). Memory-lean (05/11/2026, real 0543 run ran out of
+    host RAM): labels only inside the mask's bounding box, uint16 labels
+    when the component count fits, component sizes counted on the
+    foreground voxels only (no full-volume int64 copy)."""
     mask = np.asarray(mask, dtype=bool)
     if not mask.any():
         return mask
+    nz = [np.flatnonzero(mask.any(axis=tuple(a for a in range(mask.ndim) if a != ax))) for ax in range(mask.ndim)]
+    box = tuple(slice(int(i[0]), int(i[-1]) + 1) for i in nz)
+    sub = mask[box]
     try:
         from scipy import ndimage
 
-        labels, n = ndimage.label(mask, structure=np.ones((3, 3, 3), dtype=bool))
+        structure = np.ones((3,) * sub.ndim, dtype=bool)
+        try:
+            labels = np.zeros(sub.shape, dtype=np.uint16)
+            n = ndimage.label(sub, structure=structure, output=labels)
+        except RuntimeError:  # more than 65535 components
+            labels, n = ndimage.label(sub, structure=structure)
     except ImportError:
         from skimage import measure
 
-        labels = measure.label(mask)
+        labels = measure.label(sub)
         n = int(labels.max())
     if n <= 1:
         return mask
-    counts = np.bincount(labels.ravel())
+    counts = np.bincount(labels[sub])
     counts[0] = 0
-    return labels == int(np.argmax(counts))
+    out = np.zeros(mask.shape, dtype=bool)
+    out[box] = labels == int(np.argmax(counts))
+    return out
 
 
 def repo_commit(repo_path):
@@ -210,7 +233,12 @@ class MedSAM2Provider:
         self._volume = None
         self._prepared = {}  # window -> (D, 3, 512, 512) uint8, for the loaded volume
         self._state = None  # reusable model state of the loaded volume (see _session)
-        self.cache_features = self.config.get("cache_features", True) is not False
+        # OFF by default (real app, 05/11/2026): on Windows/WDDM the ~3.9 GB of
+        # VRAM the 0543 feature cache holds was also charged to system commit
+        # (worker 8.6 GB vs 4.8 GB without it) and the machine ran out of RAM.
+        # "cache_features": true in provider_config turns it on (repeats ~30-40 %
+        # faster, identical candidates) where RAM/VRAM allow.
+        self.cache_features = self.config.get("cache_features", False) is True
         self.cache_min_free_mb = float(self.config.get("cache_min_free_mb", 1024))
         self.timings = {}
         if self.repo_path and self.repo_path not in sys.path:

@@ -104,6 +104,8 @@ class FakeInteractiveAIProvider:
         self.predictions += 1
         if self.config.get("crash_on_predict"):
             os._exit(3)
+        if self.config.get("raise_memory_error"):
+            raise MemoryError("Unable to allocate 600. MiB for an array (fake)")
         steps = int(self.config.get("steps", 1))
         for i in range(steps):
             time.sleep(float(self.config.get("delay_s", 0)))
