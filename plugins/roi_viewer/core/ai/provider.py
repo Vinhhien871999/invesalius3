@@ -34,6 +34,10 @@ REASON_PACKAGE_MISSING = "package_missing"
 REASON_DEPENDENCY = "dependency_missing"
 REASON_API = "api_incompatible"
 REASON_WEIGHTS = "weights_missing"
+# Interactive AI external runtime (feature/interactive-ai-medsam2)
+REASON_NOT_CONFIGURED = "not_configured"
+REASON_NOT_CHECKED = "not_checked"
+REASON_RUNTIME = "runtime_failed"
 
 # progress(None, <stage>) - for models with no numeric progress. A provider
 # must never report a percentage it does not really know (E6b).
@@ -46,6 +50,8 @@ OPTION_STRUCTURE = "target_structure"
 OPTION_MODE = "mode"
 OPTION_PATIENT_ORIENTATION = "patient_orientation"  # Project().patient_orientation: 6 IOP values, LPS
 OPTION_ACQUISITION = "acquisition_orientation"  # "AXIAL" / "CORONAL" / "SAGITTAL" / ""
+OPTION_HU_WINDOW = "hu_window"  # interactive AI: CT window preset the model sees
+OPTION_GENERATION = "generation_id"  # interactive AI: E2 preview generation of the request
 MODE_STANDARD = "standard"
 MODE_FAST = "fast"
 

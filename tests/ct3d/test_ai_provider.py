@@ -164,12 +164,15 @@ def test_feature_flag_default_off():
     assert ENABLE_AI_SEGMENTATION is False
 
 
-def test_only_the_totalsegmentator_provider_is_shipped():
-    """E6 shipped none; E6b adds exactly the real TotalSegmentator provider
-    (no fake one). Loading it works whether or not the package is installed."""
-    assert ai_registry.KNOWN_PROVIDER_MODULES == (".providers.totalsegmentator_provider",)
+def test_only_the_real_providers_are_shipped():
+    """E6 shipped none; E6b adds the real TotalSegmentator provider and the
+    interactive-AI track the real MedSAM2 external-runtime provider (no fake
+    one). Loading them works whether or not anything is installed."""
+    assert ai_registry.KNOWN_PROVIDER_MODULES == (".providers.totalsegmentator_provider",
+                                                  ".providers.medsam2_external_provider")
     reg = ai_registry.load_known_providers(ai_registry.AIProviderRegistry())
-    assert [i.provider_id for i in reg.list_providers()] == ["totalsegmentator"] and reg.load_errors == []
+    assert [i.provider_id for i in reg.list_providers()] == ["totalsegmentator", "medsam2"]
+    assert reg.load_errors == []
 
 
 def test_loading_and_probing_providers_imports_no_framework_when_package_missing():

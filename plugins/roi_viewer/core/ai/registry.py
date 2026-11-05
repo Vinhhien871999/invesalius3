@@ -23,6 +23,7 @@ from .types import AIProviderInfo
 # seen in the real application on 30/09/2026, never under pytest.
 KNOWN_PROVIDER_MODULES: Tuple[str, ...] = (
     ".providers.totalsegmentator_provider",  # E6b
+    ".providers.medsam2_external_provider",  # interactive AI (external runtime, off unless configured)
 )
 
 
@@ -75,6 +76,16 @@ class AIProviderRegistry:
         except Exception as e:
             print(f"ROI Viewer: AI provider '{provider_id}' probe failed - {e}")
             info = _unavailable(provider_id, f"probe failed: {e}")
+        self._info[provider_id] = info
+        return info
+
+    def update_info(self, provider_id: str, info) -> Optional[AIProviderInfo]:
+        """Store info a provider produced outside probe() (the interactive
+        provider's explicit environment check). Invalid info is refused."""
+        if provider_id not in self._providers:
+            return None
+        if not isinstance(info, AIProviderInfo) or info.provider_id != provider_id:
+            info = _unavailable(provider_id, "check returned invalid provider info")
         self._info[provider_id] = info
         return info
 

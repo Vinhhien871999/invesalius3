@@ -56,6 +56,14 @@ class AIProviderInfo:
     # into AIInferenceRequest.options under the same keys (E6b) - keeps
     # model-specific options out of the generic types.
     parameter_choices: Dict[str, Tuple[str, ...]] = field(default_factory=dict)
+    # Interactive AI: listed in the model dropdown even while unavailable, so
+    # the operator sees "not configured" and can run the environment check
+    # (an automatic model such as TotalSegmentator keeps the default False).
+    show_when_unavailable: bool = False
+    # Interactive AI: provider has check_environment() (a slow, explicit check)
+    checkable: bool = False
+    # Interactive AI: free-form facts shown after the environment check
+    details: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

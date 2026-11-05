@@ -1,0 +1,23 @@
+{
+  "_comment": "Copy to <InVesalius user dir>/roi_viewer_interactive_ai.json (e.g. %USERPROFILE%\\.config\\invesalius\\ on Windows) or point ROI_VIEWER_INTERACTIVE_AI_CONFIG at it. ROI Viewer only READS this file. Replace every <...> with real paths; paths inside provider_config are as the WORKER sees them.",
+  "enabled": true,
+  "provider": "medsam2",
+  "runtime_command": [
+    "<MedSAM2 environment>\\Scripts\\python.exe",
+    "<repository>\\tools\\interactive_ai_runtime\\worker.py"
+  ],
+  "path_style": "native",
+  "provider_config": {
+    "repo_path": "<MedSAM2 checkout>",
+    "checkpoint": "<MedSAM2 checkout>\\checkpoints\\MedSAM2_latest.pt",
+    "model_config": "configs/sam2.1_hiera_t512.yaml",
+    "allow_negative_points": false,
+    "flip_rows_to_dicom": true,
+    "largest_component": true,
+    "offload_video_to_cpu": false
+  },
+  "start_timeout_s": 120,
+  "probe_timeout_s": 300,
+  "load_timeout_s": 300,
+  "predict_timeout_s": 900
+}
