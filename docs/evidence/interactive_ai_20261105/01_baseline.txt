@@ -1,0 +1,23 @@
+# Baseline 05/11/2026 on BASE_HEAD 70720ca8, isolated XDG_CONFIG_HOME
+## pytest tests/ct3d
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+742 passed, 2 skipped, 26 warnings in 72.15s (0:01:12)
+## pytest tests --ignore=tests/ct3d
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+94 passed, 15 warnings in 63.07s (0:01:03)
+## pyflakes plugins/roi_viewer
+pyflakes exit=0
+## compileall
+compileall exit=0
+## diff --check
+diff-check exit=0
+## pip freeze invx-venv (sha256 for env-unchanged proof)
+fb9bb7cb5d547fad18e75fdfd3ced86d0795b9a5de914751bd98d3b93783430c *-
+nnunetv2==2.8.1
+numpy==1.26.4
+scipy==1.14.0
+torch==2.7.1+cu118
+torchvision==0.22.1+cu118
+TotalSegmentator==2.18.0
+vtk==9.3.0
+wxPython==4.2.5

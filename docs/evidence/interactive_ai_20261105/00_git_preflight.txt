@@ -1,0 +1,14 @@
+# Git preflight 05/11/2026
+BASE branch: enhancement/advanced-segmentation
+BASE_HEAD=70720ca87e485646c6c2434872d69373486adfd3
+worktree before switch: clean (git status: nothing to commit)
+diff --check: clean
+branch feature/interactive-ai-medsam2 did not exist (local/remote)
+
+$ git switch -c feature/interactive-ai-medsam2
+feature/interactive-ai-medsam2
+## feature/interactive-ai-medsam2
+?? docs/evidence/interactive_ai_20261105/
+70720ca87e485646c6c2434872d69373486adfd3
+stable thesis-ct-roi-tools: aa1b3ad3
+tag ct3d-rc1: aa1b3ad3

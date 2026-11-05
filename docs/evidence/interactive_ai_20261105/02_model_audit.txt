@@ -1,0 +1,40 @@
+# Official source audit - 05/11/2026 (read-only web: GitHub raw files, GitHub API, Hugging Face)
+# Raw = https://raw.githubusercontent.com/bowang-lab/MedSAM2/main/   SAM2 = https://raw.githubusercontent.com/facebookresearch/sam2/main/
+# (the fetch tool summarised files rather than returning them verbatim; function names are given, some line numbers approximate)
+
+MedSAM2 repository      bowang-lab/MedSAM2
+latest commit (main)    332f30d420f1d1b08e2a79b3ae6a602458808383, 2025-07-11, "medsam2 with recist marker"  (api.github.com/repos/bowang-lab/MedSAM2/commits)
+tags/releases           not checked (UNKNOWN)
+license (code)          Apache-2.0  (Raw LICENSE)
+python                  README: conda create -n medsam2 python=3.12 ; setup.py python_requires=">=3.10.0"
+torch                   README: torch==2.5.1 torchvision==0.20.1 --index-url .../cu124 "(Linux CUDA 12.4)"; setup.py torch>=2.5.1, torchvision>=0.20.1, numpy>=2.0.1, SimpleITK>=2.4.0, hydra-core>=1.3.2
+OS                      README Linux only (apt-get); SAM2 INSTALL.md: on Windows "strongly recommended to use WSL with Ubuntu"
+install                 pip install -e ".[dev]" ; bash download.sh ; CUDA extension optional (SAM2_BUILD_CUDA, SAM2_BUILD_ALLOW_ERRORS default 1)
+
+checkpoints             Hugging Face wanglab/MedSAM2 (download.sh HF_BASE_URL)
+                        MedSAM2_2411.pt, MedSAM2_US_Heart.pt, MedSAM2_MRI_LiverLesion.pt, MedSAM2_CTLesion.pt, MedSAM2_latest.pt ("recommended"),
+                        medsam2_FLARE25_RECIST_baseline.pt (156 MB each); eff_medsam2_small_... 136 MB; eff_medsam2_tiny_... 71.7 MB
+config                  configs/sam2.1_hiera_t512.yaml (image_size 512; argparse default of medsam2_infer_3D_CT.py)
+weights license         HF metadata cc-by-sa-4.0 BUT card text "The model weights can only be used for research and education purposes." - CONFLICT, operator must review
+
+official 3D CT path     medsam2_infer_3D_CT.py
+  input                 DeepLesion .nii.gz via SimpleITK GetArrayFromImage (z, y, x)
+  window                per lesion from CSV (DICOM_windows), np.clip
+  0..255                (x - min)/(max - min)*255 of the clipped volume, np.uint8
+  resize                resize_grayscale_to_rgb_and_resize(img, 512): PIL convert("RGB").resize((512,512)) default filter; /255; ImageNet mean/std
+  predictor             build_sam2_video_predictor_npz(cfg, ckpt); init_state(img_resized, H, W); add_new_points_or_box(state, frame_idx=key, obj_id=1, box=bbox)
+  propagation           propagate_in_video forward; reset_state; box again; propagate_in_video(reverse=True)
+  output                (out_mask_logits[0] > 0.0); predictor resizes to H x W bilinear (_get_orig_video_res_output); getLargestCC
+  device                .cuda() + torch.autocast("cuda", bfloat16) hard-coded in the scripts; library: get_best_available_device (cuda, mps, cpu)
+RECIST npz script       medsam2_infer_CT_lesion_npz_recist.py: points from RECIST, labels = np.ones (all positive); no negative-label option
+training config         sam2.1_hiera_tiny512_FLARE_RECIST.yaml: prob_to_use_pt_input_for_train 0.5, box 1.0, num_correction_pt_per_frame 7 (correction clicks 1/0) - UNKNOWN for MedSAM2_latest.pt
+paper (arXiv 2504.03600) "reliance on bounding boxes as the main prompts"; windows e.g. abdomen 400/40, lung 1500/-600, bone 1800/400
+VRAM                    not stated (UNKNOWN)
+
+SAM2 API                add_new_points_or_box(inference_state, frame_idx, obj_id, points=None, labels=None, clear_old_points=True, normalize_coords=True, box=None)
+                        labels: 1 positive, 0 negative (box corners 2/3); correction on tracked frames; multi-object via obj_id
+MedSAM v1 / LiteMedSAM  Apache-2.0; box prompts only; 2D (1024 / lite); not chosen
+
+Capability (this provider)   positive point YES | negative point UNKNOWN -> off by default | 2D box YES | 3D box NO (approximated) |
+                             3D propagation YES | multi-object NO (v1) | refinement YES (re-run) | CPU library fallback, untested | CUDA YES
+INTERACTIVE_MODEL_DECISION = MEDSAM2
