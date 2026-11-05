@@ -70,7 +70,7 @@ Evidence: `02_source_audit.txt`.
 - `_get_image_feature` keeps one frame and reassigns the cache dict, so every propagation re-encodes all 300 slices.
 - `reset_state` keeps the images.
 
-The worker therefore keeps one session per (volume, CT window, device): the normalised image tensor, one `inference_state` (reset before every prediction, with the prompts replayed in full from the prompt set), and a per-slice feature cache. The cache wraps `_get_image_feature` and hands the original method its stored entry, so the model code is unchanged. Caching stops when free GPU memory falls below `cache_min_free_mb` (1024), and it can be turned off with `"cache_features": false`.
+The worker therefore keeps one session per (volume, CT window, device): the normalised image tensor, one `inference_state` (reset before every prediction, with the prompts replayed in full from the prompt set), and a per-slice feature cache. The cache wraps `_get_image_feature` and hands the original method its stored entry, so the model code is unchanged. Caching stops when free GPU memory falls below `cache_min_free_mb` (1024). **The cache is OFF by default** since the out-of-memory report (see "Memory"); `"cache_features": true` turns it on.
 
 ## Smart initial prompt (measured, not assumed)
 
@@ -144,7 +144,25 @@ For refinements, the 3D stage takes 6.5–14.7 s.
 
 The candidates were **identical** (0 differing voxels), and identical across runs.
 
-Repeated predictions on the same volume are about 30–40 % faster with the cache, at the cost of about 3.9 GB more VRAM. The cache is on by default with the free-memory guard; set `"cache_features": false` in `provider_config` on a GPU shared with heavy rendering. Run-to-run times varied (the same prompt took 10.9–13.3 s), so the numbers are ranges, not guarantees.
+Repeated predictions on the same volume are about 30–40 % faster with the cache, at the cost of about 3.9 GB more VRAM. Run-to-run times varied (the same prompt took 10.9–13.3 s), so the numbers are ranges, not guarantees.
+
+## Memory (operator out-of-memory report, fixed)
+
+In the real app the operator got "out of host memory: Unable to allocate 600 MiB … int64" and "… 300 MiB … int32", and clicks then stayed at "Đang cập nhật theo gợi ý mới nhất…". Evidence: `07_memory_fix.txt`.
+
+Causes:
+1. On Windows/WDDM the feature cache's VRAM was also charged to the worker's commit: 8.6–8.8 GB with the cache versus 4.6–4.9 GB without it (measured; the operator's worker was at 8,657 MB).
+2. Full-volume int32/int64/float32 temporaries in the worker and in the plugin.
+3. A failure while showing a result never released the scheduler.
+
+Fixes:
+- The cache is off by default.
+- Low-memory largest-component, window, preview and candidate checks, with identical numbers.
+- The display is wrapped, so the scheduler is always released.
+- A stale scheduler is released on the next click.
+- A new `host_out_of_memory` code with a Vietnamese message.
+
+After the fix, 3 consecutive real clicks on 0543 kept the worker at 4.6–4.9 GB commit and 1.28 GB VRAM. The 3D stage took 9–10 s each; with the cache it would be 7–8 s.
 
 ## Semantic suggestion
 
@@ -189,7 +207,7 @@ In the real runs, every one-click candidate contained the clicked voxel (6/6).
 - The vertebra one-click result was 0.63; a box reaches 0.84.
 - The lung lower lobe is only 0.44, because MedSAM2 segments the whole dark lung region, not one lobe.
 - The 0543 policy numbers come from one dataset and 6 targets.
-- The feature cache uses about 5.3 GB of VRAM.
+- With the cache off (default), each 3D stage re-encodes all slices (9–10 s on 0543). With it on, the machine needs about 4 GB more commit and VRAM.
 - No keyboard shortcuts.
 - The 3D pick stays a manual (advanced) control.
 - The headless tests cannot prove real-GUI behaviour. **The GUI gate needs the operator (DI-A…DI-S).**

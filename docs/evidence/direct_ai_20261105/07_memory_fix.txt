@@ -1,0 +1,43 @@
+# Out-of-memory report from the real app (operator screenshot, 05/11/2026) - root cause, fixes, verification
+Operator log (InVesalius running, direct interaction, 0543):
+  ROI Viewer: AI runtime failure internal_error - out of host memory: Unable to allocate 600. MiB ... (78643200,) int64
+  ROI Viewer: AI listener failed on 'result' - Unable to allocate 300. MiB ... (300, 512, 512) int32
+  status stuck at "Đang cập nhật theo gợi ý mới nhất…"; operator's worker commit measured at 8,657 MB, system commit free 1.0 GB.
+
+Root causes
+ 1. Feature cache (cache_features default ON): on Windows/WDDM the ~3.9 GB of VRAM it holds was also charged to
+    the worker's commit (8.6-8.8 GB vs 4.6-4.9 GB without it, measured below) -> the whole machine ran out of commit.
+ 2. Full-volume temporaries: worker largest_component (ndimage.label int32 300 MB + bincount int64 600 MB of the
+    whole 300x512x512 volume); window_to_uint8 (float32 copy 315 MB); plugin preview_values np.where(fg,255,0)
+    (int32 300 MB on Windows numpy 1.26); uint8 candidate checks (several 78 MB bool temporaries).
+ 3. Bug: an exception while SHOWING a result (here MemoryError) left the direct-interaction scheduler "running"
+    forever -> every later click was "deferred" ("Đang cập nhật theo gợi ý mới nhất…").
+
+Fixes
+ 1. cache_features now OFF by default (provider_config "cache_features": true turns it on).
+ 2. largest_component: label only the mask bounding box, uint16 labels when they fit, sizes counted on foreground
+    voxels only; window_to_uint8 per chunk of slices; preview_values uint8-only and written straight into the temp
+    memmap; uint8 fast paths in validate_candidate / load_candidate. All give identical numbers (tests).
+ 3. _on_ai_result wraps the display; on any failure the preview is removed, the scheduler released, and the status
+    says "Không đủ bộ nhớ (RAM)…"; _direct_request also releases a scheduler whose job no longer exists. The worker
+    reports MemoryError as the new code host_out_of_memory ("Môi trường AI hết bộ nhớ (RAM)…").
+ Tests: tests/ct3d/test_direct_ai_memory.py (equivalence, fast paths, wedge regression, stuck-scheduler release,
+ host_out_of_memory message).
+
+Verification - REAL MedSAM2 on 0543, 3 consecutive clicks (slice + 3D each), plugin runtime client, InVesalius closed:
+## cache_features=false
+{"click": 1, "stage": "slice", "voxels": 7965, "host_s": 3.93, "cached_frames": null, "peak_vram_mb": null, "worker_commit_mb_now_peak": [4453, 4678], "worker_pid": 44644, "host_commit_mb_now_peak": [731, 731]}
+{"click": 1, "stage": "volume", "voxels": 319392, "host_s": 9.98, "cached_frames": 0, "peak_vram_mb": 1277, "worker_commit_mb_now_peak": [4629, 4854], "worker_pid": 44644, "host_commit_mb_now_peak": [731, 806]}
+{"click": 2, "stage": "slice", "voxels": 6020, "host_s": 0.98, "cached_frames": null, "peak_vram_mb": null, "worker_commit_mb_now_peak": [4630, 4856], "worker_pid": 44644, "host_commit_mb_now_peak": [731, 806]}
+{"click": 2, "stage": "volume", "voxels": 238683, "host_s": 9.09, "cached_frames": 0, "peak_vram_mb": 1280, "worker_commit_mb_now_peak": [4638, 4864], "worker_pid": 44644, "host_commit_mb_now_peak": [731, 806]}
+{"click": 3, "stage": "slice", "voxels": 52565, "host_s": 0.96, "cached_frames": null, "peak_vram_mb": null, "worker_commit_mb_now_peak": [4638, 4864], "worker_pid": 44644, "host_commit_mb_now_peak": [731, 806]}
+{"click": 3, "stage": "volume", "voxels": 3283393, "host_s": 10.32, "cached_frames": 0, "peak_vram_mb": 1278, "worker_commit_mb_now_peak": [4638, 4883], "worker_pid": 44644, "host_commit_mb_now_peak": [732, 806]}
+{"done": true, "worker_alive": false}
+## cache_features=true
+{"click": 1, "stage": "slice", "voxels": 7965, "host_s": 3.96, "cached_frames": null, "peak_vram_mb": null, "worker_commit_mb_now_peak": [4452, 4677], "worker_pid": 33240, "host_commit_mb_now_peak": [731, 731]}
+{"click": 1, "stage": "volume", "voxels": 319392, "host_s": 10.79, "cached_frames": 300, "peak_vram_mb": 5276, "worker_commit_mb_now_peak": [8570, 8795], "worker_pid": 33240, "host_commit_mb_now_peak": [731, 806]}
+{"click": 2, "stage": "slice", "voxels": 6020, "host_s": 0.97, "cached_frames": null, "peak_vram_mb": null, "worker_commit_mb_now_peak": [8570, 8795], "worker_pid": 33240, "host_commit_mb_now_peak": [731, 806]}
+{"click": 2, "stage": "volume", "voxels": 238683, "host_s": 6.93, "cached_frames": 300, "peak_vram_mb": 5262, "worker_commit_mb_now_peak": [8579, 8805], "worker_pid": 33240, "host_commit_mb_now_peak": [731, 806]}
+{"click": 3, "stage": "slice", "voxels": 52565, "host_s": 0.97, "cached_frames": null, "peak_vram_mb": null, "worker_commit_mb_now_peak": [8579, 8805], "worker_pid": 33240, "host_commit_mb_now_peak": [731, 806]}
+{"click": 3, "stage": "volume", "voxels": 3283393, "host_s": 7.85, "cached_frames": 300, "peak_vram_mb": 5258, "worker_commit_mb_now_peak": [8579, 8824], "worker_pid": 33240, "host_commit_mb_now_peak": [731, 806]}
+{"done": true, "worker_alive": false}

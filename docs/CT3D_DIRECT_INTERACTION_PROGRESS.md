@@ -12,7 +12,8 @@
 | Automatic two-stage preview (quick slice → 3D), latest wins | WORKING | `05` |
 | Smart one-click policy | WORKING. **Shipped `point_first`**, chosen by measurement over the spec's fast-2D bbox | `03`, `04` |
 | Fast 2D mask (current-frame API) | PASS (real model: 0.75–3.5 s) | `04` |
-| Model state + feature reuse | PASS (identical candidates; repeats ~30–40 % faster; +3.9 GB VRAM) | `04` |
+| Model state + feature reuse | PASS: state reused; the feature cache gives identical candidates and is ~30–40 % faster, but is **OFF by default** after the out-of-memory report (+3.9 GB VRAM charged to commit on Windows) | `04`, `07` |
+| Operator out-of-memory report (real app) | FIXED: cache off by default, low-memory paths, no scheduler wedge, new RAM message. Real re-check: worker 4.6–4.9 GB (was 8.6 GB) | `07` |
 | Drag box | WORKING (geometry identical to the corner buttons); GUI NOT_RUN | `05` |
 | Semantic suggestion (existing TotalSegmentator cache only) | WORKING | `05`, architecture |
 | Refinement quality with MedSAM2 | **PARTIAL**: updates work, extra clicks on other slices were unreliable (spleen 0.95 → 0.03) | `04` |

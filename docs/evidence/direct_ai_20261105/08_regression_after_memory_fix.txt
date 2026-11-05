@@ -1,0 +1,18 @@
+# Regression after the memory fix - 2026-11-05 21:54:10, HEAD 51b1f881 + working tree, isolated XDG_CONFIG_HOME, -rEf
+## ct3d run 1 (21:54:10)
+880 passed, 2 skipped, 27 warnings in 172.06s (0:02:52)
+exit=0
+## ct3d run 2 (21:57:12)
+880 passed, 2 skipped, 27 warnings in 156.24s (0:02:36)
+exit=0
+## ct3d run 3 (21:59:51)
+880 passed, 2 skipped, 27 warnings in 175.08s (0:02:55)
+exit=0
+## upstream
+94 passed, 15 warnings in 87.24s (0:01:27)
+exit=0
+## pyflakes / compileall
+pyflakes exit=0
+compileall exit=0
+## invx-venv pip freeze
+fb9bb7cb5d547fad18e75fdfd3ced86d0795b9a5de914751bd98d3b93783430c *-
