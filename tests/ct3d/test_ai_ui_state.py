@@ -70,7 +70,7 @@ def test_ai_section_collapsed_and_vietnamese(frame):
     labels = [panel.btn_ai_pick_point, panel.btn_ai_cursor_point, panel.btn_ai_corner1, panel.btn_ai_corner2,
               panel.btn_ai_clear, panel.btn_ai_run, panel.btn_ai_cancel, panel.rb_ai_positive, panel.rb_ai_negative]
     assert [w.GetLabel() for w in labels] == [
-        "Chọn điểm (3D)", "Điểm tại con trỏ 2D", "Chọn góc 1", "Chọn góc 2", "Xóa điểm AI",
+        "Chọn điểm (3D)", "Điểm tại con trỏ 2D", "Chọn góc 1", "Chọn góc 2", "Xóa gợi ý",
         "Xem trước bằng AI", "Hủy xử lý AI", "Thuộc vùng", "Loại trừ"]
 
 

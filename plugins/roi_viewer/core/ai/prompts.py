@@ -86,6 +86,15 @@ class AIPromptSet:
             self.box = make_box_prompt(self.corner1, self.corner2, spacing_xyz, shape_zyx)
         return self.box
 
+    def undo_last_point(self) -> Optional[PointPrompt]:
+        """Remove the most recently added point (returns it, or None)."""
+        return self.points.pop() if self.points else None
+
+    def clear_box(self):
+        self.corner1 = None
+        self.corner2 = None
+        self.box = None
+
     def clear(self):
         self.points = []
         self.corner1 = None

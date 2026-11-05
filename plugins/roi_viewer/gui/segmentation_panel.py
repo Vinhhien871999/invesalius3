@@ -17,9 +17,21 @@ from ..core.ai import job_controller as ai_jobs
 from ..core.ai import preview_bridge as ai_bridge
 from ..core.ai import provider as ai_provider
 from ..core.ai.prompts import AIPromptSet, PromptOutOfVolume
-from ..core.ai.types import Capability, DeviceKind
+from ..core.ai.types import Capability, DeviceKind, PromptType
 from ..i18n import _, fmt_float, fmt_int
 from . import ui_helpers
+
+
+def native_mask_sha256(foreground) -> str:
+    """SHA-256 of a mask as 0/1 uint8 bytes, C order (interactive AI:
+    preview == Accept identity). Same encoding as the provider's
+    candidate_sha256."""
+    import hashlib
+
+    import numpy as np
+
+    arr = np.ascontiguousarray(np.asarray(foreground) > 0, dtype=np.uint8)
+    return hashlib.sha256(arr.tobytes()).hexdigest()
 
 # E2 (Advanced Segmentation Enhancement Track, enhancement/advanced-
 # segmentation branch only): the real Slice().aux_matrices/to_show_aux key
@@ -162,6 +174,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._ai_modes = []  # E6b: provider parameter "mode"
         self._ai_preview_generation = None
         self._ai_run = None  # provider/prompt/timing info of the running job
+        self._ai_env_checking = False  # interactive AI environment check running
+        self._ai_shut_down = False  # shutdown_ai() ran: a late check result must not keep a worker
         self._subscribe_surface_info_once()
         self._init_ui()
         self.SetupScrolling(scroll_x=False)
@@ -284,6 +298,30 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             "Fast uses the model's lower-resolution version: less time and memory, less accurate."))
         self._ai_mode_row = ui_helpers.labelled_row(p, _("Mode:"), self.choice_ai_mode)
         ai_sizer.Add(self._ai_mode_row, 0, wx.EXPAND)
+        # Interactive AI: the CT window the model sees (provider parameter
+        # OPTION_HU_WINDOW, presets declared by the worker).
+        self.choice_ai_window = wx.Choice(p, wx.ID_ANY, choices=[_("Soft tissue")])
+        self.choice_ai_window.SetSelection(0)
+        self.choice_ai_window.SetToolTip(_(
+            "The CT window the model sees (as in the model's own preprocessing). It changes only the model's "
+            "input, not the image or the mask."))
+        self._ai_window_row = ui_helpers.labelled_row(p, _("CT window:"), self.choice_ai_window)
+        ai_sizer.Add(self._ai_window_row, 0, wx.EXPAND)
+        self._ai_windows = []
+        # Interactive AI: separate runtime - shown while the selected model
+        # still needs setup or the environment check.
+        self._ai_env_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.lbl_ai_env = ui_helpers.hint(p, _(
+            "This feature needs a separate AI environment. ROI Viewer does not install or download models."))
+        self._ai_env_sizer.Add(self.lbl_ai_env, 0, wx.ALL, 3)
+        self.btn_ai_check_env = wx.Button(p, wx.ID_ANY, _("Check environment"))
+        self.btn_ai_check_env.SetToolTip(_(
+            "Starts the separate AI runtime and asks which model, version, prompts and devices it really "
+            "supports. Nothing is installed or downloaded."))
+        self._ai_env_sizer.Add(self.btn_ai_check_env, 0, wx.ALL | wx.EXPAND, 2)
+        ai_sizer.Add(self._ai_env_sizer, 0, wx.EXPAND)
+        self.lbl_ai_env_info = ui_helpers.StatusText(p, "")
+        ai_sizer.Add(self.lbl_ai_env_info, 0, wx.ALL | wx.EXPAND, 3)
 
         # Point/box prompts: shown only for a model that uses them.
         self._ai_prompt_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -297,8 +335,13 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._ai_prompt_sizer.Add(kind_row, 0, wx.EXPAND)
 
         self.btn_ai_pick_point = wx.ToggleButton(p, wx.ID_ANY, _("Pick point (3D)"))
+        self.btn_ai_pick_point.SetToolTip(_(
+            "Quick pick on a visible 3D surface; the point usually lies on its boundary."))
         self.btn_ai_cursor_point = wx.Button(p, wx.ID_ANY, _("Point at 2D cursor"))
-        self._ai_prompt_sizer.Add(ui_helpers.button_row(self.btn_ai_pick_point, self.btn_ai_cursor_point),
+        self.btn_ai_cursor_point.SetToolTip(_(
+            "Places the point exactly inside the structure, at the 2D cursor position (recommended)."))
+        # 2D first: the seed-pick review showed 3D picks land on a boundary.
+        self._ai_prompt_sizer.Add(ui_helpers.button_row(self.btn_ai_cursor_point, self.btn_ai_pick_point),
                                   0, wx.EXPAND)
         self._ai_prompt_sizer.Add(ui_helpers.hint(p, _("Bounding box: move the 2D cursor to each corner.")),
                                   0, wx.ALL, 3)
@@ -307,7 +350,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._ai_prompt_sizer.Add(ui_helpers.button_row(self.btn_ai_corner1, self.btn_ai_corner2), 0, wx.EXPAND)
         self.lbl_ai_prompts = wx.StaticText(p, wx.ID_ANY, "")
         self._ai_prompt_sizer.Add(self.lbl_ai_prompts, 0, wx.ALL | wx.EXPAND, 3)
-        self.btn_ai_clear = wx.Button(p, wx.ID_ANY, _("Clear AI points"))
+        self.btn_ai_undo = wx.Button(p, wx.ID_ANY, _("Undo last point"))
+        self.btn_ai_clear_box = wx.Button(p, wx.ID_ANY, _("Clear box"))
+        self._ai_prompt_sizer.Add(ui_helpers.button_row(self.btn_ai_undo, self.btn_ai_clear_box), 0, wx.EXPAND)
+        self.btn_ai_clear = wx.Button(p, wx.ID_ANY, _("Clear prompts"))
+        self.btn_ai_clear.SetToolTip(_("Removes all points and the box. The preview, if any, stays."))
         self._ai_prompt_sizer.Add(self.btn_ai_clear, 0, wx.ALL | wx.EXPAND, 2)
         ai_sizer.Add(self._ai_prompt_sizer, 0, wx.EXPAND)
         self.btn_ai_run = wx.Button(p, wx.ID_ANY, _("Preview with AI"))
@@ -452,6 +499,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_ai_corner1.Bind(wx.EVT_BUTTON, lambda event: self._on_ai_corner(1))
         self.btn_ai_corner2.Bind(wx.EVT_BUTTON, lambda event: self._on_ai_corner(2))
         self.btn_ai_clear.Bind(wx.EVT_BUTTON, self._on_ai_clear)
+        self.btn_ai_undo.Bind(wx.EVT_BUTTON, self._on_ai_undo)
+        self.btn_ai_clear_box.Bind(wx.EVT_BUTTON, self._on_ai_clear_box)
+        self.btn_ai_check_env.Bind(wx.EVT_BUTTON, self._on_ai_check_environment)
         self.btn_ai_run.Bind(wx.EVT_BUTTON, self._on_ai_run)
         self.btn_ai_cancel.Bind(wx.EVT_BUTTON, self._on_ai_cancel)
         self.btn_preview_cancel.Bind(wx.EVT_BUTTON, self._on_preview_cancel)
@@ -936,6 +986,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     def _update_preview_buttons(self):
         self.btn_preview_accept.Enable(self._preview_ready())
         self.btn_preview_cancel.Enable(self.preview_mgr.state != segmentation_preview.PreviewState.IDLE)
+        # Interactive AI: "Update preview" only while an AI preview is shown
+        # (Cancel/Accept/another preview kind turn it back).
+        self.btn_ai_run.SetLabel(_("Update preview") if self._ai_preview_shown() else _("Preview with AI"))
 
     def _show_preview_overlay(self, array):
         """
@@ -1326,12 +1379,44 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     def _ai_unavailable_message(info) -> str:
         code = (info.unavailable_reason or "").split(":", 1)[0].strip()
         name = info.display_name or info.provider_id
+        if code == ai_provider.REASON_NOT_CONFIGURED:
+            return _("{name} is not configured.").format(name=name)
+        if code == ai_provider.REASON_NOT_CHECKED:
+            return _("{name} is configured - press Check environment.").format(name=name)
+        if code == ai_provider.REASON_RUNTIME:
+            parts = (info.unavailable_reason or "").split(":", 2)
+            detail = parts[1].strip() if len(parts) > 1 else ""
+            return _("{name}: environment check failed - {reason}").format(
+                name=name, reason=SegmentationPanel._ai_runtime_message(detail))
         return {
             ai_provider.REASON_PACKAGE_MISSING: _("{name} is not installed."),
             ai_provider.REASON_WEIGHTS: _("The {name} model is not ready."),
             ai_provider.REASON_DEPENDENCY: _("{name}: a required library is missing or broken."),
             ai_provider.REASON_API: _("The installed {name} version is not compatible."),
         }.get(code, _("{name} is not available.")).format(name=name)
+
+    @staticmethod
+    def _ai_runtime_message(code) -> str:
+        """Interactive AI external-runtime failures (protocol error codes)."""
+        from ..core.ai.external import protocol as p
+
+        return {
+            p.E_NOT_CONFIGURED: _("MedSAM2 is not configured."),
+            p.E_WORKER_START: _("The AI runtime could not be started - check the configured command."),
+            p.E_WORKER_EXITED: _("The AI runtime stopped unexpectedly. It will be restarted on the next preview."),
+            p.E_TIMEOUT: _("The AI runtime did not answer in time and was stopped."),
+            p.E_CANCELLED: _("AI processing cancelled."),
+            p.E_MALFORMED: _("The AI runtime sent an invalid answer and was stopped."),
+            p.E_INVALID_OUTPUT: _("AI result rejected: its size or values do not match the image volume."),
+            p.E_DEPENDENCY: _("The AI environment is missing a required library."),
+            p.E_CHECKPOINT_MISSING: _("The model checkpoint was not found - check the configuration."),
+            p.E_MODEL_LOAD: _("The model could not be loaded."),
+            p.E_CUDA_UNAVAILABLE: _("CUDA was selected but no CUDA device is usable in the AI environment."),
+            p.E_CUDA_OOM: _("Not enough GPU memory. Choose CPU, or close other GPU programs, and try again."),
+            p.E_PROMPT_UNSUPPORTED: _("This model does not support this kind of prompt."),
+            p.E_NEEDS_PROMPT: _("Add at least one point or a bounding box."),
+            p.E_PROTOCOL_VERSION: _("The AI runtime is not compatible with this plugin version."),
+        }.get(code, _("AI processing failed."))
 
     @staticmethod
     def _ai_candidate_message(code) -> str:
@@ -1374,18 +1459,31 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.lbl_ai_status.SetLabel(_("Off"))
         self._update_ai_controls()
 
-    def _refresh_ai_models(self):
-        """Dropdown = available providers only. With none, say why."""
+    @staticmethod
+    def _ai_display_name(info) -> str:
+        if info.checkable:  # interactive (prompt-driven, external runtime) provider
+            return _("Interactive AI segmentation ({name})").format(name=info.display_name)
+        return info.display_name
+
+    def _refresh_ai_models(self, keep_provider_id=None):
+        """Dropdown = available providers, then providers that ask to be
+        listed while unavailable (interactive AI: "not configured" must be
+        visible). With none, say why."""
         infos = self._ai_registry.list_providers() if self._ai_registry is not None else []
         available = [i for i in infos if i.available]
-        self._ai_provider_ids = [i.provider_id for i in available]
-        self.choice_ai_model.Set([i.display_name for i in available] or [_("(none)")])
-        self.choice_ai_model.SetSelection(0)
+        listed = available + [i for i in infos if not i.available and i.show_when_unavailable]
+        self._ai_provider_ids = [i.provider_id for i in listed]
+        self.choice_ai_model.Set([self._ai_display_name(i) for i in listed] or [_("(none)")])
+        index = self._ai_provider_ids.index(keep_provider_id) if keep_provider_id in self._ai_provider_ids else 0
+        self.choice_ai_model.SetSelection(index)
         for info in infos:
             if not info.available:
                 print(f"ROI Viewer: AI provider '{info.provider_id}' unavailable - {info.unavailable_reason}")
-        if available:
+        selected = self._selected_ai_info()
+        if selected is not None and selected.available:
             self.lbl_ai_status.SetLabel(_("Ready."))
+        elif selected is not None:
+            self.lbl_ai_status.SetLabel(self._ai_unavailable_message(selected))
         elif infos:
             self.lbl_ai_status.SetLabel(self._ai_unavailable_message(infos[0]))
         else:
@@ -1410,6 +1508,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         labels = {ai_provider.MODE_STANDARD: _("Standard accuracy"), ai_provider.MODE_FAST: _("Fast / less memory")}
         self.choice_ai_mode.Set([labels.get(m, m) for m in self._ai_modes] or [_("Standard accuracy")])
         self.choice_ai_mode.SetSelection(0)
+        # Interactive AI: CT window presets declared by the worker
+        self._ai_windows = list(choices.get(ai_provider.OPTION_HU_WINDOW, ()))
+        window_labels = {"soft_tissue": _("Soft tissue"), "lung": _("Lung"), "bone": _("Bone")}
+        self.choice_ai_window.Set([window_labels.get(w, w) for w in self._ai_windows] or [_("Soft tissue")])
+        self.choice_ai_window.SetSelection(0)
+        self._show_ai_environment_info(info)
 
     def _selected_ai_info(self):
         pid = self._selected_ai_provider_id()
@@ -1437,35 +1541,135 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             return None, ""
 
     def _on_ai_model_changed(self, event):
+        # Prompts belong to one provider's session (Interactive AI section 20)
+        self._ai_cancel_3d_pick()
+        self._ai_prompts.clear()
+        selected = self._selected_ai_info()
+        if selected is not None and selected.available:
+            self.lbl_ai_status.SetLabel(_("Ready."))
+        elif selected is not None:
+            self.lbl_ai_status.SetLabel(self._ai_unavailable_message(selected))
         self._refresh_ai_devices()
         self._update_ai_controls()
+        self._refresh_ai_prompt_overlay()
+
+    def _selected_ai_window(self):
+        index = self.choice_ai_window.GetSelection()
+        return self._ai_windows[index] if 0 <= index < len(self._ai_windows) else None
+
+    def _show_ai_environment_info(self, info):
+        """After an environment check: model, version, checkpoint, devices."""
+        if info is None or not info.checkable or not info.available:
+            self.lbl_ai_env_info.SetLabel("")
+            return
+        details = dict(info.details or {})
+        devices = ", ".join(d.upper() for d in info.supported_devices) or "-"
+        version = (info.version or "")[:12] or _("unknown")
+        self.lbl_ai_env_info.SetLabel(_(
+            "Model: {model} · version {version} · checkpoint {checkpoint} · devices {devices} (GPU: {gpu})"
+        ).format(model=details.get("model") or info.display_name, version=version,
+                 checkpoint=details.get("checkpoint") or "-", devices=devices,
+                 gpu=details.get("cuda_device") or "-"))
+
+    def _on_ai_check_environment(self, event):
+        """Explicit, slow check on a worker thread (starts the external
+        runtime once); the result comes back on the GUI thread."""
+        import threading
+
+        pid = self._selected_ai_provider_id()
+        provider = self._ai_registry.get(pid) if (pid and self._ai_registry is not None) else None
+        if provider is None or not hasattr(provider, "check_environment") or self._ai_env_checking:
+            return
+        self._ai_env_checking = True
+        self.lbl_ai_status.SetLabel(_("Checking the AI environment…"))
+        self._update_ai_controls()
+
+        def worker():
+            try:
+                info = provider.check_environment()
+            except Exception as e:  # never escapes the thread
+                print(f"ROI Viewer: AI environment check failed - {e}")
+                info = None
+            wx.CallAfter(self._on_ai_environment_checked, pid, info)
+
+        threading.Thread(target=worker, name="roi-viewer-ai-envcheck", daemon=True).start()
+
+    def _on_ai_environment_checked(self, pid, info):
+        if self._ai_shut_down:
+            # The plugin closed while the check ran: do not leave its worker.
+            provider = self._ai_registry.get(pid) if self._ai_registry is not None else None
+            if provider is not None:
+                provider.close()
+            return
+        self._ai_env_checking = False
+        try:
+            if self._ai_registry is None:
+                return
+            if info is not None:
+                self._ai_registry.update_info(pid, info)
+            self._refresh_ai_models(keep_provider_id=pid)
+            selected = self._selected_ai_info()
+            if selected is not None and selected.provider_id == pid and selected.available:
+                self.lbl_ai_status.SetLabel(_("Environment ready."))
+            self._update_ai_controls()
+        except RuntimeError as e:  # panel destroyed meanwhile
+            print(f"ROI Viewer: AI environment result dropped - {e}")
 
     def _update_ai_controls(self):
         enabled = self._ai_enabled()
-        has_model = enabled and self._selected_ai_provider_id() is not None
+        listed = enabled and self._selected_ai_provider_id() is not None
+        selected = self._selected_ai_info() if listed else None
+        has_model = listed and selected is not None and selected.available
         busy = self._ai_jobs is not None and self._ai_jobs.is_busy()
         running = busy and self._ai_jobs.state in (ai_jobs.AIJobState.PREPARING, ai_jobs.AIJobState.RUNNING)
-        info = self._selected_ai_info() if has_model else None
+        info = selected if has_model else None
         # E6b: a provider that consumes no prompts (e.g. TotalSegmentator) gets
         # none - the point/box controls are disabled, never faked into it.
-        uses_prompts = enabled and (info is None or bool(info.supported_prompt_types))
-        for widget in (self.rb_ai_positive, self.rb_ai_negative, self.btn_ai_pick_point, self.btn_ai_cursor_point,
-                       self.btn_ai_corner1, self.btn_ai_corner2, self.btn_ai_clear):
-            widget.Enable(uses_prompts)
-        self.choice_ai_model.Enable(has_model)
+        # Interactive AI: each prompt kind only if the provider declared it.
+        types = tuple(info.supported_prompt_types) if info is not None else PromptType.SUPPORTED
+        uses_prompts = enabled and bool(types)
+        points = uses_prompts and (PromptType.POSITIVE_POINT in types or PromptType.NEGATIVE_POINT in types)
+        box = uses_prompts and PromptType.BOX in types
+        self.rb_ai_positive.Enable(uses_prompts and PromptType.POSITIVE_POINT in types)
+        self.rb_ai_negative.Enable(uses_prompts and PromptType.NEGATIVE_POINT in types)
+        if PromptType.NEGATIVE_POINT not in types and self.rb_ai_negative.GetValue():
+            self.rb_ai_positive.SetValue(True)
+        for widget in (self.btn_ai_pick_point, self.btn_ai_cursor_point):
+            widget.Enable(points)
+        for widget in (self.btn_ai_corner1, self.btn_ai_corner2):
+            widget.Enable(box)
+        has_corner = self._ai_prompts.corner1 is not None or self._ai_prompts.corner2 is not None
+        self.btn_ai_undo.Enable(points and bool(self._ai_prompts.points))
+        self.btn_ai_clear_box.Enable(box and has_corner)
+        self.btn_ai_clear.Enable(uses_prompts)
+        self.choice_ai_model.Enable(listed)
         self.choice_ai_device.Enable(has_model)
         self.combo_ai_structure.Enable(has_model and bool(self._ai_structures))
         self.choice_ai_mode.Enable(has_model and len(self._ai_modes) > 1)
+        self.choice_ai_window.Enable(has_model and bool(self._ai_windows))
         # Only what the selected model really uses is shown (E6b review):
         # prompts for prompt-driven models, structure/mode where declared,
-        # the install hint while no model is available.
+        # the install hint while no model is available, the environment box
+        # for an interactive model that still needs setup or the check.
+        needs_setup = bool(listed and selected is not None and selected.checkable and not selected.available)
         self._ai_show(self._ai_prompt_sizer, has_model and uses_prompts)
         self._ai_show(self._ai_structure_row, has_model and bool(self._ai_structures))
         self._ai_show(self._ai_mode_row, has_model and len(self._ai_modes) > 1)
-        self._ai_show(self.lbl_ai_help, enabled and not has_model)
+        self._ai_show(self._ai_window_row, has_model and bool(self._ai_windows))
+        self._ai_show(self._ai_env_sizer, needs_setup)
+        self._ai_show(self.lbl_ai_env_info, bool(has_model and selected.checkable))
+        self._ai_show(self.lbl_ai_help, enabled and not has_model and not needs_setup)
+        # Also while "not configured": the check re-reads the configuration
+        # file (and starts nothing while it is missing or disabled).
+        self.btn_ai_check_env.Enable(needs_setup and not self._ai_env_checking)
         self.btn_ai_run.Enable(has_model and not busy)
+        self.btn_ai_run.SetLabel(_("Update preview") if self._ai_preview_shown() else _("Preview with AI"))
         self.btn_ai_cancel.Enable(running)
         self._update_ai_prompt_label()
+
+    def _ai_preview_shown(self) -> bool:
+        return (self.preview_mgr.preview_kind == "ai"
+                and self.preview_mgr.state == segmentation_preview.PreviewState.PREVIEW_READY)
 
     def _ai_show(self, item, show: bool):
         if bool(self._ai_sizer.IsShown(item)) == bool(show):
@@ -1516,7 +1720,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             print(f"ROI Viewer: AI prompt ignored - {e}")
             self.lbl_ai_status.SetLabel(_("Outside the image volume - ignored."))
             return
-        self._update_ai_prompt_label()
+        self._update_ai_controls()
+        self._refresh_ai_prompt_overlay()
 
     def _ai_cursor_position(self):
         position = self.controller.get_crosshair_position()
@@ -1562,7 +1767,40 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
     def _on_ai_clear(self, event):
         self._ai_prompts.clear()
-        self._update_ai_prompt_label()
+        self._update_ai_controls()
+        self._refresh_ai_prompt_overlay()
+
+    def _on_ai_undo(self, event):
+        self._ai_prompts.undo_last_point()
+        self._update_ai_controls()
+        self._refresh_ai_prompt_overlay()
+
+    def _on_ai_clear_box(self, event):
+        self._ai_prompts.clear_box()
+        self._update_ai_controls()
+        self._refresh_ai_prompt_overlay()
+
+    def _ai_cancel_3d_pick(self):
+        self.controller.picker.remove_callback(self._on_ai_point_picked)
+        try:
+            self.btn_ai_pick_point.SetValue(False)
+        except RuntimeError:
+            pass
+
+    def _refresh_ai_prompt_overlay(self):
+        """Green/red point markers and the box outline in the 2D views
+        (transient plugin canvas objects - gui/ai_prompt_overlay.py)."""
+        overlay = getattr(self.controller, "ai_prompt_overlay", None)
+        if overlay is None:
+            return
+        try:
+            geometry = self._ai_volume_geometry()
+            if geometry is None:
+                overlay.clear()
+            else:
+                overlay.update(self._ai_prompts, geometry[0], geometry[1])
+        except Exception as e:
+            print(f"ROI Viewer: AI prompt markers not updated - {e}")
 
     def _on_ai_run(self, event):
         import time
@@ -1601,6 +1839,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             options[ai_provider.OPTION_STRUCTURE] = structure
         if self._ai_modes:
             options[ai_provider.OPTION_MODE] = self._selected_ai_mode()
+        if self._ai_windows:
+            options[ai_provider.OPTION_HU_WINDOW] = self._selected_ai_window()
         orientation, acquisition = self._ai_volume_orientation()
         options[ai_provider.OPTION_PATIENT_ORIENTATION] = orientation
         options[ai_provider.OPTION_ACQUISITION] = acquisition
@@ -1614,12 +1854,19 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._clear_preview_overlay()
         self.preview_mgr.cancel()
         self._ai_preview_generation = self.preview_mgr.new_generation()
+        # the request's own options dict: the provider echoes it to its runtime
+        options[ai_provider.OPTION_GENERATION] = self._ai_preview_generation
         self._ai_run = {
             "provider_id": pid, "provider_name": info.display_name if info else pid,
             "prompt_count": request.prompts.count, "device": request.device,
             "shape": tuple(volume.shape), "spacing": spacing, "started": time.perf_counter(),
             "structure": options.get(ai_provider.OPTION_STRUCTURE), "mode": options.get(ai_provider.OPTION_MODE),
             "interruptible": bool(info and Capability.INTERRUPTIBLE in info.capabilities),
+            "interactive": bool(info and info.checkable),
+            "positive_points": sum(1 for q in request.prompts.points if q.positive),
+            "negative_points": sum(1 for q in request.prompts.points if not q.positive),
+            "box": request.prompts.box is not None, "hu_window": options.get(ai_provider.OPTION_HU_WINDOW),
+            "generation": self._ai_preview_generation,
         }
         self.lbl_preview_status.SetLabel(_("Computing…"))
         job = self._ai_jobs.start(provider, request)
@@ -1682,9 +1929,16 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             print(f"ROI Viewer: AI UI update skipped - {e}")
 
     def _on_ai_failed(self, error):
-        # A string is a request-check code; an exception is a provider failure.
-        self.lbl_ai_status.SetLabel(
-            self._ai_request_message(error) if isinstance(error, str) else _("AI processing failed."))
+        # A string is a request-check code; an exception is a provider failure
+        # (an interactive-runtime failure carries a protocol error code).
+        if isinstance(error, str):
+            message = self._ai_request_message(error)
+        elif getattr(error, "code", None):
+            message = self._ai_runtime_message(error.code)
+            print(f"ROI Viewer: AI runtime failure {error.code} - {getattr(error, 'detail', '')}")
+        else:
+            message = _("AI processing failed.")
+        self.lbl_ai_status.SetLabel(message)
         if self._ai_jobs is not None:
             self._ai_jobs.consume_result()
         if self._ai_preview_generation is not None and not self.preview_mgr.is_stale(self._ai_preview_generation):
@@ -1736,6 +1990,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             "prompt_count": run.get("prompt_count", 0),
             "structure": run.get("structure"), "mode": run.get("mode"),
             "provider_details": dict(getattr(result, "extra", {}) or {}),
+            # Interactive AI: exactly what Accept must commit (byte identity)
+            "interactive": run.get("interactive", False),
+            "positive_points": run.get("positive_points", 0), "negative_points": run.get("negative_points", 0),
+            "box": run.get("box", False), "hu_window": run.get("hu_window"), "generation": run.get("generation"),
+            "candidate_sha256": native_mask_sha256(foreground),
+            "mask_name_prefix": (getattr(result, "extra", {}) or {}).get("mask_name_prefix"),
         }
         if not self.preview_mgr.set_ai_preview(self._ai_preview_generation, array, metadata, stats, name="AI Preview"):
             try:
@@ -1746,6 +2006,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._preview_temp_file = temp_file
         self._show_preview_overlay(array)
         self.lbl_preview_status.SetLabel(_("AI preview: {info}.").format(info=self._region_info(stats)))
+        if run.get("interactive"):
+            print(f"ROI Viewer: interactive AI candidate sha256={metadata['candidate_sha256']} "
+                  f"generation={run.get('generation')}")
         self.lbl_ai_status.SetLabel(_("Done in {seconds} s.").format(seconds=fmt_float(runtime, 1)))
         print(f"ROI Viewer: AI preview ready - {metadata}")
         self._update_preview_buttons()
@@ -1761,16 +2024,38 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             import invesalius.constants as const
             from ..interface.project_interface import ProjectInterface
 
-            mask_count = len(ProjectInterface().get_mask_dict())
+            mask_dict = ProjectInterface().get_mask_dict()
+            mask_count = len(mask_dict)
             colour = const.MASK_COLOUR[mask_count % len(const.MASK_COLOUR)]
-            structure = (self.preview_mgr.ai_metadata or {}).get("structure")
-            # E6b: "AI - <canonical class name>" (not translated); generic otherwise.
-            name = f"AI - {structure}" if structure else f"AI Segmentation {mask_count + 1}"
-            mask = native_mask.commit_preview_array_to_new_mask(np.asarray(preview_array) > 0, name, colour)
+            ai_metadata = self.preview_mgr.ai_metadata or {}
+            structure = ai_metadata.get("structure")
+            prefix = ai_metadata.get("mask_name_prefix")
+            if structure:  # E6b: "AI - <canonical class name>" (not translated)
+                name = f"AI - {structure}"
+            elif prefix:  # interactive AI: "AI - MedSAM2 N", never an existing name
+                names = {getattr(m, "name", "") for m in mask_dict.values()}
+                n = 1
+                while f"{prefix} {n}" in names:
+                    n += 1
+                name = f"{prefix} {n}"
+            else:
+                name = f"AI Segmentation {mask_count + 1}"
+            foreground = np.asarray(preview_array) > 0
+            expected = ai_metadata.get("candidate_sha256")
+            if expected and native_mask_sha256(foreground) != expected:
+                print("ROI Viewer: AI Accept refused - the preview no longer equals the candidate")
+                return None
+            mask = native_mask.commit_preview_array_to_new_mask(foreground, name, colour)
             if mask is None:
                 return None
+            if expected:
+                import invesalius.data.slice_ as sl
+
+                committed = native_mask_sha256(native_mask.logical_foreground(sl.Slice(), mask))
+                print(f"ROI Viewer: AI accepted '{name}' sha256={committed} "
+                      f"({'identical to' if committed == expected else 'DIFFERENT from'} the candidate)")
             # Recorded for the analysis report (session only, never guessed later).
-            metadata = dict(self.preview_mgr.ai_metadata or {})
+            metadata = dict(ai_metadata)
             provenance = getattr(self.controller, "roi_provenance", None)
             if provenance is not None:
                 provenance[mask] = {"source": "AI", "ai": metadata}
@@ -1783,12 +2068,14 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         """Plugin close / destroy: no AI callback may reach this panel
         afterwards (a late result is dropped), models are released.
         Idempotent."""
+        self._ai_shut_down = True
         self.controller.picker.remove_callback(self._on_ai_point_picked)
         if self._ai_jobs is not None:
             self._ai_jobs.shutdown()
         if self._ai_registry is not None:
             self._ai_registry.close_all()
         self._ai_prompts.clear()
+        self._refresh_ai_prompt_overlay()
 
     def reset_ai_session(self):
         """Project close/load: stop any AI job, forget prompts, release
@@ -1800,6 +2087,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self._ai_registry.close_all()
         self._ai_prompts.clear()
         self._ai_run = None
+        self._refresh_ai_prompt_overlay()
         try:
             self.btn_ai_pick_point.SetValue(False)
             self._update_ai_controls()
@@ -2078,6 +2366,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         if kind == "region_growing_preview":
             return _("Region growing preview")
         if kind == "ai_preview":
+            if (self.preview_mgr.ai_metadata or {}).get("interactive"):
+                return _("Interactive AI preview")
             return _("AI preview")
         return _("Current ROI")
 

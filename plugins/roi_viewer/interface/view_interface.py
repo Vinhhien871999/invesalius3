@@ -128,6 +128,24 @@ class ViewInterface:
         return None
 
 
+    def get_slice_viewers(self):
+        """InVesalius's real 2D slice viewers (invesalius.data.viewer_slice.
+        Viewer), found the same way as get_volume_viewer(). [] if none."""
+        try:
+            import invesalius.data.viewer_slice as viewer_slice
+        except ImportError:
+            return []
+        top_window = wx.GetApp().GetTopWindow() if wx.GetApp() else None
+        if top_window is None:
+            return []
+        found, stack = [], [top_window]
+        while stack:
+            window = stack.pop()
+            if isinstance(window, viewer_slice.Viewer):
+                found.append(window)
+            stack.extend(window.GetChildren())
+        return found
+
     def get_frame(self) -> Optional[wx.Frame]:
         """Get the main frame."""
         return self._frame

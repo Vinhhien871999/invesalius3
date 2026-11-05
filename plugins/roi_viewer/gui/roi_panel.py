@@ -88,6 +88,11 @@ class ROIViewerPanel(wx.Panel):
         # Phase 09 (Sync 2D -> 3D): visual counterpart to the real 2D
         # crosshair - see on_cross_focal_point_changed() below.
         self.marker_3d = marker_3d.CrosshairMarker3D()
+        # Interactive AI: green/red point and box markers in the 2D views
+        # (transient canvas objects, never Project data).
+        from .ai_prompt_overlay import AIPromptOverlay2D
+
+        self.ai_prompt_overlay = AIPromptOverlay2D(self._slice_viewers)
         # Phase 13.5 (pre-Phase-14, visual enhancement of the same C8
         # feature - not a new C9): 3 geometric planes showing the
         # current Axial/Coronal/Sagital slice positions inside the
@@ -183,6 +188,12 @@ class ROIViewerPanel(wx.Panel):
         # shutdown(): gui/sidebar.py calls it when the sidebar pane or the
         # floating window is closed - see shutdown().
 
+    @staticmethod
+    def _slice_viewers():
+        from ..interface.view_interface import ViewInterface
+
+        return ViewInterface().get_slice_viewers()
+
     def shutdown(self):
         """Detach everything this panel attached to InVesalius's shared
         objects - the picker observer on the real VTK interactor, the
@@ -200,6 +211,10 @@ class ROIViewerPanel(wx.Panel):
             self.segmentation_panel.shutdown_ai()
         except Exception as e:
             print(f"ROI Viewer: AI shutdown on close failed - {e}")
+        try:
+            self.ai_prompt_overlay.clear()
+        except Exception as e:
+            print(f"ROI Viewer: AI prompt markers not removed on close - {e}")
         try:
             # Analysis: overlay, 3D class actors, worker results, callback.
             self.analysis_panel.shutdown()
@@ -437,6 +452,8 @@ class ROIViewerPanel(wx.Panel):
         # on_cross_focal_point_changed() will re-attach() lazily the
         # next real 2D interaction in the new project.
         self.marker_3d.detach()
+        # Interactive AI: prompts belong to the old volume
+        self.ai_prompt_overlay.clear()
         # Phase 13.5: same reasoning as marker_3d.detach() above - a
         # plane positioned/sized for the OLD project's bounds is
         # meaningless once a different (or no) project is loaded.
