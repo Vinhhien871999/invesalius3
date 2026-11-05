@@ -69,6 +69,9 @@ class CrosshairMarker3D:
                 self.actor.SetMapper(mapper)
                 self.actor.GetProperty().SetColor(*self.colour)
                 self.actor.GetProperty().SetOpacity(0.85)
+                # Never pickable (05/11/2026): a click near the marker picked
+                # the marker sphere instead of the anatomy behind it.
+                self.actor.SetPickable(False)
                 self.actor.VisibilityOff()
 
             if self.renderer is not renderer:

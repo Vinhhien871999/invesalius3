@@ -193,7 +193,7 @@ def test_region_growing_seed_from_3d_pick_anisotropic(monkeypatch):
     from plugins.roi_viewer.interface import project_interface
 
     pi = _real_project_interface()
-    pi.get_volume_data = lambda: types.SimpleNamespace(shape=SHAPE)
+    pi.get_volume_data = lambda: np.zeros(SHAPE, dtype=np.int16)
     monkeypatch.setattr(project_interface, "ProjectInterface", lambda: pi)
     monkeypatch.setattr(sp_mod.wx, "CallAfter", lambda fn, *a, **k: None)
 
@@ -201,7 +201,7 @@ def test_region_growing_seed_from_3d_pick_anisotropic(monkeypatch):
     panel = types.SimpleNamespace(
         controller=types.SimpleNamespace(
             sync_mgr=SyncManager2D3D(), seg_mgr=SegmentationManager(),
-            picker=widget(remove_callback=lambda cb: None),
+            picker=widget(remove_callback=lambda cb: None, remove_miss_callback=lambda cb: None),
         ),
         btn_pick_seed=widget(SetValue=lambda v: None),
         rg_status=widget(SetLabel=lambda s: None),
@@ -210,7 +210,8 @@ def test_region_growing_seed_from_3d_pick_anisotropic(monkeypatch):
         btn_preview_region_growing=widget(Enable=lambda v: None),
         _preview_seed_world=None, _preview_seed_voxel=None,
     )
-    panel._on_seed_picked = SegmentationPanel._on_seed_picked.__get__(panel)
+    for name in ("_on_seed_picked", "_on_seed_missed", "_disarm_seed_pick", "_apply_seed", "_show_seed_marker"):
+        setattr(panel, name, getattr(SegmentationPanel, name).__get__(panel))
     panel._on_seed_picked(VIEW_POS)
     assert panel._preview_seed_voxel == VOXEL
     assert panel._preview_seed_world == pytest.approx(SLICE_POS)

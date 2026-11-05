@@ -18,6 +18,10 @@ class PointPicker3D:
         self.last_picked_point = None
         self.picked_points = []  # History of picked points
         self.callbacks: List[Callable] = []
+        # Called with no argument when a click hits no pickable geometry
+        # (05/11/2026: such a click used to be reported as a point - VTK
+        # returns a position on the camera focal plane even for a miss).
+        self.miss_callbacks: List[Callable] = []
         self.enabled = True
         self.renderer = None
         self.interactor = None
@@ -42,7 +46,10 @@ class PointPicker3D:
             # after cleanup()), drop the old observer first so repeated
             # init calls never stack up duplicate observers on the same
             # real interactor.
-            self.cleanup()
+            # Re-attaching (e.g. after a project reload) keeps the registered
+            # callbacks: clearing them here silently disconnected the
+            # permanent "Chọn điểm trong 3D" callback (05/11/2026).
+            self._detach_observer()
 
             # Use cell picker for surface picking
             self.picker = vtkCellPicker()
@@ -83,40 +90,48 @@ class PointPicker3D:
         closed). Must be called when the owning ROIViewerPanel is
         destroyed.
         """
+        self._detach_observer()
+        self.callbacks.clear()
+        self.miss_callbacks.clear()
+
+    def _detach_observer(self):
         if self.interactor is not None and self._observer_tag is not None:
             try:
                 self.interactor.RemoveObserver(self._observer_tag)
             except Exception:
                 pass
         self._observer_tag = None
-        self.callbacks.clear()
             
     def _on_left_click(self, obj, event):
         """Handle left mouse button click."""
         if not self.enabled:
             return
             
+        if not self.picker:
+            return
         try:
-            # Get click position
             click_pos = self.interactor.GetEventPosition()
-            
-            # Pick at click position
-            if self.picker:
-                self.picker.Pick(click_pos[0], click_pos[1], 0, self.renderer)
-                
-                # Get picked position
-                picked_position = self.picker.GetPickPosition()
-                
-                if picked_position:
-                    self.last_picked_point = tuple(picked_position)
-                    self.picked_points.append(self.last_picked_point)
-                    
-                    # Call callbacks
-                    for callback in self.callbacks:
-                        callback(self.last_picked_point)
-                        
+            hit = self.picker.Pick(click_pos[0], click_pos[1], 0, self.renderer)
         except Exception as e:
             print(f"Error in point picking: {e}")
+            return
+        if not hit:
+            self._notify(self.miss_callbacks)
+            return
+        self.last_picked_point = tuple(self.picker.GetPickPosition())
+        self.picked_points.append(self.last_picked_point)
+        self._notify(self.callbacks, self.last_picked_point)
+
+    @staticmethod
+    def _notify(callbacks, *args):
+        """Every callback runs, in order, on a snapshot of the list: one-shot
+        callbacks remove themselves while being called (that used to skip
+        the next one), and one failing callback does not stop the others."""
+        for callback in list(callbacks):
+            try:
+                callback(*args)
+            except Exception as e:
+                print(f"Error in point picking callback: {e}")
             
     def pick(self, x: int, y: int) -> Optional[Tuple[float, float, float]]:
         """
@@ -130,11 +145,10 @@ class PointPicker3D:
             Tuple of (world_x, world_y, world_z) or None
         """
         if self.picker and self.enabled:
-            self.picker.Pick(x, y, 0, self.renderer)
-            picked_position = self.picker.GetPickPosition()
-            if picked_position:
-                self.last_picked_point = tuple(picked_position)
-                return self.last_picked_point
+            if not self.picker.Pick(x, y, 0, self.renderer):
+                return None
+            self.last_picked_point = tuple(self.picker.GetPickPosition())
+            return self.last_picked_point
         return None
         
     def add_callback(self, callback: Callable):
@@ -145,6 +159,14 @@ class PointPicker3D:
         """Remove a callback function."""
         if callback in self.callbacks:
             self.callbacks.remove(callback)
+
+    def add_miss_callback(self, callback: Callable):
+        if callback not in self.miss_callbacks:
+            self.miss_callbacks.append(callback)
+
+    def remove_miss_callback(self, callback: Callable):
+        if callback in self.miss_callbacks:
+            self.miss_callbacks.remove(callback)
             
     def clear_points(self):
         """Clear all picked points."""

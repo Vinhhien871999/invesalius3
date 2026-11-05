@@ -33,8 +33,6 @@ CATALOG = {
     "Region Growing": "Phát triển vùng",
     "Tolerance:": "Độ dung sai:",
     "Pick seed point (3D)": "Chọn điểm hạt giống (3D)",
-    "Click a point on the 3D surface. Without preview mode the region grows and a real mask is created immediately.":
-        "Nhấp một điểm trên bề mặt 3D. Nếu chưa bật chế độ xem trước, vùng sẽ được phát triển và tạo mặt nạ thật ngay.",
     "Preview": "Xem trước",
     "Enable preview mode": "Bật chế độ xem trước",
     "Otsu and Region Growing show a temporary overlay first. No real mask is created until you click Accept.":
@@ -79,8 +77,6 @@ CATALOG = {
     "Click a seed point in the 3D view...": "Nhấp chọn điểm hạt giống trong khung 3D…",
     "Invalid pick position - try again": "Vị trí chọn không hợp lệ, hãy thử lại",
     "Invalid seed point.": "Điểm hạt giống không hợp lệ.",
-    "Seed at voxel {seed}. Click Preview.": "Điểm hạt giống tại voxel {seed}. Bấm Xem trước.",
-    "Growing from voxel {seed}…": "Đang phát triển vùng từ voxel {seed}…",
     "Invalid region growing parameters.": "Tham số phát triển vùng không hợp lệ.",
     "Region growing failed": "Phát triển vùng thất bại",
     "No region found (tolerance {tolerance}). Try a higher tolerance.":
@@ -427,6 +423,13 @@ CATALOG = {
     "Statistics saved.": "Đã lưu số liệu.",
     "Report saved.": "Đã lưu báo cáo.",
     "Report failed.": "Tạo báo cáo thất bại.",
+    "Press, then click a point on a visible 3D surface. Without preview mode the region grows and a real mask is created immediately.": "Bấm nút rồi nhấp một điểm trên bề mặt 3D đang hiển thị. Nếu không bật chế độ xem trước, vùng sẽ phát triển và tạo mặt nạ thật ngay.",
+    "Seed at 2D cursor": "Hạt giống tại con trỏ 2D",
+    "Uses the 2D cross position (InVesalius's \"Slices' cross intersection\" tool) as the seed.": "Dùng vị trí giao điểm 2D (công cụ \"Slices' cross intersection\" của InVesalius) làm hạt giống.",
+    "The click hit no 3D surface. Click on a visible surface (create one with Update 3D surface) or use Seed at 2D cursor.": "Cú nhấp không trúng bề mặt 3D nào. Hãy nhấp lên một bề mặt đang hiển thị (tạo bằng Cập nhật bề mặt 3D) hoặc dùng Hạt giống tại con trỏ 2D.",
+    "No 2D cursor position yet - turn on the cross tool and click a 2D view.": "Chưa có vị trí con trỏ 2D - hãy bật công cụ cross và nhấp vào một lát 2D.",
+    "Seed at voxel {seed} (HU {hu}). Click Preview.": "Hạt giống tại voxel {seed} (HU {hu}). Bấm Xem trước.",
+    "Growing from voxel {seed} (HU {hu})…": "Đang phát triển vùng từ voxel {seed} (HU {hu})…",
     "There are unapplied changes.": "Có thay đổi chưa được áp dụng.",
     "No voxel of the ROI is inside the declared HU ranges. Check the class ranges.": "Không có voxel nào của ROI nằm trong các khoảng HU đã khai báo. Hãy kiểm tra lại các khoảng phân lớp.",
     "Most voxels are in no HU class.": "Phần lớn voxel chưa thuộc lớp HU nào.",

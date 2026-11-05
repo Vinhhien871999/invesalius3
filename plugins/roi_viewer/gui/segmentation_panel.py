@@ -230,15 +230,21 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         self.btn_pick_seed = wx.ToggleButton(self, wx.ID_ANY, _("Pick seed point (3D)"))
         self.btn_pick_seed.SetToolTip(_(
-            "Click a point on the 3D surface. Without preview mode the region "
+            "Press, then click a point on a visible 3D surface. Without preview mode the region "
             "grows and a real mask is created immediately."
         ))
+        # 05/11/2026: a seed inside the organ, placed on a 2D slice - a 3D
+        # pick can only land on a surface (the ROI's boundary).
+        self.btn_seed_cursor = wx.Button(self, wx.ID_ANY, _("Seed at 2D cursor"))
+        self.btn_seed_cursor.SetToolTip(_(
+            "Uses the 2D cross position (InVesalius's \"Slices' cross intersection\" tool) as the seed."))
         # E2: enabled only in preview mode after a seed was picked.
         self.btn_preview_region_growing = wx.Button(self, wx.ID_ANY, _("Preview"))
         self.btn_preview_region_growing.Enable(False)
         # Stacked, not side by side: an equal-width row is twice as wide as
         # its longest label, which overflowed narrow windows.
         rg_sizer.Add(self.btn_pick_seed, 0, wx.ALL | wx.EXPAND, 2)
+        rg_sizer.Add(self.btn_seed_cursor, 0, wx.ALL | wx.EXPAND, 2)
         rg_sizer.Add(self.btn_preview_region_growing, 0, wx.ALL | wx.EXPAND, 2)
 
         self.rg_status = ui_helpers.StatusText(self, "")
@@ -435,6 +441,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_apply_thresh.Bind(wx.EVT_BUTTON, self._on_apply_threshold)
         self.btn_preview_otsu.Bind(wx.EVT_BUTTON, self._on_preview_otsu)
         self.btn_pick_seed.Bind(wx.EVT_TOGGLEBUTTON, self._on_toggle_pick_seed)
+        self.btn_seed_cursor.Bind(wx.EVT_BUTTON, self._on_seed_from_cursor)
         self.btn_preview_region_growing.Bind(wx.EVT_BUTTON, self._on_preview_region_growing)
         self.cb_enable_preview.Bind(wx.EVT_CHECKBOX, self._on_enable_preview_toggle)
         self.btn_preview_accept.Bind(wx.EVT_BUTTON, self._on_preview_accept)
@@ -669,7 +676,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     def _on_toggle_pick_seed(self, event):
         if not self.btn_pick_seed.GetValue():
             # User cancelled - unregister without growing anything.
-            self.controller.picker.remove_callback(self._on_seed_picked)
+            self._disarm_seed_pick()
             self.rg_status.SetLabel("")
             return
 
@@ -678,9 +685,38 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self.rg_status.SetLabel(_("No 3D view available yet"))
             return
 
+        if self._seed_pick_armed():
+            return  # a second press while armed: one registration only
         self.controller.picker.add_callback(self._on_seed_picked)
+        self.controller.picker.add_miss_callback(self._on_seed_missed)
         self.controller.picker.enable()
         self.rg_status.SetLabel(_("Click a seed point in the 3D view..."))
+
+    def _seed_pick_armed(self) -> bool:
+        return self._on_seed_picked in self.controller.picker.callbacks
+
+    def _disarm_seed_pick(self):
+        self.controller.picker.remove_callback(self._on_seed_picked)
+        self.controller.picker.remove_miss_callback(self._on_seed_missed)
+
+    def _on_seed_missed(self):
+        """A click that hit no surface: say so and stay armed (05/11/2026 -
+        before, such a click produced a seed on the camera focal plane)."""
+        try:
+            self.rg_status.SetLabel(_("The click hit no 3D surface. Click on a visible surface "
+                                      "(create one with Update 3D surface) or use Seed at 2D cursor."))
+        except RuntimeError:
+            pass
+
+    def _on_seed_from_cursor(self, event):
+        position = self.controller.get_crosshair_position()
+        if position is None:
+            self.rg_status.SetLabel(_("No 2D cursor position yet - turn on the cross tool and click a 2D view."))
+            return
+        if self.btn_pick_seed.GetValue():
+            self.btn_pick_seed.SetValue(False)
+        self._disarm_seed_pick()
+        self._apply_seed(tuple(float(c) for c in position))
 
     def _on_seed_picked(self, world_point):
         # One-shot: a seed pick always disarms the toggle, whether or
@@ -688,19 +724,38 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         # never gets stuck in a "picking..." state if anything below
         # fails - see the try/except wrapping the whole body.
         wx.CallAfter(self.btn_pick_seed.SetValue, False)
-        self.controller.picker.remove_callback(self._on_seed_picked)
+        self._disarm_seed_pick()
+        import math
 
+        # Round-2 audit, section C: a VTK pick can in principle hand back
+        # non-finite coordinates - reject before any conversion.
+        if world_point is None or len(world_point) != 3 or not all(math.isfinite(c) for c in world_point):
+            self.rg_status.SetLabel(_("Invalid pick position - try again"))
+            return
+        # The 3D pick is in the y-flipped view frame; convert to the slice
+        # frame before voxel conversion (core/coordinates.py). Before
+        # 30/09/2026 this skipped the flip, so every seed's coronal index
+        # clamped to row 0.
+        from ..core.coordinates import view_to_slice
+
+        self._apply_seed(view_to_slice(world_point))
+
+    def _show_seed_marker(self, world_slice):
+        """Feedback: the 3D marker moves to the seed."""
         try:
-            import math
+            from ..core.coordinates import slice_to_view
+            from ..interface.view_interface import ViewInterface
 
-            # Round-2 audit, section C: a VTK pick can in principle
-            # hand back non-finite coordinates (e.g. a picker miss on
-            # degenerate geometry) - reject before doing any conversion
-            # or spinning up a worker thread for a nonsensical seed.
-            if world_point is None or len(world_point) != 3 or not all(math.isfinite(c) for c in world_point):
-                self.rg_status.SetLabel(_("Invalid pick position - try again"))
-                return
+            viewer = ViewInterface().get_volume_viewer()
+            if viewer is not None and hasattr(viewer, "ren") and self.controller.marker_3d.attach(viewer.ren):
+                self.controller.marker_3d.update_position(*slice_to_view(world_slice))
+                self.controller.request_render()
+        except Exception as e:
+            print(f"ROI Viewer: seed marker skipped - {e}")
 
+    def _apply_seed(self, world_point):
+        """Seed from a slice-frame (x, y, z) mm position: 3D pick or 2D cursor."""
+        try:
             from ..interface.project_interface import ProjectInterface
 
             pi = ProjectInterface()
@@ -709,13 +764,6 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 wx.CallAfter(self.rg_status.SetLabel, _("No project loaded."))
                 return
 
-            # The 3D pick is in the y-flipped view frame; convert to the
-            # slice frame before voxel conversion (core/coordinates.py).
-            # Before 30/09/2026 this skipped the flip, so every seed's
-            # coronal index clamped to row 0.
-            from ..core.coordinates import view_to_slice
-
-            world_point = view_to_slice(world_point)
             self.controller.sync_mgr.set_volume_info(pi.get_spacing(), pi.get_shape())
             seed = self.controller.sync_mgr.world_to_voxel(*world_point)
             tolerance = self.spin_rg_tolerance.GetValue()
@@ -725,6 +773,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 self.rg_status.SetLabel(_("Invalid seed point."))
                 print(f"ROI Viewer: invalid seed - {seed_error}")
                 return
+            hu = int(volume[seed])
+            self._show_seed_marker(world_point)
 
             # E2 (enhancement/advanced-segmentation branch only): with
             # Preview Workflow enabled, a seed pick only RECORDS the seed
@@ -740,11 +790,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                 wx.CallAfter(self.btn_preview_region_growing.Enable, True)
                 wx.CallAfter(
                     self.rg_status.SetLabel,
-                    _("Seed at voxel {seed}. Click Preview.").format(seed=seed),
+                    _("Seed at voxel {seed} (HU {hu}). Click Preview.").format(seed=seed, hu=hu),
                 )
                 return
 
-            wx.CallAfter(self.rg_status.SetLabel, _("Growing from voxel {seed}…").format(seed=seed))
+            wx.CallAfter(self.rg_status.SetLabel, _("Growing from voxel {seed} (HU {hu})…").format(seed=seed, hu=hu))
             # scipy/numpy BFS over a full CT volume can take real time
             # (see the performance note on SegmentationManager.
             # region_growing() itself) - run off the UI thread so the
