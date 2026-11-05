@@ -1,0 +1,14 @@
+# Git final state - 2026-11-05 21:28:21 (written before this commit and the push)
+branch: feature/interactive-ai-direct-click
+DIRECT_CLICK_BASE_HEAD: 02c15f9ebca6669c08b57ecc283b51f8669e547e (feature/interactive-ai-medsam2)
+HEAD before this commit: f1e22efafd0d2da5cbc0a078f065a851977d8790
+f1e22efa docs(direct-ai): record validation
+02352939 feat(direct-ai): add smart prompt, automatic preview, drag box and name suggestion
+647c1fd9 perf(direct-ai): reuse MedSAM2 inference state
+b77beaf0 feat(direct-ai): add direct CT click prompt capture
+8a5fef14 docs(direct-ai): define one-click interaction architecture
+feature/interactive-ai-medsam2 02c15f9e (unchanged)
+enhancement/advanced-segmentation 70720ca8 (unchanged)
+thesis-ct-roi-tools aa1b3ad3 (unchanged)
+ct3d-rc1^{commit} aa1b3ad3 (unchanged)
+push plan: git push -u origin feature/interactive-ai-direct-click (no merge, no force)
