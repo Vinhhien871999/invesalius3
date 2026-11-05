@@ -1,0 +1,3 @@
+# diff --check - 2026-11-05 21:14:56, HEAD 02c15f9e + working tree, isolated XDG_CONFIG_HOME
+# $ git add -N docs tools tests plugins && git diff --check
+exit=0

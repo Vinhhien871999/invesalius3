@@ -1,0 +1,71 @@
+# REAL MedSAM2 (MedSAM2_latest.pt @ 332f30d4, separate env, CUDA RTX 4060 Laptop) on 0543 300x512x512,
+# through the plugin's runtime client + real worker, 05/11/2026. Reference = TotalSegmentator 2.18.0 full task
+# (technical reference, NOT ground truth). Click = deepest voxel of the reference on its area-weighted mean slice.
+# host_s = host round trip incl. any feature encoding; state reused after the first prediction.
+
+## Benchmark 1 - prompt strategies for ONE click (shipped code of the first iteration: smart = fast-2D bbox)
+
+target                 run                         voxels    dice click_in  host_s  detail
+STEP {'step': 'probe', 'worker_start_s': 0.42906780005432665, 'probe_s': 7.260955499950796, 'vertebra': 'vertebrae_T12'}
+liver                  slice_quick_view             52565       -     True    7.56  quick 2D pixels=52565
+liver                  raw_point_only             3283393  0.9689     True   17.26
+liver                  smart_one_click_pad0.1     3295550  0.9663     True   12.31  strategy=fast_2d_mask fast2d_px=52565 box_yx=[96, 16, 428, 470] suggestion={'label': 'liver', 'reason': '', 'coverage': 0.964, 'dice': 0.966, 'second': 'portal_vein_and_splenic_vein', 'second_coverage': 0.005} vram=5258MB inference=9.5s
+liver                  smart_one_click_pad0.25    3302288  0.9656     True   12.33  strategy=fast_2d_mask fast2d_px=52565 box_yx=[55, 0, 469, 511] suggestion={'label': 'liver', 'reason': '', 'coverage': 0.962, 'dice': 0.966, 'second': 'portal_vein_and_splenic_vein', 'second_coverage': 0.005} vram=5258MB inference=9.5s
+liver                  click_box_half16               655  0.0004     True   11.79
+liver                  click_box_half32              7002  0.0043     True   12.39
+liver                  click_box_half64           2217950  0.7937     True   11.37
+liver                  manual_box                 3245748  0.9671        -   11.45
+liver                  refine_2                   3277457  0.9635     True   10.61
+liver                  refine_3                   3313743   0.969     True   11.17
+spleen                 slice_quick_view              7965       -     True    1.32  quick 2D pixels=7965
+spleen                 raw_point_only              319392  0.9529     True   10.71
+spleen                 smart_one_click_pad0.1      562640  0.6948     True   10.54  strategy=fast_2d_mask fast2d_px=7965 box_yx=[108, 337, 250, 482] suggestion={'label': None, 'reason': 'weak', 'coverage': 0.535, 'dice': 0.695, 'second': 'kidney_left', 'second_coverage': 0.384} vram=5256MB inference=8.0s
+spleen                 smart_one_click_pad0.25     566802  0.6929     True   11.21  strategy=fast_2d_mask fast2d_px=7965 box_yx=[90, 319, 268, 500] suggestion={'label': None, 'reason': 'weak', 'coverage': 0.532, 'dice': 0.693, 'second': 'kidney_left', 'second_coverage': 0.381} vram=5256MB inference=8.6s
+spleen                 click_box_half16             12860  0.0791     True   11.14
+spleen                 click_box_half32             39131  0.2275     True   11.53
+spleen                 click_box_half64            560891  0.6943     True   10.79
+spleen                 manual_box                  558608  0.6959        -    11.2
+spleen                 refine_2                    567532   0.692     True   10.48
+spleen                 refine_3                    321294  0.9272     True   11.37
+kidney_left            slice_quick_view              6020       -     True     1.3  quick 2D pixels=6020
+kidney_left            raw_point_only              238683  0.9492     True   11.45
+kidney_left            smart_one_click_pad0.1      240029  0.9473     True   10.64  strategy=fast_2d_mask fast2d_px=6020 box_yx=[116, 315, 222, 423] suggestion={'label': 'kidney_left', 'reason': '', 'coverage': 0.903, 'dice': 0.947, 'second': 'spleen', 'second_coverage': 0.007} vram=5262MB inference=8.1s
+kidney_left            smart_one_click_pad0.25     242885  0.9423     True   11.07  strategy=fast_2d_mask fast2d_px=6020 box_yx=[103, 301, 235, 437] suggestion={'label': 'kidney_left', 'reason': '', 'coverage': 0.893, 'dice': 0.942, 'second': 'spleen', 'second_coverage': 0.007} vram=5262MB inference=8.5s
+kidney_left            click_box_half16              7374  0.0654     True   10.59
+kidney_left            click_box_half32             67218   0.448     True   11.22
+kidney_left            click_box_half64            241601  0.9443     True   10.58
+kidney_left            manual_box                  238569  0.9494        -   11.06
+kidney_left            refine_2                    141064  0.7181    False   10.73
+kidney_left            refine_3                    171075  0.8035     True   12.01
+kidney_right           slice_quick_view              6042       -     True     1.3  quick 2D pixels=6042
+kidney_right           raw_point_only              182194  0.9637     True   10.33
+kidney_right           smart_one_click_pad0.1      183638  0.9607     True   11.25  strategy=fast_2d_mask fast2d_px=6042 box_yx=[142, 108, 247, 228] suggestion={'label': 'kidney_right', 'reason': '', 'coverage': 0.928, 'dice': 0.961, 'second': 'liver', 'second_coverage': 0.009} vram=5263MB inference=8.9s
+kidney_right           smart_one_click_pad0.25     185079  0.9575     True   11.38  strategy=fast_2d_mask fast2d_px=6042 box_yx=[129, 93, 260, 243] suggestion={'label': 'kidney_right', 'reason': '', 'coverage': 0.921, 'dice': 0.957, 'second': 'liver', 'second_coverage': 0.01} vram=5263MB inference=8.6s
+kidney_right           click_box_half16              6796  0.0764     True    11.5
+kidney_right           click_box_half32            130911  0.8197     True   11.66
+kidney_right           click_box_half64            186705  0.9528     True    11.0
+kidney_right           manual_box                  182532   0.963        -    11.2
+kidney_right           refine_2                    183442   0.961    False    9.85
+kidney_right           refine_3                    183528  0.9608    False    6.24
+vertebrae_T12          slice_quick_view              5638       -     True    1.83  quick 2D pixels=5638
+vertebrae_T12          raw_point_only              209808  0.6341     True    9.25
+vertebrae_T12          smart_one_click_pad0.1      213543  0.6281     True    6.19  strategy=fast_2d_mask fast2d_px=5638 box_yx=[84, 225, 241, 328] suggestion={'label': None, 'reason': 'weak', 'coverage': 0.466, 'dice': 0.628, 'second': 'vertebrae_T11', 'second_coverage': 0.417} vram=5257MB inference=4.7s
+vertebrae_T12          smart_one_click_pad0.25     221264  0.6131     True    6.04  strategy=fast_2d_mask fast2d_px=5638 box_yx=[64, 212, 261, 341] suggestion={'label': None, 'reason': 'weak', 'coverage': 0.45, 'dice': 0.613, 'second': 'vertebrae_T11', 'second_coverage': 0.402} vram=5257MB inference=4.6s
+vertebrae_T12          click_box_half16             32583  0.4227     True    5.74
+vertebrae_T12          click_box_half32             66421  0.7141     True    5.46
+vertebrae_T12          click_box_half64             95301  0.8283     True    5.48
+vertebrae_T12          manual_box                   92740  0.8415        -    5.64
+vertebrae_T12          refine_2                    168493  0.4484    False    6.11
+vertebrae_T12          refine_3                    177213  0.5211     True    6.18
+lung_lower_lobe_left   slice_quick_view                28       -     True     1.6  quick 2D pixels=28
+lung_lower_lobe_left   raw_point_only                 142  0.0003     True     7.8
+lung_lower_lobe_left   smart_one_click_pad0.1         364  0.0007     True    5.57  strategy=fast_2d_mask fast2d_px=28 box_yx=[153, 378, 163, 390] suggestion={'label': None, 'reason': 'weak', 'coverage': 1.0, 'dice': 0.001, 'second': None, 'second_coverage': 0.0} vram=5247MB inference=4.4s
+lung_lower_lobe_left   smart_one_click_pad0.25        364  0.0007     True    5.46  strategy=fast_2d_mask fast2d_px=28 box_yx=[153, 378, 163, 390] suggestion={'label': None, 'reason': 'weak', 'coverage': 1.0, 'dice': 0.001, 'second': None, 'second_coverage': 0.0} vram=5247MB inference=4.3s
+lung_lower_lobe_left   click_box_half16              1069  0.0022     True    5.46
+lung_lower_lobe_left   click_box_half32             90696  0.0473     True    5.67
+lung_lower_lobe_left   click_box_half64           3158584  0.4376     True    5.71
+lung_lower_lobe_left   manual_box                 3165560  0.4431        -     5.8
+lung_lower_lobe_left   refine_2                    132218  0.2353     True     6.1
+lung_lower_lobe_left   refine_3                    144177  0.2538    False    5.98
+STEP {'step': 'timings', 'worker_start_s': 0.429, 'probe_s': 7.261, 'volume_write_s': 0.258, 'volume_load_s': 0.173, 'predict_s': 5.685, 'total_s': 575.9}
+STEP {'step': 'closed', 'worker_alive': False}

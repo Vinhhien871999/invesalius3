@@ -1,0 +1,31 @@
+# REAL MedSAM2 (MedSAM2_latest.pt @ 332f30d4, separate env, CUDA RTX 4060 Laptop) on 0543 300x512x512,
+# through the plugin's runtime client + real worker, 05/11/2026. Reference = TotalSegmentator 2.18.0 full task
+# (technical reference, NOT ground truth). Click = deepest voxel of the reference on its area-weighted mean slice.
+# host_s = host round trip incl. any feature encoding; state reused after the first prediction.
+
+## Benchmark 2 - SHIPPED one-click policy point_first (min quick-2D 400 px, fallback click box half 64 px),
+## two-stage timing (quick slice view, then 3D), refinement with clicks at the deepest MISSED reference voxel,
+## and the feature-cache A/B.
+
+{"target": "liver", "run": "one_click_point_first", "click_zyx": [43, 228, 137], "voxels": 3283393, "dice": 0.9689, "click_in": true, "quick_view_s": 3.52, "volume_s": 8.49, "click_to_3d_s": 12.01, "strategy": "point_only", "fast_2d_pixels": 52565, "auto_box": null, "inference_s": 6.75, "peak_vram_mb": 5274}
+{"target": "liver", "run": "refine_2", "added_zyx": [71, 282, 192], "voxels": 3274905, "dice": 0.9655, "click_in": true, "volume_s": 6.6, "inference_s": 4.99, "strategy": "point_only"}
+{"target": "liver", "run": "refine_3", "added_zyx": [71, 223, 137], "voxels": 3310929, "dice": 0.9707, "click_in": true, "volume_s": 6.47, "inference_s": 4.98, "strategy": "point_only"}
+{"target": "spleen", "run": "one_click_point_first", "click_zyx": [51, 164, 410], "voxels": 319392, "dice": 0.9529, "click_in": true, "quick_view_s": 0.75, "volume_s": 6.28, "click_to_3d_s": 7.03, "strategy": "point_only", "fast_2d_pixels": 7965, "auto_box": null, "inference_s": 5.01, "peak_vram_mb": 5256}
+{"target": "spleen", "run": "refine_2", "added_zyx": [40, 188, 376], "voxels": 242925, "dice": 0.0261, "click_in": true, "volume_s": 6.88, "inference_s": 5.06, "strategy": "point_only"}
+{"target": "spleen", "run": "refine_3", "added_zyx": [49, 164, 410], "voxels": 453878, "dice": 0.5366, "click_in": true, "volume_s": 6.57, "inference_s": 5.33, "strategy": "point_only"}
+{"target": "kidney_left", "run": "one_click_point_first", "click_zyx": [21, 149, 385], "voxels": 238683, "dice": 0.9492, "click_in": true, "quick_view_s": 0.77, "volume_s": 6.18, "click_to_3d_s": 6.95, "strategy": "point_only", "fast_2d_pixels": 6020, "auto_box": null, "inference_s": 4.68, "peak_vram_mb": 5262}
+{"target": "kidney_left", "run": "refine_2", "added_zyx": [2, 202, 374], "voxels": 140300, "dice": 0.719, "click_in": false, "volume_s": 9.02, "inference_s": 6.37, "strategy": "point_only"}
+{"target": "kidney_left", "run": "refine_3", "added_zyx": [15, 152, 389], "voxels": 170450, "dice": 0.8043, "click_in": true, "volume_s": 12.85, "inference_s": 10.22, "strategy": "point_only"}
+{"target": "kidney_right", "run": "one_click_point_first", "click_zyx": [14, 187, 146], "voxels": 182194, "dice": 0.9637, "click_in": true, "quick_view_s": 1.39, "volume_s": 13.17, "click_to_3d_s": 14.56, "strategy": "point_only", "fast_2d_pixels": 6042, "auto_box": null, "inference_s": 10.89, "peak_vram_mb": 5263}
+{"target": "kidney_right", "run": "refine_2", "added_zyx": [35, 175, 177], "voxels": 182373, "dice": 0.9633, "click_in": false, "volume_s": 14.68, "inference_s": 12.64, "strategy": "point_only"}
+{"target": "kidney_right", "run": "refine_3", "added_zyx": [35, 195, 208], "voxels": 182474, "dice": 0.963, "click_in": false, "volume_s": 12.06, "inference_s": 9.89, "strategy": "point_only"}
+{"target": "vertebrae_T12", "run": "one_click_point_first", "click_zyx": [46, 201, 276], "voxels": 209808, "dice": 0.6341, "click_in": true, "quick_view_s": 2.73, "volume_s": 13.21, "click_to_3d_s": 15.94, "strategy": "point_only", "fast_2d_pixels": 5638, "auto_box": null, "inference_s": 10.73, "peak_vram_mb": 5274}
+{"target": "vertebrae_T12", "run": "refine_2", "added_zyx": [40, 151, 235], "voxels": 162185, "dice": 0.4586, "click_in": false, "volume_s": 13.03, "inference_s": 10.56, "strategy": "point_only"}
+{"target": "vertebrae_T12", "run": "refine_3", "added_zyx": [43, 196, 290], "voxels": 172960, "dice": 0.5272, "click_in": true, "volume_s": 13.73, "inference_s": 11.29, "strategy": "point_only"}
+{"target": "lung_lower_lobe_left", "run": "one_click_point_first", "click_zyx": [98, 157, 386], "voxels": 3158584, "dice": 0.4376, "click_in": true, "quick_view_s": 2.7, "volume_s": 18.38, "click_to_3d_s": 21.08, "strategy": "click_centred_box", "fast_2d_pixels": 28, "auto_box": [93, 322, 221, 450], "inference_s": 16.14, "peak_vram_mb": 5284}
+{"target": "lung_lower_lobe_left", "run": "refine_2", "added_zyx": [105, 115, 315], "voxels": 3153215, "dice": 0.434, "click_in": true, "volume_s": 13.77, "inference_s": 11.14, "strategy": "click_centred_box"}
+{"target": "lung_lower_lobe_left", "run": "refine_3", "added_zyx": [105, 156, 396], "voxels": 3119724, "dice": 0.4316, "click_in": true, "volume_s": 13.18, "inference_s": 10.39, "strategy": "click_centred_box"}
+{"run": "cache_ab", "cache_features": true, "runs_host_inference_vram_cachedframes": [[23.97, 17.61, 5273, 300], [10.86, 8.56, 5257, 300], [13.31, 10.8, 5257, 300]], "identical_across_runs": true, "voxels": 3283393}
+{"run": "cache_ab", "cache_features": false, "runs_host_inference_vram_cachedframes": [[23.11, 16.84, 1338, 0], [18.61, 15.94, 1277, 0], [17.37, 14.88, 1278, 0]], "identical_across_runs": true, "voxels": 3283393}
+{"run": "cache_ab_compare", "cached_equals_uncached": true, "differing_voxels": 0}
+{"step": "done"}

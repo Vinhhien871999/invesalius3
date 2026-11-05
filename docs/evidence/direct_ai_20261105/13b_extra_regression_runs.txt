@@ -1,0 +1,10 @@
+# Extra consecutive ct3d runs with -rEf (run 3 of 13_final_regression_3.txt had 1 error during a ~60x slow period, test name not captured), 2026-11-05 21:18:39, HEAD 02c15f9e + working tree
+## extra run 1 (21:18:39)
+870 passed, 2 skipped, 26 warnings in 173.84s (0:02:53)
+exit=0
+## extra run 2 (21:21:37)
+870 passed, 2 skipped, 26 warnings in 174.16s (0:02:54)
+exit=0
+## extra run 3 (21:24:35)
+870 passed, 2 skipped, 26 warnings in 166.66s (0:02:46)
+exit=0

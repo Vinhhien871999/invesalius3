@@ -1,0 +1,4 @@
+# Upstream tests - 2026-11-05 21:13:32, HEAD 02c15f9e + working tree, isolated XDG_CONFIG_HOME
+# $ python -m pytest tests --ignore=tests/ct3d -q
+94 passed, 15 warnings in 81.35s (0:01:21)
+exit=0

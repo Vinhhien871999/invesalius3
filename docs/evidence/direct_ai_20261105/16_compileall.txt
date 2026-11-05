@@ -1,0 +1,3 @@
+# compileall - 2026-11-05 21:14:56, HEAD 02c15f9e + working tree, isolated XDG_CONFIG_HOME
+# $ python -m compileall -q plugins/roi_viewer tools/interactive_ai_runtime
+exit=0
