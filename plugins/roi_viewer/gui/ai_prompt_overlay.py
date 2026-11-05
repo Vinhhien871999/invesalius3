@@ -86,7 +86,10 @@ def _make_handler_class():
                 return
             ov = self.overlay
             scale = viewer.GetContentScaleFactor() if hasattr(viewer, "GetContentScaleFactor") else 1.0
-            for item in markers_for_slice(ov.points, ov.box, ov.corners, orientation, number, ov.spacing):
+            items = markers_for_slice(ov.points, ov.box, ov.corners, orientation, number, ov.spacing)
+            if ov.drag is not None:  # direct interaction: the box being dragged
+                items += markers_for_slice([], ov.drag, [], orientation, number, ov.spacing)
+            for item in items:
                 if item[0] == "point":
                     colour = POSITIVE_COLOUR if item[2] else NEGATIVE_COLOUR
                     px, py = self._3d_to_2d(canvas.evt_renderer, item[1])
@@ -114,6 +117,8 @@ class AIPromptOverlay2D:
         self.box: Optional[Tuple[tuple, tuple]] = None
         self.corners: List[Tuple[int, int, int]] = []
         self.spacing = None
+        self.drag = None  # (lo_zyx, hi_zyx) of a box being dragged (direct interaction)
+        self.shape = None
 
     @property
     def attached(self) -> int:
@@ -134,7 +139,8 @@ class AIPromptOverlay2D:
                 if corner is not None:
                     self.corners.append(world_xyz_to_voxel_zyx(corner, spacing_xyz, shape_zyx))
         self.spacing = tuple(spacing_xyz) if spacing_xyz is not None else None
-        if self.points or self.box is not None or self.corners:
+        self.shape = tuple(shape_zyx) if shape_zyx is not None else self.shape
+        if self.points or self.box is not None or self.corners or self.drag is not None:
             self._attach()
         else:
             self.detach()
@@ -170,7 +176,29 @@ class AIPromptOverlay2D:
         self._handlers = {}
         self._redraw(viewers)
 
+    def set_drag(self, world1, world2, spacing_xyz, shape_zyx):
+        """Live rectangle while a box is dragged (None clears it). Display
+        only - the real box is made by the prompt store on release."""
+        from ..core.coordinates import world_xyz_to_voxel_zyx
+
+        if world1 is None or world2 is None or spacing_xyz is None or shape_zyx is None:
+            had = self.drag is not None
+            self.drag = None
+            if had:
+                if self.points or self.box is not None or self.corners:
+                    self._redraw([v for v, _h in self._handlers.values()])
+                else:
+                    self.detach()
+            return
+        a = world_xyz_to_voxel_zyx(world1, spacing_xyz, shape_zyx)
+        b = world_xyz_to_voxel_zyx(world2, spacing_xyz, shape_zyx)
+        self.drag = (tuple(min(i, j) for i, j in zip(a, b)), tuple(max(i, j) for i, j in zip(a, b)))
+        self.spacing = tuple(spacing_xyz)
+        self._attach()
+        self._redraw([v for v, _h in self._handlers.values()])
+
     def clear(self):
+        self.drag = None
         self.points, self.box, self.corners = [], None, []
         self.detach()
 
