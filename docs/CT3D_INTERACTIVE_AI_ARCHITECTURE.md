@@ -2,7 +2,7 @@
 
 - **Branch:** `feature/interactive-ai-medsam2`, created from `enhancement/advanced-segmentation` at `70720ca8` (BASE_HEAD) on 05/11/2026.
 - **Status vocabulary:** PLANNED / AUDITED / IN_PROGRESS / WORKING / PARTIAL / BLOCKED / PASS / FAIL.
-- **Status summary:** the infrastructure is WORKING and verified with automated tests. The real MedSAM2 model is BLOCKED: no separate environment and no checkpoint exist on this machine, and WSL cannot start here.
+- **Status summary:** the infrastructure is WORKING and verified with automated tests. The real MedSAM2 model runs in a separate environment (set up on 05/11/2026 with the operator's approval) and was verified on 0543 outside the GUI. Manual GUI QA is NOT_RUN.
 
 ## Goal
 
@@ -236,7 +236,16 @@ At Accept, `roi_provenance[mask] = {"source": "AI", "ai": {...}}` is recorded. T
 
 ## Performance
 
-These timings are measured with the fake worker on the 0543-size volume (300×512×512 int16, 150 MiB). They cover the protocol and I/O only, not MedSAM2. Evidence: `11_performance.txt`.
+Real MedSAM2 on 0543, RTX 4060 Laptop GPU, from `10_real_model_smoke.txt`:
+- worker start 0.2 s
+- PROBE 2.3–5.3 s (first torch import)
+- model load 1.4 s
+- preprocessing of 300 slices 1.0 s
+- first prediction 12.9 s (inference 8.0 s)
+- later predictions 6.7–11.6 s
+- peak VRAM 1.3–1.4 GB
+
+The table below is measured with the fake worker on the same volume size. It covers the protocol and I/O only. Evidence: `11_performance.txt`.
 
 | Step | Time |
 |---|---|
@@ -247,7 +256,7 @@ These timings are measured with the fake worker on the 0543-size volume (300×51
 | candidate SHA-256 | 0.14 s |
 | SHUTDOWN + cleanup | 0.03 s |
 
-Model load, preprocessing, inference and peak VRAM are reported by the real provider (`details`) but have **not been measured**, because the model is blocked.
+Host RAM: 2.8 GB were free of 15.3 GB during the real runs, and they completed. The prepared slices are kept as uint8 on the host and normalised on the GPU in chunks, as the official script does on the GPU.
 
 ## Save/Open
 
@@ -255,18 +264,18 @@ The accepted mask is a normal InVesalius mask, saved and opened by InVesalius. P
 
 ## Risks
 
-1. **The real model has not run here.** Preprocessing fidelity, prompt effect, VRAM on the RTX 4060 (8 GB) with 300 slices, and runtime are unverified.
+1. **Prompt sufficiency:** on 0543, one positive point gave an empty result, while a box or 5 points worked. The operator must use a box or several points. The real model has not yet been run from the GUI (IA-B…).
 2. **Negative points:** not officially used by MedSAM2. Off by default.
 3. **3D box:** approximated by a middle-slice 2D box plus slice limits.
 4. **Window choice:** the official script uses dataset-specific windows. A wrong preset can degrade results.
 5. **Row flip:** `flip_rows_to_dicom` assumes the axial import flip, which holds for InVesalius's DICOM import. Other import paths are not analysed.
 6. **Largest component** drops disconnected parts (official behaviour).
-7. **Native Windows:** not the documented MedSAM2 platform. WSL could not start on this machine (`HCS_E_SERVICE_NOT_AVAILABLE`).
+7. **Native Windows:** not the documented MedSAM2 platform. WSL could not start on this machine (`HCS_E_SERVICE_NOT_AVAILABLE`). It works here with SAM2_BUILD_CUDA=0. The first real run exposed a Windows-only deadlock in the worker's stdin reader (a DLL loading during a pending pipe read); it is fixed with a PeekNamedPipe reader and a regression test.
 8. **Weights licence** conflict (cc-by-sa-4.0 metadata vs "research and education" card).
 
 ## Deferred work
 
-- Real MedSAM2 smoke and interaction test (needs the environment and checkpoint).
+- Real MedSAM2 runs from the GUI (operator, IA-B…IA-S).
 - User guide section, which the spec says to write only after the real provider works.
 - Multi-object, prompt persistence, auto-refinement, and 3D prompt markers.
 - Embedding reuse across prompt edits: SAM2 inference state is rebuilt per prediction in v1, while the preprocessed slices are cached.

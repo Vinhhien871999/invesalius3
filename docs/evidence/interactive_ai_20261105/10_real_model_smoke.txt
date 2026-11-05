@@ -1,22 +1,57 @@
-# Real MedSAM2 smoke test - 05/11/2026
-MEDSAM2_REAL_GATE = BLOCKED
+# Real MedSAM2 smoke + interaction test - 05/11/2026 (second session, operator-approved setup)
+# Supersedes the first version of this file ("BLOCKED: no environment / no checkpoint").
 
-Preconditions (spec §47) - none met on this machine:
-  separate MedSAM2 environment     NOT PRESENT (no conda; no MedSAM2 venv; nothing named *medsam*/sam2 found under D:\ and the user profile, depth 4)
-  checkpoint                       NOT PRESENT (MedSAM2_latest.pt must be downloaded by the operator after reading its licence - not downloaded by me)
-  WSL (documented platform)        Ubuntu distro installed, but `wsl -d Ubuntu` fails:
-                                   "The operation could not be started because a required feature is not installed.
-                                    Error code: Wsl/Service/CreateInstance/CreateVm/HCS/HCS_E_SERVICE_NOT_AVAILABLE"
-  GPU                              NVIDIA GeForce RTX 4060 Laptop GPU, 8188 MiB, driver 560.92 (nvidia-smi)
+## Setup (operator approved: environment + checkpoint download, research/education licence accepted)
+separate environment   D:\PyTools\medsam2-venv  (py -3.11 -m venv; Python 3.11.7; the py launcher's 3.12/3.13 entries point to missing files)
+packages               torch 2.5.1+cu124, torchvision 0.20.1+cu124, numpy 2.4.6, scipy 1.17.1, hydra-core 1.3.8, iopath 0.1.10, SimpleITK 2.5.7, MedSAM2 1.0 (editable)
+install                pip --no-cache-dir; SAM2_BUILD_CUDA=0; --no-build-isolation (after setuptools 84.2.1 + wheel 0.48.0 in that venv - the first attempt failed: "invalid command 'bdist_wheel'")
+MedSAM2 source         D:\PyTools\MedSAM2 = github.com/bowang-lab/MedSAM2 @ 332f30d420f1d1b08e2a79b3ae6a602458808383
+checkpoint             D:\PyTools\MedSAM2\checkpoints\MedSAM2_latest.pt, 156040129 bytes,
+                       sha256 c92743b99f00d078bf32a3afcc38aaa9faf1c1692dffe3eaa7a90938c1991060 = Hugging Face LFS oid (verified before use)
+GPU                    NVIDIA GeForce RTX 4060 Laptop GPU 8188 MiB, driver 560.92 (CUDA 12.6); torch.cuda.is_available() True
+isolation              invx-venv pip freeze sha256 before = after = fb9bb7cb...3783430c; base Python311 pip freeze before = after = a4394a32...7c782;
+                       InVesalius config.json sha256 before = after = 3962fd80...dcaf0 (see "after" block at the end)
 
-Not run, therefore NOT recorded (no invented numbers): prompt voxel, device, runtime, peak VRAM, candidate voxels/bounds,
-orientation check, refinement sequence A/B/C.
+## Defect found by the real runtime (fixed before these runs)
+The first real PROBE hung: worker.py's stdin reader thread was blocked in a synchronous read on the stdin pipe, and the
+lazy `import numpy` loaded numpy's OpenBLAS (with its own msvcp140 CRT), whose initialisation calls GetFileType on the
+standard handles - which blocks on Windows while a read is pending on that pipe. The fake worker never showed it because
+it imports numpy before the reader starts. Fix: on Windows pipes the reader polls PeekNamedPipe and reads only available
+bytes. Regression test: test_lazy_dll_import_after_the_reader_started_does_not_hang (verified to time out with the old
+worker.py, pass with the new one).
 
-What IS verified without the model:
-  * the worker provider's numpy parts (window/uint8, slice preprocessing, prompt mapping, DICOM row flip round trip,
-    box slice range, largest component) - tests/ct3d/test_interactive_ai_geometry.py
-  * its probe in an environment without sam2 reports unavailable ("dependency_missing"), never raises
-  * the whole host <-> worker path with the deterministic FakeInteractiveAIWorker (protocol fixture, not model evidence)
+## Probe (tools/interactive_ai_runtime/probe_runtime.py, exit 0)
+HELLO 0.3 s; PROBE 5.3 s (first torch import), 2.3 s later: MedSAM2 332f30d4, available, capabilities positive_point true,
+negative_point false, box true, propagation_3d true; devices cpu, cuda; torch 2.5.1+cu124; RTX 4060 Laptop GPU.
 
-To unblock: tools/interactive_ai_runtime/README.md (setup script by hand, checkpoint by hand, config file,
-probe_runtime.py exit 0), then Manual QA IA-B..IA-N on 0543.
+## Inference on 0543 through the plugin's own runtime client (same code path the plugin uses), outside InVesalius
+volume       300 x 512 x 512 int16 HU, spacing (0.5859375, 0.5859375, 1.0) mm; window preset "lung" [-1350, 150]; device cuda
+reference    TotalSegmentator left lung from the earlier validation run (model output, NOT ground truth):
+             3,408,753 voxels, centroid zyx (162.1, 214.1, 379.9), bounds z 37-269, y 69-394, x 259-471
+prompts      key slice z = 162 (reference centroid); point = deepest inside point of the reference on that slice (y 225, x 399);
+             box = reference's 2D bounding box on that slice
+
+run                                   voxels     ml      bounds zyx                      Dice/IoU vs TS   worker s  inference s  peak VRAM
+A 2D box on key slice (official)      3,234,377  1110.4  [34,270] [71,393] [259,470]     0.9635 / 0.9296  12.9      8.0          1338 MB
+B 1 positive point                    0          0       -                               0 / 0            6.7       6.5          1375 MB
+C box + 1 positive point              3,251,212  1116.2  [34,270] [71,393] [259,470]     0.9653 / 0.9330  7.3       6.1          1375 MB
+B2 5 positive points (lung window)    3,054,715  -       [34,270] [72,389] [259,470]     0.9369           11.6      -            -
+B3 1 positive point (soft-tissue win) 15         -       [162,162] [245,247] [412,417]   0                8.8       -            -
+
+first prediction: model load 1.4 s, preprocessing (window + 300 slices resize) 1.0 s, volume write 0.12 s, LOAD_VOLUME 0.09 s
+geometry: candidate shape == native (300, 512, 512) uint8 0/1; centroid (162.1, 214.4, 379.9) vs reference (162.1, 214.1, 379.9);
+          same x side as the reference (not mirrored); bounds inside the volume and within 3 slices of the reference.
+interaction: A -> C (adding a positive point to the box) changed the result slightly (+16,835 voxels); B -> B2 (1 -> 5 points)
+          turned an empty result into a lung segmentation. One point alone is NOT sufficient for MedSAM2 here; box or several
+          points are. No ground truth: no accuracy claim - Dice/IoU are agreement with TotalSegmentator only.
+host free RAM before the runs: 2.8 GB of 15.3 GB; the runs completed; worker shut down cleanly (worker alive False).
+
+## Not covered here (needs the operator in the real GUI): IA-B..IA-W (GUI freeze, 2D/3D overlays, Accept, Save/Open)
+MEDSAM2_REAL_GATE = PARTIAL (model, environment, geometry and prompt effect verified; GUI/Accept/Save-Open with the real
+model not yet run by the operator).
+
+## after (snapshot taken 2026-11-05 15:03:52)
+invx-venv pip freeze: fb9bb7cb5d547fad18e75fdfd3ced86d0795b9a5de914751bd98d3b93783430c *-
+base Python311 pip freeze: a4394a323a82cf325bfeb8fef7a3cefeac9d07800c9e0f44f1211bc62007c782 *-
+InVesalius config.json: 3962fd8052875a27bc601433e03a0bc116693cde87c8bc2fca5c1b4098dfcaf0
+medsam2-venv size: 4.9G; MedSAM2 checkout size: 189M

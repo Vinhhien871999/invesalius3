@@ -30,10 +30,28 @@ This is the separate Python process that runs MedSAM2 for ROI Viewer's experimen
    2. Choose "Phân đoạn AI tương tác (MedSAM2)".
    3. Click "Kiểm tra môi trường".
 
+## Verified on this machine (05/11/2026)
+
+`setup_medsam2_windows.ps1` steps, by hand:
+- Environment: `D:\PyTools\medsam2-venv`, Python 3.11.7. The py launcher's 3.12 entry is broken here; MedSAM2's setup.py requires ≥ 3.10.
+- MedSAM2: `D:\PyTools\MedSAM2` at `332f30d4`.
+- Checkpoint: `MedSAM2_latest.pt`, SHA-256 `c92743b9…1060`, verified.
+
+Real inference on 0543 (300×512×512) through the plugin's runtime client, CUDA on the RTX 4060 Laptop GPU. The reference is the TotalSegmentator left lung: a model output, not ground truth.
+
+| Prompt | Result |
+|---|---|
+| 2D box on one slice (official prompt form) | Dice 0.96, 12.9 s first run incl. model load, 1.3 GB peak VRAM |
+| box + 1 positive point | Dice 0.965, 7.3 s |
+| 5 positive points | Dice 0.94 |
+| **1 positive point** | **empty / 15 voxels** |
+
+**Use a box, or several points.** One point alone is not enough for MedSAM2 here.
+
 ## What the provider really supports (official-source audit, 05/11/2026)
 
 - **Box: yes.** You set it with two corners at the 2D cursor. It is used as a 2D box on its middle slice, and the result is limited to the box's slice range. A box drawn on a single slice propagates through the whole volume, as in the official script.
-- **Positive points: yes.** This is the same SAM2 call the official RECIST script uses with label-1 points.
+- **Positive points: yes.** This is the same SAM2 call the official RECIST script uses with label-1 points, which uses 5 of them. On 0543, 5 points worked and 1 point did not.
 - **Negative points: off by default.** SAM2's API accepts label 0, but no official MedSAM2 path uses it. Set `"allow_negative_points": true` to try it experimentally.
 - **3D:** forward and reverse propagation from the slices that carry prompts. The largest connected component is kept, as in the official script.
 - **CPU:** the library falls back to CPU, but the official scripts use CUDA only. CPU is untested here.

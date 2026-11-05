@@ -6,7 +6,7 @@
 ## Preconditions
 
 - **Common:** InVesalius with the plugin from this branch; dataset 0543 imported (thorax and upper abdomen); a mask exists, because the E2 overlay needs a current mask; ROI Viewer → Phân đoạn → "Phân đoạn AI (thử nghiệm)" → tick "Bật phân đoạn AI (thử nghiệm)".
-- **IA-B onward:**
+- **IA-B onward:** done on this machine on 05/11/2026 (`D:\PyTools\medsam2-venv`, `D:\PyTools\MedSAM2`, config file written, probe exit 0). The original requirements:
   - The separate MedSAM2 environment is set up by hand (`tools/interactive_ai_runtime/README.md`).
   - The checkpoint is placed by hand.
   - `roi_viewer_interactive_ai.json` is written.
@@ -20,7 +20,7 @@
 | IA-D negative point from 2D | Only if the worker declares negative points (`allow_negative_points`). Otherwise check that "Loại trừ" is disabled. | Red dot; or Loại trừ disabled. | `test_positive_only_provider_disables_negative` | NOT_RUN |
 | IA-E 3D point | Visible surface → "Chọn điểm (3D)" → click it. | Point added at the picked surface position (boundary); tooltip explains the limitation. | `test_3d_pick_goes_through_view_to_slice` | NOT_RUN |
 | IA-F bounding box | Corner 1 and corner 2 at the 2D cursor (two slices), then "Xóa hộp", then set again. | Cyan rectangle on every slice in range; ring while only one corner is set; Xóa hộp removes it. | `test_box_outline_in_each_orientation` | NOT_RUN |
-| IA-G first preview | "Xem trước bằng AI". | Status shows stages; orange overlay on Axial/Coronal/Sagittal around the target; no new mask in the list; GUI responsive. | `test_prompt_preview_refine_cancel_accept` | NOT_RUN |
+| IA-G first preview | Set a box (two corners on the same slice, around the organ), or several positive points: one point alone gave an empty result on 0543. Click "Xem trước bằng AI". | Status shows stages; orange overlay on Axial/Coronal/Sagittal around the target; no new mask in the list; GUI responsive. | `test_prompt_preview_refine_cancel_accept` | NOT_RUN |
 | IA-H E4 preview | Tick live 3D preview. | E4 source "Xem trước AI tương tác"; mesh matches the overlay. | same | NOT_RUN |
 | IA-I positive refinement | Add a positive point in a missed part → "Cập nhật xem trước". | Preview replaced (not stacked); covers the missed part; still no mask. Record voxels and runtime A/B. | same | NOT_RUN |
 | IA-J negative refinement | If supported: negative point in a false-positive area → update. | False-positive area removed. Record voxels and runtime C. | same | NOT_RUN |

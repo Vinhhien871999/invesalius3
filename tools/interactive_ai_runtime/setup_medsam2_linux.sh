@@ -34,7 +34,9 @@ git -C "$REPO_DIR" fetch --quiet origin "$COMMIT" || true
 git -C "$REPO_DIR" checkout --quiet "$COMMIT"
 # The optional CUDA post-processing extension may fail to build; MedSAM2's
 # setup.py then continues (SAM2_BUILD_ALLOW_ERRORS=1).
-(cd "$REPO_DIR" && SAM2_BUILD_ALLOW_ERRORS=1 "$PY" -m pip install -e .)
+"$PY" -m pip install --upgrade "setuptools>=61" wheel
+(cd "$REPO_DIR" && SAM2_BUILD_ALLOW_ERRORS=1 "$PY" -m pip install --no-build-isolation -e .)
+"$PY" -m pip install scipy  # used by the worker provider (largest connected component)
 
 "$PY" - <<'EOF'
 import torch
