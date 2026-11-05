@@ -1,0 +1,15 @@
+# Git final state - 05/11/2026 (written before this commit and the push)
+branch: feature/interactive-ai-medsam2
+BASE_HEAD: 70720ca87e485646c6c2434872d69373486adfd3 (enhancement/advanced-segmentation)
+HEAD before this commit: 25fc653b61b59367f8c572bc90b58fc9c4d3f325
+commits on the track:
+25fc653b docs(interactive-ai): record validation; real model blocked
+a41ff276 test(interactive-ai): validate geometry lifecycle and accept exactness
+2d714a08 feat(interactive-ai): integrate prompt preview and refinement workflow
+31f2aa8b feat(interactive-ai): add MedSAM2 external provider
+c85c74fc feat(interactive-ai): add external provider runtime protocol
+645dc3db docs(interactive-ai): audit MedSAM2 and define isolated runtime
+worktree: 1 changed paths
+enhancement/advanced-segmentation: 70720ca8 (unchanged = 70720ca8)
+thesis-ct-roi-tools: aa1b3ad3  ct3d-rc1: aa1b3ad3 (must be aa1b3ad3)
+push plan: git push -u origin feature/interactive-ai-medsam2 (no merge, no force)
