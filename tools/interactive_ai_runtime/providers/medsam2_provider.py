@@ -208,7 +208,10 @@ class MedSAM2Provider:
         self.offload_video = self.config.get("offload_video_to_cpu") is True
         self._predictors = {}  # device -> predictor (loaded once, kept)
         self._volume = None
-        self._prepared = {}  # window -> (D, 3, 512, 512) float32, for the loaded volume
+        self._prepared = {}  # window -> (D, 3, 512, 512) uint8, for the loaded volume
+        self._state = None  # reusable model state of the loaded volume (see _session)
+        self.cache_features = self.config.get("cache_features", True) is not False
+        self.cache_min_free_mb = float(self.config.get("cache_min_free_mb", 1024))
         self.timings = {}
         if self.repo_path and self.repo_path not in sys.path:
             sys.path.insert(0, self.repo_path)
@@ -284,7 +287,7 @@ class MedSAM2Provider:
         self._predictors = {device: predictor}  # one resident model
         return predictor
 
-    # ------------------------------------------------------------- volume
+    # ------------------------------------------------------------- volume / state
     def load_volume(self, array, meta, device):
         self.release_volume()
         self._volume = array
@@ -294,15 +297,87 @@ class MedSAM2Provider:
         if window not in self._prepared:
             t0 = time.perf_counter()
             volume_u8 = window_to_uint8(to_model_rows(self._volume, self.flip_rows), *window)
-            # uint8 on the host (1/4 of float32); normalised per prediction on
-            # the device, as the official script does (/255, mean/std on GPU).
+            # uint8 on the host (1/4 of float32); normalised once on the
+            # device, as the official script does (/255, mean/std on GPU).
             self._prepared = {window: resize_slices_uint8(volume_u8)}  # only the current window is kept
             self.timings["preprocess_s"] = time.perf_counter() - t0
         return self._prepared[window]
 
-    def release_volume(self):
-        self._volume = None
-        self._prepared = {}
+    def _session(self, window, dev, predictor):
+        """The reusable model state of the loaded volume for (window, device):
+        the normalised image tensor on the device, ONE SAM2 inference_state
+        (reset before every prediction - the prompts are always replayed in
+        full from the canonical prompt set) and the per-slice image-feature
+        cache. Built once; refinements reuse it."""
+        import torch
+
+        key = (window, dev)
+        if self._state is not None and self._state["key"] == key:
+            self.timings["state_reused"] = True
+            return self._state
+        self._drop_state()
+        t0 = time.perf_counter()
+        images = self._prepared_images(window)
+        tensor = torch.empty(images.shape, dtype=torch.float32, device=dev)
+        mean = torch.tensor(IMAGENET_MEAN, dtype=torch.float32, device=dev)[:, None, None]
+        std = torch.tensor(IMAGENET_STD, dtype=torch.float32, device=dev)[:, None, None]
+        for c0 in range(0, images.shape[0], 32):
+            chunk = torch.from_numpy(images[c0:c0 + 32]).to(dev).float() / 255.0
+            tensor[c0:c0 + 32] = (chunk - mean) / std
+        init_kwargs = {}
+        if self.offload_video and "offload_video_to_cpu" in inspect.signature(predictor.init_state).parameters:
+            init_kwargs["offload_video_to_cpu"] = True
+        nz, ny, nx = self._volume.shape
+        state = predictor.init_state(tensor, ny, nx, **init_kwargs)
+        self._state = {"key": key, "tensor": tensor, "state": state, "features": {}, "cache_full": False}
+        self._install_feature_cache(predictor)
+        self.timings["state_prep_s"] = time.perf_counter() - t0
+        self.timings["state_reused"] = False
+        return self._state
+
+    def _install_feature_cache(self, predictor):
+        """SAM2's _get_image_feature keeps ONE frame's features
+        (sam2_video_predictor_npz.py: "we can use an LRU cache for more frames
+        in the future"). The wrapper keeps every frame's backbone output for
+        the current session and hands it to the ORIGINAL method through
+        inference_state["cached_features"], so the model code is unchanged
+        and the features are the same tensors it would compute."""
+        if not self.cache_features or getattr(predictor, "_roi_viewer_original_get_image_feature", None):
+            return
+        original = predictor._get_image_feature
+        provider = self
+
+        def cached(inference_state, frame_idx, batch_size):
+            session = provider._state
+            if session is not None and session["state"] is inference_state:
+                entry = session["features"].get(frame_idx)
+                if entry is None:
+                    result = original(inference_state, frame_idx, batch_size)
+                    computed = inference_state["cached_features"].get(frame_idx)
+                    if computed is not None and not session["cache_full"]:
+                        session["features"][frame_idx] = computed
+                        provider._check_cache_memory(session)
+                    return result
+                inference_state["cached_features"] = {frame_idx: entry}
+            return original(inference_state, frame_idx, batch_size)
+
+        predictor._roi_viewer_original_get_image_feature = original
+        predictor._get_image_feature = cached
+
+    def _check_cache_memory(self, session):
+        """Stop caching more frames when free GPU memory gets low."""
+        try:
+            import torch
+
+            if torch.cuda.is_available() and session["key"][1] == "cuda":
+                free, _total = torch.cuda.mem_get_info()
+                if free < self.cache_min_free_mb * 2 ** 20:
+                    session["cache_full"] = True
+        except Exception:
+            session["cache_full"] = True
+
+    def _drop_state(self):
+        self._state = None
         try:
             import torch
 
@@ -311,13 +386,40 @@ class MedSAM2Provider:
         except Exception:
             pass
 
+    def release_volume(self):
+        self._drop_state()
+        self._volume = None
+        self._prepared = {}
+
     def close(self):
         self.release_volume()
         self._predictors = {}
 
     # ------------------------------------------------------------- predict
+    def _add_frame_prompts(self, predictor, state, z, f):
+        return predictor.add_new_points_or_box(
+            state, frame_idx=z, obj_id=1,
+            points=np.asarray(f["points"], dtype=np.float32) if f["points"] else None,
+            labels=np.asarray(f["labels"], dtype=np.int32) if f["labels"] else None,
+            box=np.asarray(f["box"], dtype=np.float32) if f["box"] is not None else None)
+
+    def _fast_2d(self, predictor, state, prompts, z, shape):
+        """Current-frame-only prediction (no propagation): the mask the model
+        gives for slice z from the prompts on slice z. Returns the NATIVE
+        (y, x) bool mask."""
+        frames, _ = map_prompts(prompts, shape, self.flip_rows)  # the same per-slice inputs the 3D run uses
+        predictor.reset_state(state)
+        if z not in frames:
+            return None
+        _, _, masks = self._add_frame_prompts(predictor, state, z, frames[z])
+        model_rows = (masks[0] > 0.0).cpu().numpy()[0]
+        predictor.reset_state(state)
+        return model_rows[::-1, :] if self.flip_rows else model_rows
+
     def predict(self, volume, meta, prompts, device, options, is_cancelled, progress):
         import torch
+
+        from smart_prompt import POLICY_POINT_FIRST, STRATEGY_FAST_2D, box_prompt, initial_prompt
 
         if any(p["label"] == 0 for p in prompts.get("points") or []) and not self.allow_negative:
             raise _error("prompt_unsupported", "negative points are not enabled for MedSAM2")
@@ -325,44 +427,68 @@ class MedSAM2Provider:
             window = resolve_window(options.get("hu_window"))
         except (TypeError, ValueError) as e:
             raise _error("bad_request", str(e))
+        scope = options.get("scope", "volume")
+        if scope not in ("volume", "slice"):
+            raise _error("bad_request", f"unknown scope {scope!r}")
         dev = self._device(device)
         nz, ny, nx = volume.shape
-        frames, z_range = map_prompts(prompts, volume.shape, self.flip_rows)
+        t_start = time.perf_counter()
         progress("preparing")
-        images = self._prepared_images(window)
         predictor = self._predictor(dev)
         if dev == "cuda":
             torch.cuda.reset_peak_memory_stats()
-        seg = np.zeros((nz, ny, nx), dtype=bool)
-        first, last = min(frames), max(frames)  # conditioning frames (reported)
-        t0 = time.perf_counter()
+        details = {"window": list(window), "device": dev, "scope": scope, "flip_rows_to_dicom": self.flip_rows,
+                   "checkpoint": Path(self.checkpoint).name, "model_config": self.model_config,
+                   "model_version": repo_commit(self.repo_path) or ""}
+        positives = [p for p in prompts.get("points") or [] if p["label"] == 1]
         autocast = (torch.autocast("cuda", dtype=torch.bfloat16) if dev == "cuda"
                     else torch.autocast("cpu", enabled=False))
         try:
             with torch.inference_mode(), autocast:
-                # (D, 3, 512, 512) float32 on the device, filled in chunks so the
-                # host never holds the float copy (official: float64 on GPU).
-                tensor = torch.empty(images.shape, dtype=torch.float32, device=dev)
-                mean = torch.tensor(IMAGENET_MEAN, dtype=torch.float32, device=dev)[:, None, None]
-                std = torch.tensor(IMAGENET_STD, dtype=torch.float32, device=dev)[:, None, None]
-                for c0 in range(0, images.shape[0], 32):
-                    chunk = torch.from_numpy(images[c0:c0 + 32]).to(dev).float() / 255.0
-                    tensor[c0:c0 + 32] = (chunk - mean) / std
-                init_kwargs = {}
-                if self.offload_video and "offload_video_to_cpu" in inspect.signature(predictor.init_state).parameters:
-                    init_kwargs["offload_video_to_cpu"] = True
-                state = predictor.init_state(tensor, ny, nx, **init_kwargs)
+                session = self._session(window, dev, predictor)
+                state = session["state"]
+                details["state_reused"] = self.timings.get("state_reused")
+                details["state_prep_s"] = None if details["state_reused"] else self.timings.get("state_prep_s")
 
-                def add_prompts():
-                    for z, f in sorted(frames.items()):
-                        predictor.add_new_points_or_box(
-                            state, frame_idx=z, obj_id=1,
-                            points=np.asarray(f["points"], dtype=np.float32) if f["points"] else None,
-                            labels=np.asarray(f["labels"], dtype=np.int32) if f["labels"] else None,
-                            box=np.asarray(f["box"], dtype=np.float32) if f["box"] is not None else None)
+                if scope == "slice":
+                    # quick provisional feedback on one slice (never the final candidate)
+                    z = int(options.get("target_z", positives[-1]["zyx"][0] if positives
+                                        else (prompts.get("box") or {}).get("min_zyx", [0])[0]))
+                    t0 = time.perf_counter()
+                    m2d = self._fast_2d(predictor, state, prompts, z, volume.shape)
+                    seg = np.zeros((nz, ny, nx), dtype=bool)
+                    if m2d is not None:
+                        seg[z] = m2d
+                    details.update(slice_z=z, fast_2d_s=time.perf_counter() - t0, total_s=time.perf_counter() - t_start)
+                    return seg.astype(np.uint8), details
 
+                # one-click smart initial prompt (only without an operator box)
+                if options.get("smart_init") and prompts.get("box") is None and positives:
+                    anchor = positives[0]["zyx"]
+                    t0 = time.perf_counter()
+                    m2d = self._fast_2d(predictor, state, prompts, int(anchor[0]), volume.shape)
+                    box, strategy, sd = initial_prompt(
+                        m2d, (anchor[1], anchor[2]), (ny, nx),
+                        policy=str(options.get("smart_policy", POLICY_POINT_FIRST)),
+                        min_fast_2d_pixels=int(options.get("smart_min_fast_2d_pixels", 400)),
+                        padding_fraction=float(options.get("smart_padding_fraction", 0.1)),
+                        min_padding_px=int(options.get("smart_min_padding_px", 2)),
+                        fallback_half_px=int(options.get("smart_fallback_half_px", 64)))
+                    if box is not None:
+                        prompts = dict(prompts, box=box_prompt(anchor[0], box))
+                    details["auto_box"] = {"strategy": strategy, "z": int(anchor[0]),
+                                           "box_yx": None if box is None else list(box),
+                                           "fast_2d_s": time.perf_counter() - t0, **sd}
+                    details["auto_box_is_fast_2d"] = strategy == STRATEGY_FAST_2D
+
+                frames, z_range = map_prompts(prompts, volume.shape, self.flip_rows)
+                first, last = min(frames), max(frames)
+                seg = np.zeros((nz, ny, nx), dtype=bool)
                 progress("running")
-                add_prompts()
+                t0 = time.perf_counter()
+                predictor.reset_state(state)
+                for z, f in sorted(frames.items()):
+                    self._add_frame_prompts(predictor, state, z, f)
                 done = 0
                 # Both passes OR into the volume, as the official script
                 # (segs_3D[idx, logits > 0] = 1).
@@ -373,7 +499,8 @@ class MedSAM2Provider:
                         raise _error("cancelled", "cancelled during forward propagation")
                     progress("running", done / nz)
                 predictor.reset_state(state)
-                add_prompts()
+                for z, f in sorted(frames.items()):
+                    self._add_frame_prompts(predictor, state, z, f)
                 for frame_idx, _obj_ids, logits in predictor.propagate_in_video(state, reverse=True):
                     seg[frame_idx] |= (logits[0] > 0.0).cpu().numpy()[0]
                     done += 1
@@ -381,24 +508,23 @@ class MedSAM2Provider:
                         raise _error("cancelled", "cancelled during reverse propagation")
                     progress("running", min(1.0, done / nz))
                 predictor.reset_state(state)
-                del tensor
+                details["inference_s"] = time.perf_counter() - t0
+                details["cached_frames"] = len(session["features"])
         except torch.cuda.OutOfMemoryError as e:
-            torch.cuda.empty_cache()
+            self._drop_state()
             raise _error("cuda_oom", str(e))
-        inference_s = time.perf_counter() - t0
         progress("mapping")
+        t0 = time.perf_counter()
         if z_range is not None:
             seg[:z_range[0]] = False
             seg[z_range[1] + 1:] = False
         if self.keep_largest:
             seg = largest_component(seg)
         mask = to_model_rows(seg, self.flip_rows).astype(np.uint8)
-        details = {"window": list(window), "device": dev, "key_frames": sorted(frames), "box_slice_range": z_range,
-                   "flip_rows_to_dicom": self.flip_rows, "largest_component": self.keep_largest,
-                   "inference_s": inference_s, "model_load_s": self.timings.get("model_load_s"),
-                   "preprocess_s": self.timings.get("preprocess_s"), "checkpoint": Path(self.checkpoint).name,
-                   "model_config": self.model_config, "model_version": repo_commit(self.repo_path) or "",
-                   "first_last_frame": [first, last]}
+        details.update(key_frames=sorted(frames), box_slice_range=z_range, largest_component=self.keep_largest,
+                       first_last_frame=[first, last], mapping_s=time.perf_counter() - t0,
+                       model_load_s=self.timings.get("model_load_s"), preprocess_s=self.timings.get("preprocess_s"),
+                       total_s=time.perf_counter() - t_start)
         if dev == "cuda":
             details["peak_vram_mb"] = torch.cuda.max_memory_allocated() / 2 ** 20
         return np.ascontiguousarray(mask), details
