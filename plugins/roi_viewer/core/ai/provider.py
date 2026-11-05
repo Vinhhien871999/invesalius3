@@ -52,6 +52,17 @@ OPTION_PATIENT_ORIENTATION = "patient_orientation"  # Project().patient_orientat
 OPTION_ACQUISITION = "acquisition_orientation"  # "AXIAL" / "CORONAL" / "SAGITTAL" / ""
 OPTION_HU_WINDOW = "hu_window"  # interactive AI: CT window preset the model sees
 OPTION_GENERATION = "generation_id"  # interactive AI: E2 preview generation of the request
+# Direct interaction (feature/interactive-ai-direct-click)
+OPTION_SCOPE = "scope"  # "volume" (3D candidate) | "slice" (provisional, one slice)
+OPTION_TARGET_Z = "target_z"  # slice of a "slice"-scope request
+OPTION_SMART_INIT = "smart_init"  # derive a box from the click (fast 2D mask / click-centred box)
+OPTION_SMART_PADDING = "smart_padding_fraction"
+OPTION_SMART_MIN_PADDING = "smart_min_padding_px"
+OPTION_SMART_FALLBACK = "smart_fallback_half_px"
+OPTION_SMART_POLICY = "smart_policy"  # "point_first" (default) | "fast_2d_box"
+OPTION_SMART_MIN_PIXELS = "smart_min_fast_2d_pixels"
+SCOPE_VOLUME = "volume"
+SCOPE_SLICE = "slice"
 MODE_STANDARD = "standard"
 MODE_FAST = "fast"
 

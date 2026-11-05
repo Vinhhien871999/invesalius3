@@ -17,9 +17,24 @@ from ..core.ai import job_controller as ai_jobs
 from ..core.ai import preview_bridge as ai_bridge
 from ..core.ai import provider as ai_provider
 from ..core.ai.prompts import AIPromptSet, PromptOutOfVolume
+from ..core.ai import direct_scheduler
 from ..core.ai.types import Capability, DeviceKind, PromptType
 from ..i18n import _, fmt_float, fmt_int
 from . import ui_helpers
+
+
+# Direct interaction - one-click policy (measured on 0543:
+# docs/CT3D_DIRECT_INTERACTION_ARCHITECTURE.md, "Smart initial prompt"):
+# "point_first" = the click alone when the model's quick 2D mask from it is
+# a real region (>= DIRECT_SMART_MIN_FAST_2D_PIXELS, contains the click);
+# otherwise an automatic click-centred box of half DIRECT_SMART_FALLBACK_HALF_PX
+# voxels is added. Padding applies only to the "fast_2d_box" policy.
+DIRECT_TWO_STAGE = True
+DIRECT_SMART_POLICY = "point_first"
+DIRECT_SMART_MIN_FAST_2D_PIXELS = 400
+DIRECT_SMART_PADDING_FRACTION = 0.10
+DIRECT_SMART_MIN_PADDING_PX = 3
+DIRECT_SMART_FALLBACK_HALF_PX = 64
 
 
 def native_mask_sha256(foreground) -> str:
@@ -176,6 +191,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._ai_run = None  # provider/prompt/timing info of the running job
         self._ai_env_checking = False  # interactive AI environment check running
         self._ai_shut_down = False  # shutdown_ai() ran: a late check result must not keep a worker
+        # Direct interaction (feature/interactive-ai-direct-click)
+        self._direct_sched = direct_scheduler.DirectPreviewScheduler(two_stage=DIRECT_TWO_STAGE)
+        self._direct_input = None  # gui/direct_ai_input.DirectAIInput, created on first activation
+        self._ai_suggestion = None  # core/ai/semantic_suggestion.Suggestion of the shown candidate
+        self._ai_suggestion_confirmed = None  # label the operator chose to use in the ROI name
         self._subscribe_surface_info_once()
         self._init_ui()
         self.SetupScrolling(scroll_x=False)
@@ -322,6 +342,33 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         ai_sizer.Add(self._ai_env_sizer, 0, wx.EXPAND)
         self.lbl_ai_env_info = ui_helpers.StatusText(p, "")
         ai_sizer.Add(self.lbl_ai_env_info, 0, wx.ALL | wx.EXPAND, 3)
+
+        # Direct interaction: click on the CT -> automatic preview. The
+        # manual prompt controls below move into "advanced" while it is on.
+        self._ai_direct_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.cb_ai_direct = wx.CheckBox(p, wx.ID_ANY, _("Direct interaction"))
+        self.cb_ai_direct.SetValue(True)
+        self.cb_ai_direct.SetToolTip(_(
+            "Click directly on the CT image to segment. The result is only a preview until you click Accept."))
+        self._ai_direct_sizer.Add(self.cb_ai_direct, 0, wx.ALL, 3)
+        self.lbl_ai_direct_hint = ui_helpers.hint(p, _(
+            "Click on the structure to segment. Click again to add a missed part. Drag on the Axial view to draw "
+            "a box. Shift+click excludes, if the model supports it."))
+        self._ai_direct_sizer.Add(self.lbl_ai_direct_hint, 0, wx.ALL, 3)
+        self.btn_ai_direct_clear = wx.Button(p, wx.ID_ANY, _("Clear prompts"))
+        self.btn_ai_restart = wx.Button(p, wx.ID_ANY, _("Start this region again"))
+        self.btn_ai_restart.SetToolTip(_("Removes the prompts and the current AI preview."))
+        self._ai_direct_sizer.Add(ui_helpers.button_row(self.btn_ai_direct_clear, self.btn_ai_restart), 0, wx.EXPAND)
+        self.lbl_ai_suggestion = ui_helpers.StatusText(p, "")
+        self._ai_direct_sizer.Add(self.lbl_ai_suggestion, 0, wx.ALL | wx.EXPAND, 3)
+        self.btn_ai_use_suggestion = wx.Button(p, wx.ID_ANY, _("Use the suggested name"))
+        self.btn_ai_use_suggestion.SetToolTip(_(
+            "Names the ROI after the suggested structure when you click Accept. A suggestion is not a diagnosis."))
+        self._ai_direct_sizer.Add(self.btn_ai_use_suggestion, 0, wx.ALL | wx.EXPAND, 2)
+        self.cb_ai_advanced = wx.CheckBox(p, wx.ID_ANY, _("Show advanced options"))
+        self.cb_ai_advanced.SetToolTip(_("Manual prompts, corner buttons, manual run and update."))
+        self._ai_direct_sizer.Add(self.cb_ai_advanced, 0, wx.ALL, 3)
+        ai_sizer.Add(self._ai_direct_sizer, 0, wx.EXPAND)
 
         # Point/box prompts: shown only for a model that uses them.
         self._ai_prompt_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -502,6 +549,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_ai_undo.Bind(wx.EVT_BUTTON, self._on_ai_undo)
         self.btn_ai_clear_box.Bind(wx.EVT_BUTTON, self._on_ai_clear_box)
         self.btn_ai_check_env.Bind(wx.EVT_BUTTON, self._on_ai_check_environment)
+        self.cb_ai_direct.Bind(wx.EVT_CHECKBOX, lambda event: self._on_ai_direct_toggled())
+        self.cb_ai_advanced.Bind(wx.EVT_CHECKBOX, lambda event: self._update_ai_controls())
+        self.btn_ai_direct_clear.Bind(wx.EVT_BUTTON, self._on_ai_clear)
+        self.btn_ai_restart.Bind(wx.EVT_BUTTON, self._on_ai_restart)
+        self.btn_ai_use_suggestion.Bind(wx.EVT_BUTTON, self._on_ai_use_suggestion)
+        self.choice_ai_window.Bind(wx.EVT_CHOICE, self._on_ai_window_changed)
         self.btn_ai_run.Bind(wx.EVT_BUTTON, self._on_ai_run)
         self.btn_ai_cancel.Bind(wx.EVT_BUTTON, self._on_ai_cancel)
         self.btn_preview_cancel.Bind(wx.EVT_BUTTON, self._on_preview_cancel)
@@ -981,7 +1034,10 @@ class SegmentationPanel(scrolled.ScrolledPanel):
     # segmentation branch ONLY): Preview -> Accept/Cancel workflow.
     # ------------------------------------------------------------------
     def _preview_ready(self) -> bool:
-        return self.preview_mgr.state == segmentation_preview.PreviewState.PREVIEW_READY
+        if self.preview_mgr.state != segmentation_preview.PreviewState.PREVIEW_READY:
+            return False
+        # Direct interaction: a one-slice provisional preview is never Accept-able
+        return not (self.preview_mgr.preview_kind == "ai" and (self.preview_mgr.ai_metadata or {}).get("provisional"))
 
     def _update_preview_buttons(self):
         self.btn_preview_accept.Enable(self._preview_ready())
@@ -1288,6 +1344,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             print(f"ROI Viewer: applying region growing preview result failed - {e}")
 
     def _on_preview_accept(self, event):
+        if self.preview_mgr.preview_kind == "ai" and (self.preview_mgr.ai_metadata or {}).get("provisional"):
+            return  # quick one-slice feedback - the 3D candidate is not ready yet
         if not self.preview_mgr.begin_accept():
             return  # not PREVIEW_READY (nothing to accept, or already accepting) - no-op
         self.btn_preview_accept.Enable(False)
@@ -1665,7 +1723,178 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self.btn_ai_run.Enable(has_model and not busy)
         self.btn_ai_run.SetLabel(_("Update preview") if self._ai_preview_shown() else _("Preview with AI"))
         self.btn_ai_cancel.Enable(running)
+        # Direct interaction (interactive models only): simple mode hides the
+        # manual prompt controls and the manual run, unless "advanced".
+        interactive = bool(has_model and selected.checkable and uses_prompts)
+        direct = interactive and self.cb_ai_direct.GetValue()
+        advanced = self.cb_ai_advanced.GetValue()
+        self._ai_show(self._ai_direct_sizer, interactive)
+        if interactive:
+            self._ai_show(self._ai_prompt_sizer, (not direct) or advanced)
+        self._ai_show_window(self.lbl_ai_direct_hint, direct)
+        self._ai_show_window(self.btn_ai_direct_clear, direct)
+        self._ai_show_window(self.btn_ai_restart, direct)
+        self._ai_show_window(self.cb_ai_advanced, direct)
+        self._ai_show_window(self.btn_ai_run, (not direct) or advanced)
+        has_suggestion = direct and self._ai_suggestion is not None and self._ai_suggestion.label is not None
+        self._ai_show_window(self.lbl_ai_suggestion, direct and self._ai_suggestion is not None)
+        self._ai_show_window(self.btn_ai_use_suggestion, has_suggestion)
+        self.btn_ai_use_suggestion.Enable(has_suggestion and self._ai_suggestion_confirmed is None)
+        self.btn_ai_direct_clear.Enable(direct and self._ai_prompts.count + (self._ai_prompts.corner1 is not None) > 0)
+        self._set_direct_input_active(direct)
         self._update_ai_prompt_label()
+
+    def _ai_show_window(self, window, show: bool):
+        if bool(window.IsShown()) == bool(show):
+            return
+        window.Show(bool(show))
+        self._ai_sizer.Layout()
+        self._ai_pane.InvalidateBestSize()
+        if not self._ai_pane.IsCollapsed():
+            self._on_section_toggled(None)
+
+    # ------------------------------------------------------------------
+    # Direct interaction (feature/interactive-ai-direct-click)
+    # ------------------------------------------------------------------
+    def _direct_active(self) -> bool:
+        return self._direct_input is not None and self._direct_input.active
+
+    def _set_direct_input_active(self, on: bool):
+        if on and self._direct_input is None:
+            from .direct_ai_input import DirectAIInput
+
+            lookup = getattr(self.controller, "_slice_viewers", None) or (lambda: [])
+            self._direct_input = DirectAIInput(lookup, self._direct_point, self._direct_box, self._direct_drag)
+        if self._direct_input is not None:
+            try:
+                self._direct_input.set_active(on)
+            except Exception as e:
+                print(f"ROI Viewer: direct AI input not attached - {e}")
+
+    def _on_ai_direct_toggled(self):
+        if not self.cb_ai_direct.GetValue():
+            self._direct_sched.reset()
+        self._update_ai_controls()
+
+    def _direct_point(self, world_slice, positive: bool):
+        """A click on a 2D view (gui/direct_ai_input.py): the marker is
+        drawn at once by the prompt store; the model runs afterwards."""
+        info = self._selected_ai_info()
+        if not positive and (info is None or PromptType.NEGATIVE_POINT not in info.supported_prompt_types):
+            self.lbl_ai_status.SetLabel(_("This model does not support exclusion points."))
+            return
+        if self._ai_add_prompt(world_slice, positive=positive):
+            self._direct_request()
+
+    def _direct_box(self, world1, world2):
+        """A box dragged on the Axial view: the same two-corner path as the
+        corner buttons, so the box geometry is identical."""
+        info = self._selected_ai_info()
+        if info is None or PromptType.BOX not in info.supported_prompt_types:
+            self.lbl_ai_status.SetLabel(_("This model does not support this kind of prompt."))
+            return
+        self._ai_prompts.clear_box()
+        if self._ai_add_prompt(world1, corner=1) and self._ai_add_prompt(world2, corner=2):
+            self._direct_request()
+
+    def _direct_drag(self, world1, world2):
+        overlay = getattr(self.controller, "ai_prompt_overlay", None)
+        geometry = self._ai_volume_geometry()
+        if overlay is not None:
+            overlay.set_drag(world1, world2, *(geometry or (None, None)))
+
+    def _direct_request(self):
+        action = self._direct_sched.request()
+        if action == direct_scheduler.DEFERRED:
+            self.lbl_ai_status.SetLabel(_("Updating with the newest prompts…"))
+            return
+        self._direct_start(self._direct_sched.stage)
+
+    def _direct_start(self, stage):
+        options = {ai_provider.OPTION_SCOPE: stage}
+        if stage == direct_scheduler.STAGE_SLICE:
+            target = self._direct_target_slice()
+            if target is None:
+                self._direct_sched.reset()
+                return
+            options[ai_provider.OPTION_TARGET_Z] = target
+        else:
+            options.update({ai_provider.OPTION_SMART_INIT: True,
+                            ai_provider.OPTION_SMART_POLICY: DIRECT_SMART_POLICY,
+                            ai_provider.OPTION_SMART_MIN_PIXELS: DIRECT_SMART_MIN_FAST_2D_PIXELS,
+                            ai_provider.OPTION_SMART_PADDING: DIRECT_SMART_PADDING_FRACTION,
+                            ai_provider.OPTION_SMART_MIN_PADDING: DIRECT_SMART_MIN_PADDING_PX,
+                            ai_provider.OPTION_SMART_FALLBACK: DIRECT_SMART_FALLBACK_HALF_PX})
+        if not self._ai_start(extra_options=options, stage=stage):
+            self._direct_sched.reset()
+
+    def _direct_target_slice(self):
+        if self._ai_prompts.points:
+            return int(self._ai_prompts.points[-1].voxel_zyx[0])
+        if self._ai_prompts.box is not None:
+            lo, hi = self._ai_prompts.box.voxel_min_zyx[0], self._ai_prompts.box.voxel_max_zyx[0]
+            return int((lo + hi) // 2)
+        return None
+
+    def _on_ai_restart(self, event):
+        """Start this region again: no prompts, no candidate."""
+        self._direct_sched.reset()
+        if self._ai_jobs is not None and self._ai_jobs.is_busy():
+            self._ai_jobs.cancel()
+        if self.preview_mgr.preview_kind == "ai" or self.preview_mgr.state == segmentation_preview.PreviewState.COMPUTING:
+            self.cancel_preview()
+            self._mark_preview_3d_dirty("interactive AI restarted")
+        self._ai_prompts.clear()
+        self._ai_suggestion = None
+        self._ai_suggestion_confirmed = None
+        self.lbl_ai_status.SetLabel(_("Ready."))
+        self._update_ai_controls()
+        self._refresh_ai_prompt_overlay()
+
+    def _on_ai_window_changed(self, event):
+        """The model's input changed: the shown AI preview no longer matches
+        it. It is removed; nothing reruns until the next click / Run."""
+        if self.preview_mgr.preview_kind == "ai" or self.preview_mgr.state == segmentation_preview.PreviewState.COMPUTING:
+            self._direct_sched.reset()
+            if self._ai_jobs is not None and self._ai_jobs.is_busy():
+                self._ai_jobs.cancel()
+            self.cancel_preview()
+            self._mark_preview_3d_dirty("CT window changed")
+            self.lbl_ai_status.SetLabel(_("CT window changed - the preview was removed. Click again to rerun."))
+
+    def _on_ai_use_suggestion(self, event):
+        if self._ai_suggestion is not None and self._ai_suggestion.label:
+            self._ai_suggestion_confirmed = self._ai_suggestion.label
+            self.lbl_ai_suggestion.SetLabel(_("The ROI will be named 'AI - MedSAM2 - {name}'.").format(
+                name=self._ai_suggestion_confirmed))
+            self._update_ai_controls()
+
+    def _ai_update_suggestion(self, foreground):
+        """Structure suggestion from an EXISTING TotalSegmentator full run of
+        this exact volume (never runs TotalSegmentator)."""
+        from ..core.ai import semantic_suggestion as ss
+
+        self._ai_suggestion_confirmed = None
+        ts = self._ai_registry.get("totalsegmentator") if self._ai_registry is not None else None
+        try:
+            import invesalius.data.slice_ as sl
+
+            found, reason = ss.cached_labels(ts, sl.Slice().matrix)
+        except Exception as e:
+            print(f"ROI Viewer: structure suggestion skipped - {e}")
+            found, reason = None, ss.NO_CACHE
+        if found is None:
+            self._ai_suggestion = ss.Suggestion(None, reason)
+        else:
+            self._ai_suggestion = ss.suggest(foreground, *found)
+        sug = self._ai_suggestion
+        if sug.label:
+            self.lbl_ai_suggestion.SetLabel(_(
+                "Suggested structure: {name} (overlap {percent}%). Based on the overlap with the existing "
+                "TotalSegmentator segmentation.").format(name=sug.label, percent=int(round(sug.coverage * 100))))
+        else:
+            self.lbl_ai_suggestion.SetLabel(_("Structure not identified."))
+        print(f"ROI Viewer: structure suggestion {sug}")
 
     def _ai_preview_shown(self) -> bool:
         return (self.preview_mgr.preview_kind == "ai"
@@ -1704,24 +1933,27 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             return None
         return pi.get_spacing(), tuple(volume.shape)
 
-    def _ai_add_prompt(self, world_slice, corner=None):
-        """world_slice: slice-frame (x, y, z) mm - core/coordinates.py."""
+    def _ai_add_prompt(self, world_slice, corner=None, positive=None) -> bool:
+        """world_slice: slice-frame (x, y, z) mm - core/coordinates.py.
+        positive=None: the "Point type" radio button. Returns True if added."""
         geometry = self._ai_volume_geometry()
         if geometry is None:
             self.lbl_ai_status.SetLabel(_("No project loaded."))
-            return
+            return False
         spacing, shape = geometry
         try:
             if corner is None:
-                self._ai_prompts.add_point(world_slice, spacing, shape, self.rb_ai_positive.GetValue())
+                sign = self.rb_ai_positive.GetValue() if positive is None else bool(positive)
+                self._ai_prompts.add_point(world_slice, spacing, shape, sign)
             else:
                 self._ai_prompts.set_corner(corner, world_slice, spacing, shape)
         except PromptOutOfVolume as e:
             print(f"ROI Viewer: AI prompt ignored - {e}")
             self.lbl_ai_status.SetLabel(_("Outside the image volume - ignored."))
-            return
+            return False
         self._update_ai_controls()
         self._refresh_ai_prompt_overlay()
+        return True
 
     def _ai_cursor_position(self):
         position = self.controller.get_crosshair_position()
@@ -1774,6 +2006,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         self._ai_prompts.undo_last_point()
         self._update_ai_controls()
         self._refresh_ai_prompt_overlay()
+        if self._direct_active() and self._ai_prompts.count:
+            self._direct_request()
 
     def _on_ai_clear_box(self, event):
         self._ai_prompts.clear_box()
@@ -1803,6 +2037,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             print(f"ROI Viewer: AI prompt markers not updated - {e}")
 
     def _on_ai_run(self, event):
+        self._ai_start()
+
+    def _ai_start(self, extra_options=None, stage=None) -> bool:
+        """Start one AI job. stage None = the manual Run (unchanged);
+        "slice" / "volume" = a direct-interaction stage. Returns True if a
+        job started."""
         import time
 
         import invesalius.data.slice_ as sl
@@ -1813,21 +2053,24 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         provider = self._ai_registry.get(pid) if (pid and self._ai_registry is not None) else None
         if provider is None or self._ai_jobs is None:
             self.lbl_ai_status.SetLabel(_("No compatible AI model."))
-            return
+            return False
         if self._ai_jobs.is_busy():
             self.lbl_ai_status.SetLabel(_("The previous AI job is still stopping - try again shortly."))
-            return
+            return False
         if sl.Slice().current_mask is None:
+            if stage is not None:  # direct interaction: no modal dialog on every click
+                self.lbl_ai_status.SetLabel(_("Create or select a mask first - the preview overlay needs a current mask."))
+                return False
             wx.MessageBox(
                 _("Create or select a mask first - the preview overlay needs a current mask."),
                 _("No mask selected"), wx.OK | wx.ICON_WARNING,
             )
-            return
+            return False
         pi = ProjectInterface()
         volume = pi.get_volume_data()
         if volume is None:
             self.lbl_ai_status.SetLabel(_("No project loaded."))
-            return
+            return False
         spacing = pi.get_spacing()
         info = self._ai_registry.info(pid)
         options = {}
@@ -1835,7 +2078,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             structure = self.combo_ai_structure.GetValue().strip()
             if structure not in self._ai_structures:
                 self.lbl_ai_status.SetLabel(_("Choose a structure from the list."))
-                return
+                return False
             options[ai_provider.OPTION_STRUCTURE] = structure
         if self._ai_modes:
             options[ai_provider.OPTION_MODE] = self._selected_ai_mode()
@@ -1844,6 +2087,7 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         orientation, acquisition = self._ai_volume_orientation()
         options[ai_provider.OPTION_PATIENT_ORIENTATION] = orientation
         options[ai_provider.OPTION_ACQUISITION] = acquisition
+        options.update(extra_options or {})
         from ..core.ai.types import AIPrompts
 
         prompts = self._ai_prompts.snapshot() if (info and info.supported_prompt_types) else AIPrompts()
@@ -1851,8 +2095,12 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                                      device=self._selected_ai_device(), options=options)
 
         # A new preview replaces the current one (as for Otsu/Region Growing).
-        self._clear_preview_overlay()
-        self.preview_mgr.cancel()
+        # Direct interaction keeps the shown AI preview (e.g. the quick slice
+        # feedback) on screen until the next result replaces it; the
+        # generation bump still makes it stale and not Accept-able.
+        if stage is None or self.preview_mgr.preview_kind != "ai":
+            self._clear_preview_overlay()
+            self.preview_mgr.cancel()
         self._ai_preview_generation = self.preview_mgr.new_generation()
         # the request's own options dict: the provider echoes it to its runtime
         options[ai_provider.OPTION_GENERATION] = self._ai_preview_generation
@@ -1866,19 +2114,27 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             "positive_points": sum(1 for q in request.prompts.points if q.positive),
             "negative_points": sum(1 for q in request.prompts.points if not q.positive),
             "box": request.prompts.box is not None, "hu_window": options.get(ai_provider.OPTION_HU_WINDOW),
-            "generation": self._ai_preview_generation,
+            "generation": self._ai_preview_generation, "stage": stage,
         }
         self.lbl_preview_status.SetLabel(_("Computing…"))
         job = self._ai_jobs.start(provider, request)
+        # after start(): its PREPARING/RUNNING state messages are synchronous
+        if job is not None and stage == direct_scheduler.STAGE_SLICE:
+            self.lbl_ai_status.SetLabel(_("Quick view on the current slice…"))
+        elif job is not None and stage == direct_scheduler.STAGE_VOLUME:
+            self.lbl_ai_status.SetLabel(_("Segmenting the selected region in 3D…"))
         if job is None:
+            self._clear_preview_overlay()
             self.preview_mgr.cancel()
             self.lbl_preview_status.SetLabel(_("Idle"))
         self._update_preview_buttons()
         self._update_ai_controls()
+        return job is not None
 
     def _on_ai_cancel(self, event):
         if self._ai_jobs is None:
             return
+        self._direct_sched.reset()
         self._ai_jobs.cancel()
         if (self._ai_preview_generation is not None
                 and not self.preview_mgr.is_stale(self._ai_preview_generation)
@@ -1908,6 +2164,8 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                     else:
                         self.lbl_ai_status.SetLabel(_("Waiting for the running model to finish…"))
                 self._update_ai_controls()
+            elif event == ai_jobs.EVENT_PROGRESS and (self._ai_run or {}).get("stage"):
+                pass  # direct interaction: the stage message stays ("Quick view…" / "…in 3D…")
             elif event == ai_jobs.EVENT_PROGRESS:
                 fraction, stage = payload
                 if fraction is None:  # the provider reports stages only - no percentage is shown
@@ -1942,8 +2200,13 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         if self._ai_jobs is not None:
             self._ai_jobs.consume_result()
         if self._ai_preview_generation is not None and not self.preview_mgr.is_stale(self._ai_preview_generation):
+            self._clear_preview_overlay()  # also a quick slice preview still shown
             self.preview_mgr.cancel()
             self.lbl_preview_status.SetLabel(_("Idle"))
+        stage = (self._ai_run or {}).get("stage")
+        if stage:
+            if self._direct_sched.finished(stage, ok=False) == direct_scheduler.DISCARD_THEN_SLICE:
+                self._direct_start(self._direct_sched.stage)  # newer prompts arrived meanwhile
         self._update_preview_buttons()
         self._update_ai_controls()
 
@@ -1957,23 +2220,41 @@ class SegmentationPanel(scrolled.ScrolledPanel):
 
         self._ai_jobs.consume_result()
         run = self._ai_run or {}
+        stage = run.get("stage")
         if self._ai_preview_generation is None or self.preview_mgr.is_stale(self._ai_preview_generation):
             print("ROI Viewer: discarded AI result - its preview was cancelled or replaced")
+            if stage:
+                self._direct_sched.reset()
             self._update_ai_controls()
+            return
+        action = self._direct_sched.finished(stage, ok=True) if stage else None
+        if action == direct_scheduler.DISCARD_THEN_SLICE:
+            # latest wins: this result belongs to an older prompt set
+            print("ROI Viewer: discarded direct AI result - newer prompts arrived")
+            self._direct_start(self._direct_sched.stage)
             return
         try:
             foreground = ai_bridge.validate_candidate(result.mask, run.get("shape"))
         except ai_bridge.CandidateError as e:
             print(f"ROI Viewer: AI result rejected - {e}")
+            self._direct_sched.reset()
             self.lbl_ai_status.SetLabel(self._ai_candidate_message(e.code))
+            self._clear_preview_overlay()
             self.preview_mgr.cancel()
             self.lbl_preview_status.SetLabel(_("Idle"))
             self._update_preview_buttons()
             self._update_ai_controls()
             return
         runtime = time.perf_counter() - run.get("started", time.perf_counter())
+        if stage == direct_scheduler.STAGE_SLICE and not foreground.any():
+            # nothing quick to show on this slice - the 3D stage still runs
+            # (its smart initial box falls back to a click-centred box)
+            if action == direct_scheduler.SHOW_THEN_VOLUME:
+                self._direct_start(direct_scheduler.STAGE_VOLUME)
+            return
         if not foreground.any():
             self.lbl_ai_status.SetLabel(_("AI found no region."))
+            self._clear_preview_overlay()
             self.preview_mgr.cancel()
             self.lbl_preview_status.SetLabel(_("Idle"))
             self._update_preview_buttons()
@@ -1996,7 +2277,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             "box": run.get("box", False), "hu_window": run.get("hu_window"), "generation": run.get("generation"),
             "candidate_sha256": native_mask_sha256(foreground),
             "mask_name_prefix": (getattr(result, "extra", {}) or {}).get("mask_name_prefix"),
+            # direct interaction: a one-slice result is provisional, never Accept-able
+            "provisional": stage == direct_scheduler.STAGE_SLICE, "stage": stage,
         }
+        if stage:
+            self._clear_preview_overlay()  # the previous (quick) preview is replaced, not stacked
         if not self.preview_mgr.set_ai_preview(self._ai_preview_generation, array, metadata, stats, name="AI Preview"):
             try:
                 os.remove(temp_file)
@@ -2011,6 +2296,17 @@ class SegmentationPanel(scrolled.ScrolledPanel):
                   f"generation={run.get('generation')}")
         self.lbl_ai_status.SetLabel(_("Done in {seconds} s.").format(seconds=fmt_float(runtime, 1)))
         print(f"ROI Viewer: AI preview ready - {metadata}")
+        if stage == direct_scheduler.STAGE_SLICE:
+            self.lbl_preview_status.SetLabel(_("Quick view on this slice only - the 3D result follows."))
+            self.lbl_ai_status.SetLabel(_("Segmenting the selected region in 3D…"))
+            self._update_preview_buttons()
+            self._update_ai_controls()
+            if action == direct_scheduler.SHOW_THEN_VOLUME:
+                self._direct_start(direct_scheduler.STAGE_VOLUME)
+            return  # no 3D (E4) update for the one-slice provisional result
+        if stage == direct_scheduler.STAGE_VOLUME:
+            self.lbl_ai_status.SetLabel(_("3D segmentation done in {seconds} s.").format(seconds=fmt_float(runtime, 1)))
+            self._ai_update_suggestion(foreground)
         self._update_preview_buttons()
         self._update_ai_controls()
         self._mark_preview_3d_dirty("AI preview ready")
@@ -2032,6 +2328,13 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             prefix = ai_metadata.get("mask_name_prefix")
             if structure:  # E6b: "AI - <canonical class name>" (not translated)
                 name = f"AI - {structure}"
+            elif prefix and self._ai_suggestion_confirmed:  # operator confirmed the suggestion
+                names = {getattr(m, "name", "") for m in mask_dict.values()}
+                name = f"{prefix} - {self._ai_suggestion_confirmed}"
+                n = 2
+                while name in names:
+                    name = f"{prefix} - {self._ai_suggestion_confirmed} {n}"
+                    n += 1
             elif prefix:  # interactive AI: "AI - MedSAM2 N", never an existing name
                 names = {getattr(m, "name", "") for m in mask_dict.values()}
                 n = 1
@@ -2069,6 +2372,9 @@ class SegmentationPanel(scrolled.ScrolledPanel):
         afterwards (a late result is dropped), models are released.
         Idempotent."""
         self._ai_shut_down = True
+        self._direct_sched.reset()
+        if self._direct_input is not None:
+            self._direct_input.detach()
         self.controller.picker.remove_callback(self._on_ai_point_picked)
         if self._ai_jobs is not None:
             self._ai_jobs.shutdown()
@@ -2087,6 +2393,11 @@ class SegmentationPanel(scrolled.ScrolledPanel):
             self._ai_registry.close_all()
         self._ai_prompts.clear()
         self._ai_run = None
+        self._direct_sched.reset()
+        self._ai_suggestion = None
+        self._ai_suggestion_confirmed = None
+        if self._direct_input is not None:
+            self._direct_input.detach()  # re-attached by _update_ai_controls for the new project's views
         self._refresh_ai_prompt_overlay()
         try:
             self.btn_ai_pick_point.SetValue(False)

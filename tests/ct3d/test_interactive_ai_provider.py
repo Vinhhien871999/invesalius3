@@ -269,3 +269,27 @@ def test_prompts_payload_uses_voxels():
     assert payload["points"] == [{"zyx": [3, 4, 5], "label": 0}]
     assert payload["box"] == {"min_zyx": [1, 0, 0], "max_zyx": [4, 6, 4]}
     assert P.check_prompts(payload, SHAPE) == payload
+
+
+def test_edited_configuration_is_used_by_the_next_check(tmp_path, volume):
+    """The operator edits the config file and checks again: the worker from
+    the old settings must not be reused."""
+    configs = [InteractiveAIConfig(enabled=True, provider="fake", runtime_command=(sys.executable, FAKE_WORKER),
+                                   provider_config={"radius": 2})]
+    clients = []
+
+    def factory(c):
+        client = InteractiveAIRuntimeClient(c, temp_root=str(tmp_path))
+        clients.append(client)
+        return client
+
+    provider = m2.MedSAM2ExternalProvider(config_loader=lambda: configs[-1], client_factory=factory)
+    provider.check_environment()
+    run(provider, request(volume, [point((10, 15, 20))]))
+    configs.append(InteractiveAIConfig(enabled=True, provider="fake", runtime_command=(sys.executable, FAKE_WORKER),
+                                       provider_config={"radius": 4}))
+    provider.check_environment()
+    result, _ = run(provider, request(volume, [point((10, 15, 20))], generation=2))
+    assert len(clients) == 2 and clients[0].worker_alive is False
+    assert np.array_equal(np.asarray(result.mask).astype(bool), ball((10, 15, 20), 4))
+    provider.close()

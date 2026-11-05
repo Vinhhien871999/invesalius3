@@ -186,7 +186,13 @@ def test_configured_then_checked(env):
     assert _provider(env)._client is None  # ticking AI on starts no worker
     _check(env)
     assert p.lbl_ai_status.GetLabel() == "Môi trường đã sẵn sàng."
-    assert p.btn_ai_run.IsEnabled() and _shown(p, p._ai_prompt_sizer) and not _shown(p, p._ai_env_sizer)
+    # direct interaction is the default for an interactive model: simple layout
+    assert p.cb_ai_direct.GetValue() and _shown(p, p._ai_direct_sizer) and not _shown(p, p._ai_prompt_sizer)
+    assert not p.btn_ai_run.IsShown() and not _shown(p, p._ai_env_sizer)
+    # unticked: the manual prompt workflow exactly as before
+    p.cb_ai_direct.SetValue(False)
+    p._on_ai_direct_toggled()
+    assert p.btn_ai_run.IsEnabled() and p.btn_ai_run.IsShown() and _shown(p, p._ai_prompt_sizer)
     assert p.rb_ai_negative.IsEnabled() and p.btn_ai_corner1.IsEnabled()  # declared by the worker
     assert _shown(p, p._ai_window_row) and p.choice_ai_window.GetString(0) == "Mô mềm"
     assert "FakeInteractiveAIWorker" in p.lbl_ai_env_info.GetLabel()

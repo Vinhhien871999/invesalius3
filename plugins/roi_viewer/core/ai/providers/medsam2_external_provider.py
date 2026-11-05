@@ -31,6 +31,16 @@ from ..external.runtime_client import InteractiveAIRuntimeClient
 from ..provider import (
     OPTION_GENERATION,
     OPTION_HU_WINDOW,
+    OPTION_SCOPE,
+    OPTION_SMART_FALLBACK,
+    OPTION_SMART_INIT,
+    OPTION_SMART_MIN_PADDING,
+    OPTION_SMART_MIN_PIXELS,
+    OPTION_SMART_PADDING,
+    OPTION_SMART_POLICY,
+    OPTION_TARGET_Z,
+    SCOPE_SLICE,
+    SCOPE_VOLUME,
     REASON_NOT_CHECKED,
     REASON_NOT_CONFIGURED,
     REASON_RUNTIME,
@@ -44,6 +54,9 @@ from ..types import AIInferenceResult, AIProviderInfo, Capability, DeviceKind, P
 PROVIDER_ID = "medsam2"
 DISPLAY_NAME = "MedSAM2"  # the panel shows "Phân đoạn AI tương tác (MedSAM2)"
 MASK_NAME_PREFIX = "AI - MedSAM2"
+
+PASS_THROUGH_OPTIONS = (OPTION_SCOPE, OPTION_TARGET_Z, OPTION_SMART_INIT, OPTION_SMART_PADDING,
+                        OPTION_SMART_MIN_PADDING, OPTION_SMART_FALLBACK, OPTION_SMART_POLICY, OPTION_SMART_MIN_PIXELS)
 
 # Worker error codes that mean "the environment is not usable" (UI: needs setup)
 SETUP_CODES = (protocol.E_DEPENDENCY, protocol.E_CHECKPOINT_MISSING, protocol.E_WORKER_START,
@@ -117,6 +130,8 @@ class MedSAM2ExternalProvider(AISegmentationProvider):
         """Blocking (call from a worker thread): start the external runtime
         and ask it what it really supports."""
         config = self._config_loader()
+        if self._client is not None and self._client.config != config:
+            self._drop_client()  # the file was edited: never keep a worker started from the old settings
         self._config = config
         if not config.usable:
             self._checked = None
@@ -184,6 +199,9 @@ class MedSAM2ExternalProvider(AISegmentationProvider):
         options = {}
         if request.options.get(OPTION_HU_WINDOW):
             options[OPTION_HU_WINDOW] = request.options[OPTION_HU_WINDOW]
+        for key in PASS_THROUGH_OPTIONS:  # direct interaction (scope / smart initial box)
+            if request.options.get(key) is not None:
+                options[key] = request.options[key]
 
         def on_progress(message):
             stage = message.get("message", "")
@@ -219,6 +237,12 @@ class MedSAM2ExternalProvider(AISegmentationProvider):
             "candidate_bounds_zyx": response.get("bounds_zyx"), "volume_id": response.get("volume_id"),
             "generation_id": response.get("generation_id"), "timings": dict(self.last_timings),
             "candidate_sha256": candidate_sha256(candidate),
+            # direct interaction: what the worker really did
+            "scope": details.get("scope", SCOPE_VOLUME), "provisional": details.get("scope") == SCOPE_SLICE,
+            "slice_z": details.get("slice_z"), "auto_box": details.get("auto_box"),
+            "state_reused": details.get("state_reused"), "cached_frames": details.get("cached_frames"),
+            "worker_timings": {k: details.get(k) for k in ("state_prep_s", "fast_2d_s", "inference_s", "mapping_s",
+                                                          "total_s", "model_load_s", "preprocess_s")},
         }
         return AIInferenceResult(mask=candidate, model_name="MedSAM2",
                                  model_version=details.get("model_version") or self._checked.version,
