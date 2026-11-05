@@ -979,3 +979,29 @@ Select a class, change "Từ HU" without pressing Áp dụng thay đổi.
 **Actual Result** (operator observation described in the task brief of 04/11/2026 (screenshots/PDF not attached to this session and not reviewed here)): the confusing state (list −600..−500, editor −540..−500) was observed before the fix; the new behaviour not yet seen. | **PASS/FAIL**: `PARTIAL`
 
 **AN_MANUAL_QA_COMPLETE: NO** — 0 PASS, 8 PARTIAL (A, B, C, D, M, O, S, T), 12 NOT_RUN (E–L, N, P, Q, R).
+
+---
+
+## Seed pick (05/11/2026) — `docs/CT3D_SEED_PICK_REVIEW.md`
+
+**Precondition**: 0543 imported, at least one visible 3D surface (e.g. "Cập nhật bề mặt 3D" on a mask), ROI Viewer on tab Phân đoạn. Display scale as used normally (operator screen 125%).
+
+### TEST RG-A — 3D seed on a surface
+Untick preview mode, press **Chọn điểm hạt giống (3D)**, click on the visible surface.
+**Expected**: "Region Growing N" mask created; the yellow marker moves to the clicked point (check it lands where the mouse was, not offset - HiDPI check).
+**Actual Result**: NOT_RUN
+
+### TEST RG-B — Click on background
+Press the button, click on empty background of the 3D view.
+**Expected**: "Cú nhấp không trúng bề mặt 3D nào…"; button stays pressed; a second click on the surface works.
+**Actual Result**: NOT_RUN
+
+### TEST RG-C — Preview mode
+Tick **Bật chế độ xem trước**, pick a seed on the surface.
+**Expected**: status "Hạt giống tại voxel (…) (HU …). Bấm Xem trước."; no mask yet; **Xem trước** then **Chấp nhận** creates the mask.
+**Actual Result**: NOT_RUN
+
+### TEST RG-D — Seed at 2D cursor, Display-tab pick after reload
+Cross tool → click inside an organ on a 2D slice → **Hạt giống tại con trỏ 2D**. Then close and reopen the project and use **Chọn điểm trong 3D** on tab Hiển thị.
+**Expected**: seed voxel = cursor position with a plausible HU for the organ; after the reload the Display-tab pick still fills "X:, Y:, Z:".
+**Actual Result**: NOT_RUN

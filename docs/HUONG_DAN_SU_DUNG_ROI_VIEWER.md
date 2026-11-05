@@ -104,7 +104,11 @@ Mọc vùng bán tự động: chọn 1 điểm hạt giống trên khối 3D, t
 
 1. Nhập **Độ dung sai** (mặc định 50, có thể để **0** = chỉ lấy đúng voxel có giá trị bằng hệt điểm hạt giống).
 2. Bấm **Chọn điểm hạt giống (3D)** — nút chuyển sang trạng thái "đang chờ".
-3. Click chuột trái vào 1 điểm trên khối 3D (khung "Volume") để chọn làm hạt giống.
+3. Click chuột trái vào 1 điểm **trên một bề mặt 3D đang hiển thị** trong khung "Volume" (bề mặt tạo bằng **Cập nhật bề mặt 3D** hoặc bề mặt có sẵn của dự án). Plugin lấy điểm trên bề mặt đó, chứ không lấy điểm bên trong khối CT.
+   - Nếu click ra nền trống (không trúng bề mặt nào): dòng trạng thái báo *"Cú nhấp không trúng bề mặt 3D nào…"* và nút vẫn chờ, bạn chỉ cần click lại.
+   - Khi chọn được, dòng trạng thái hiện voxel và HU của hạt giống, chấm vàng 3D dời tới điểm đó.
+   - **Hạt giống tại con trỏ 2D**: một cách khác là bật công cụ cross, click vào trong cơ quan trên một lát 2D, rồi bấm nút này. Hạt giống sẽ nằm đúng vị trí con trỏ, bên trong cơ quan. Điểm chọn trên bề mặt 3D luôn nằm ở biên, nên HU của nó có thể không đại diện cho vùng (ví dụ bề mặt xương 0543 cho HU −16).
+   - Nếu đã tích **Bật chế độ xem trước**: việc chọn điểm chỉ **ghi nhận hạt giống**, chưa tạo mặt nạ. Bấm **Xem trước** để xem vùng, rồi **Chấp nhận** để tạo mặt nạ thật.
 4. Plugin tự tính toán (chạy nền, không treo giao diện) rồi tạo mặt nạ mới tên **"Region Growing N"**, xuất hiện trong danh sách Quản lý ROI.
 5. **An toàn**: nếu vùng mọc ra quá lớn (>20% tổng thể tích — ngưỡng có thể chỉnh trong code, không phải giá trị tuỳ tiện), plugin hiện hộp thoại **"Vùng quá lớn"** kèm số liệu thật (số voxel, % thể tích) và hỏi có vẫn tạo mặt nạ không (nút Yes/No hiển thị theo ngôn ngữ Windows) — chọn **No** để huỷ (không tạo mặt nạ), tránh tạo ra 1 "vùng quan tâm" chiếm gần hết cả khối ảnh (không còn ý nghĩa ROI).
 6. Dòng chữ trạng thái ngay dưới nút luôn hiện thông tin cụ thể sau mỗi lần phát triển vùng (dạng *"Đã tạo 'Region Growing 1': 152.340 voxel (3,2% thể tích), … mm³."* — số liệu minh hoạ), kể cả khi thất bại (ví dụ *"Không tìm thấy vùng (độ dung sai 0). Hãy tăng độ dung sai."*).
