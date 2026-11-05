@@ -1,0 +1,32 @@
+# Coordinate + 2D marker + MedSAM2 worker preprocessing tests (0543, 0051) - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ /d/PyTools/invx-venv/Scripts/python.exe -m pytest -p no:cacheprovider tests/ct3d/test_interactive_ai_geometry.py -v
+============================= test session starts =============================
+platform win32 -- Python 3.11.7, pytest-8.3.5, pluggy-1.6.0 -- D:\PyTools\invx-venv\Scripts\python.exe
+rootdir: D:\Learns\DeAn\invesalius\invesalius3
+configfile: pyproject.toml
+plugins: anyio-4.14.2, mock-3.14.0
+collecting ... collected 17 items
+tests/ct3d/test_interactive_ai_geometry.py::test_2d_cursor_points_from_each_view[0543] PASSED [  5%]
+tests/ct3d/test_interactive_ai_geometry.py::test_2d_cursor_points_from_each_view[0051] PASSED [ 11%]
+tests/ct3d/test_interactive_ai_geometry.py::test_3d_pick_goes_through_view_to_slice[0543] PASSED [ 17%]
+tests/ct3d/test_interactive_ai_geometry.py::test_3d_pick_goes_through_view_to_slice[0051] PASSED [ 23%]
+tests/ct3d/test_interactive_ai_geometry.py::test_box_corners_order_and_bounds[0543] PASSED [ 29%]
+tests/ct3d/test_interactive_ai_geometry.py::test_box_corners_order_and_bounds[0051] PASSED [ 35%]
+tests/ct3d/test_interactive_ai_geometry.py::test_undo_last_and_clear PASSED [ 41%]
+tests/ct3d/test_interactive_ai_geometry.py::test_markers_only_on_their_slice_in_each_orientation PASSED [ 47%]
+tests/ct3d/test_interactive_ai_geometry.py::test_box_outline_in_each_orientation PASSED [ 52%]
+tests/ct3d/test_interactive_ai_geometry.py::test_overlay_attach_draw_detach PASSED [ 58%]
+tests/ct3d/test_interactive_ai_geometry.py::test_window_and_uint8_match_the_official_formula PASSED [ 64%]
+tests/ct3d/test_interactive_ai_geometry.py::test_slice_preprocessing_shape_and_normalisation PASSED [ 70%]
+tests/ct3d/test_interactive_ai_geometry.py::test_prompt_mapping_and_row_flip_roundtrip[0543] PASSED [ 76%]
+tests/ct3d/test_interactive_ai_geometry.py::test_prompt_mapping_and_row_flip_roundtrip[0051] PASSED [ 82%]
+tests/ct3d/test_interactive_ai_geometry.py::test_single_slice_box_propagates_through_the_volume PASSED [ 88%]
+tests/ct3d/test_interactive_ai_geometry.py::test_largest_component_full_connectivity PASSED [ 94%]
+tests/ct3d/test_interactive_ai_geometry.py::test_capabilities_are_declared_from_evidence PASSED [100%]
+============================== warnings summary ===============================
+invesalius\reader\bitmap_reader.py:19
+  D:\Learns\DeAn\invesalius\invesalius3\invesalius\reader\bitmap_reader.py:19: DeprecationWarning: 'imghdr' is deprecated and slated for removal in Python 3.13
+    import imghdr
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 17 passed, 1 warning in 5.09s ========================
+exit=0

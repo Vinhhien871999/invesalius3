@@ -1,0 +1,39 @@
+# Lifecycle / cancellation / crash / timeout / close - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ /d/PyTools/invx-venv/Scripts/python.exe -m pytest -p no:cacheprovider tests/ct3d/test_interactive_ai_panel.py tests/ct3d/test_interactive_ai_provider.py -v -k close or crash or cancel or timeout or invalid
+============================= test session starts =============================
+platform win32 -- Python 3.11.7, pytest-8.3.5, pluggy-1.6.0 -- D:\PyTools\invx-venv\Scripts\python.exe
+rootdir: D:\Learns\DeAn\invesalius\invesalius3
+configfile: pyproject.toml
+plugins: anyio-4.14.2, mock-3.14.0
+collecting ... collected 24 items / 13 deselected / 11 selected
+tests/ct3d/test_interactive_ai_panel.py::test_plugin_closed_while_checking_leaves_no_worker PASSED [  9%]
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept PASSED [ 18%]
+tests/ct3d/test_interactive_ai_panel.py::test_project_close_during_inference PASSED [ 27%]
+tests/ct3d/test_interactive_ai_panel.py::test_plugin_close_during_inference PASSED [ 36%]
+tests/ct3d/test_interactive_ai_panel.py::test_runtime_crash_leaves_the_ui_usable PASSED [ 45%]
+tests/ct3d/test_interactive_ai_provider.py::test_cooperative_cancel PASSED [ 54%]
+tests/ct3d/test_interactive_ai_provider.py::test_crash_then_restart PASSED [ 63%]
+tests/ct3d/test_interactive_ai_provider.py::test_timeout_kills_the_worker PASSED [ 72%]
+tests/ct3d/test_interactive_ai_provider.py::test_invalid_output_is_rejected PASSED [ 81%]
+tests/ct3d/test_interactive_ai_provider.py::test_close_removes_temp_data_and_worker PASSED [ 90%]
+tests/ct3d/test_interactive_ai_provider.py::test_close_during_inference PASSED [100%]
+============================== warnings summary ===============================
+invesalius\reader\bitmap_reader.py:19
+  D:\Learns\DeAn\invesalius\invesalius3\invesalius\reader\bitmap_reader.py:19: DeprecationWarning: 'imghdr' is deprecated and slated for removal in Python 3.13
+    import imghdr
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 11 passed, 13 deselected, 14 warnings in 53.23s ===============
+exit=0

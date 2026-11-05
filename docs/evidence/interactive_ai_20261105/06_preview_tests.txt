@@ -1,0 +1,44 @@
+# Preview contract / refinement / provider / UI state (fake worker) - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ /d/PyTools/invx-venv/Scripts/python.exe -m pytest -p no:cacheprovider tests/ct3d/test_interactive_ai_panel.py tests/ct3d/test_interactive_ai_provider.py -v -k not close and not crash and not totalsegmentator
+============================= test session starts =============================
+platform win32 -- Python 3.11.7, pytest-8.3.5, pluggy-1.6.0 -- D:\PyTools\invx-venv\Scripts\python.exe
+rootdir: D:\Learns\DeAn\invesalius\invesalius3
+configfile: pyproject.toml
+plugins: anyio-4.14.2, mock-3.14.0
+collecting ... collected 24 items / 8 deselected / 16 selected
+tests/ct3d/test_interactive_ai_panel.py::test_not_configured_is_shown_and_safe PASSED [  6%]
+tests/ct3d/test_interactive_ai_panel.py::test_configured_then_checked PASSED [ 12%]
+tests/ct3d/test_interactive_ai_panel.py::test_positive_only_provider_disables_negative PASSED [ 18%]
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept PASSED [ 25%]
+tests/ct3d/test_interactive_ai_panel.py::test_provider_change_clears_prompts PASSED [ 31%]
+tests/ct3d/test_interactive_ai_provider.py::test_unconfigured_probe_starts_nothing PASSED [ 37%]
+tests/ct3d/test_interactive_ai_provider.py::test_configured_probe_is_cheap_and_check_reports_worker_capabilities PASSED [ 43%]
+tests/ct3d/test_interactive_ai_provider.py::test_check_failure_is_reported_not_raised PASSED [ 50%]
+tests/ct3d/test_interactive_ai_provider.py::test_infer_refused_before_check PASSED [ 56%]
+tests/ct3d/test_interactive_ai_provider.py::test_candidate_is_on_the_native_grid_at_the_prompt PASSED [ 62%]
+tests/ct3d/test_interactive_ai_provider.py::test_negative_point_excludes_and_box_restricts PASSED [ 68%]
+tests/ct3d/test_interactive_ai_provider.py::test_volume_loaded_once_per_fingerprint PASSED [ 75%]
+tests/ct3d/test_interactive_ai_provider.py::test_cooperative_cancel PASSED [ 81%]
+tests/ct3d/test_interactive_ai_provider.py::test_timeout_kills_the_worker PASSED [ 87%]
+tests/ct3d/test_interactive_ai_provider.py::test_invalid_output_is_rejected PASSED [ 93%]
+tests/ct3d/test_interactive_ai_provider.py::test_prompts_payload_uses_voxels PASSED [100%]
+============================== warnings summary ===============================
+invesalius\reader\bitmap_reader.py:19
+  D:\Learns\DeAn\invesalius\invesalius3\invesalius\reader\bitmap_reader.py:19: DeprecationWarning: 'imghdr' is deprecated and slated for removal in Python 3.13
+    import imghdr
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 16 passed, 8 deselected, 14 warnings in 29.55s ================
+exit=0

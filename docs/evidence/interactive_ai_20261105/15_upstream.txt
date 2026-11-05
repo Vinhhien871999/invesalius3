@@ -1,0 +1,6 @@
+# Upstream tests - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ python -m pytest tests --ignore=tests/ct3d -q
+93 passed, 1 skipped, 15 warnings in 10.52s
+exit=0
+# NOTE: this run reported 93 passed, 1 skipped (baseline 94 passed); it ran during the same slow period as ct3d run 3.
+# Rerun right afterwards with -rs (same code): 94 passed, 15 warnings in 25.76s, exit=0, no skip reported.

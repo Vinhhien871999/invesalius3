@@ -1,0 +1,95 @@
+# Accept exactness (SHA-256), one mask, no inference at Accept, plus E6 accept suite - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ /d/PyTools/invx-venv/Scripts/python.exe -m pytest -p no:cacheprovider tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept tests/ct3d/test_ai_preview_integration.py tests/ct3d/test_segmentation_preview_commit.py tests/ct3d/test_native_mask_contract.py -v -s -k accept or Accept or commit or native
+============================= test session starts =============================
+platform win32 -- Python 3.11.7, pytest-8.3.5, pluggy-1.6.0 -- D:\PyTools\invx-venv\Scripts\python.exe
+rootdir: D:\Learns\DeAn\invesalius\invesalius3
+configfile: pyproject.toml
+plugins: anyio-4.14.2, mock-3.14.0
+collecting ... collected 49 items / 19 deselected / 30 selected
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept ROI Viewer: AI provider 'medsam2' unavailable - not_checked: press the environment check
+ROI Viewer: interactive AI candidate sha256=951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d generation=2
+ROI Viewer: AI preview ready - {'provider_id': 'medsam2', 'provider_name': 'MedSAM2', 'model_name': 'MedSAM2', 'model_version': 'test-1', 'device': 'auto', 'runtime_seconds': 0.02283579995855689, 'prompt_count': 1, 'structure': None, 'mode': None, 'provider_details': {'interactive': True, 'mask_name_prefix': 'AI - MedSAM2', 'provider': 'MedSAM2 (external runtime)', 'checkpoint': '', 'model_config': '', 'hu_window': None, 'positive_points': 1, 'negative_points': 0, 'box': False, 'key_frames': None, 'box_slice_range': None, 'largest_component': None, 'flip_rows_to_dicom': None, 'peak_vram_mb': None, 'worker_predict_s': 0.001135700149461627, 'candidate_voxels': 33, 'candidate_bounds_zyx': [[2, 6], [8, 12], [10, 14]], 'volume_id': 'e9c394a0e7c60ee5806499657c8f12be', 'generation_id': 2, 'timings': {'worker_start_s': 0.24444439983926713, 'probe_s': 0.0008272998966276646, 'volume_write_s': 0.002904699882492423, 'volume_load_s': 0.002077900106087327, 'predict_s': 0.0017496999353170395}, 'candidate_sha256': '951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d'}, 'interactive': True, 'positive_points': 1, 'negative_points': 0, 'box': False, 'hu_window': 'soft_tissue', 'generation': 2, 'candidate_sha256': '951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d', 'mask_name_prefix': 'AI - MedSAM2'}
+ROI Viewer: interactive AI candidate sha256=e91bf5b391365dd5f8ac452a8de9cc422bef2f6a023409283a6794c215b24747 generation=4
+ROI Viewer: AI preview ready - {'provider_id': 'medsam2', 'provider_name': 'MedSAM2', 'model_name': 'MedSAM2', 'model_version': 'test-1', 'device': 'auto', 'runtime_seconds': 0.01661149994470179, 'prompt_count': 2, 'structure': None, 'mode': None, 'provider_details': {'interactive': True, 'mask_name_prefix': 'AI - MedSAM2', 'provider': 'MedSAM2 (external runtime)', 'checkpoint': '', 'model_config': '', 'hu_window': None, 'positive_points': 1, 'negative_points': 1, 'box': False, 'key_frames': None, 'box_slice_range': None, 'largest_component': None, 'flip_rows_to_dicom': None, 'peak_vram_mb': None, 'worker_predict_s': 0.002592899836599827, 'candidate_voxels': 22, 'candidate_bounds_zyx': [[2, 6], [8, 12], [10, 12]], 'volume_id': 'e9c394a0e7c60ee5806499657c8f12be', 'generation_id': 4, 'timings': {'worker_start_s': 0.24444439983926713, 'probe_s': 0.0008272998966276646, 'volume_write_s': 0.002904699882492423, 'volume_load_s': 0.002077900106087327, 'predict_s': 0.003377899993211031}, 'candidate_sha256': 'e91bf5b391365dd5f8ac452a8de9cc422bef2f6a023409283a6794c215b24747'}, 'interactive': True, 'positive_points': 1, 'negative_points': 1, 'box': False, 'hu_window': 'soft_tissue', 'generation': 4, 'candidate_sha256': 'e91bf5b391365dd5f8ac452a8de9cc422bef2f6a023409283a6794c215b24747', 'mask_name_prefix': 'AI - MedSAM2'}
+ROI Viewer: interactive AI candidate sha256=951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d generation=7
+ROI Viewer: AI preview ready - {'provider_id': 'medsam2', 'provider_name': 'MedSAM2', 'model_name': 'MedSAM2', 'model_version': 'test-1', 'device': 'auto', 'runtime_seconds': 0.016873399959877133, 'prompt_count': 1, 'structure': None, 'mode': None, 'provider_details': {'interactive': True, 'mask_name_prefix': 'AI - MedSAM2', 'provider': 'MedSAM2 (external runtime)', 'checkpoint': '', 'model_config': '', 'hu_window': None, 'positive_points': 1, 'negative_points': 0, 'box': False, 'key_frames': None, 'box_slice_range': None, 'largest_component': None, 'flip_rows_to_dicom': None, 'peak_vram_mb': None, 'worker_predict_s': 0.0026026000268757343, 'candidate_voxels': 33, 'candidate_bounds_zyx': [[2, 6], [8, 12], [10, 14]], 'volume_id': 'e9c394a0e7c60ee5806499657c8f12be', 'generation_id': 7, 'timings': {'worker_start_s': 0.24444439983926713, 'probe_s': 0.0008272998966276646, 'volume_write_s': 0.002904699882492423, 'volume_load_s': 0.002077900106087327, 'predict_s': 0.003384500043466687}, 'candidate_sha256': '951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d'}, 'interactive': True, 'positive_points': 1, 'negative_points': 0, 'box': False, 'hu_window': 'soft_tissue', 'generation': 7, 'candidate_sha256': '951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d', 'mask_name_prefix': 'AI - MedSAM2'}
+ROI Viewer: AI accepted 'AI - MedSAM2 1' sha256=951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d (identical to the candidate)
+ROI Viewer: interactive AI candidate sha256=951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d generation=10
+ROI Viewer: AI preview ready - {'provider_id': 'medsam2', 'provider_name': 'MedSAM2', 'model_name': 'MedSAM2', 'model_version': 'test-1', 'device': 'auto', 'runtime_seconds': 0.0171465000603348, 'prompt_count': 1, 'structure': None, 'mode': None, 'provider_details': {'interactive': True, 'mask_name_prefix': 'AI - MedSAM2', 'provider': 'MedSAM2 (external runtime)', 'checkpoint': '', 'model_config': '', 'hu_window': None, 'positive_points': 1, 'negative_points': 0, 'box': False, 'key_frames': None, 'box_slice_range': None, 'largest_component': None, 'flip_rows_to_dicom': None, 'peak_vram_mb': None, 'worker_predict_s': 0.0024770000018179417, 'candidate_voxels': 33, 'candidate_bounds_zyx': [[2, 6], [8, 12], [10, 14]], 'volume_id': 'e9c394a0e7c60ee5806499657c8f12be', 'generation_id': 10, 'timings': {'worker_start_s': 0.24444439983926713, 'probe_s': 0.0008272998966276646, 'volume_write_s': 0.002904699882492423, 'volume_load_s': 0.002077900106087327, 'predict_s': 0.003308400046080351}, 'candidate_sha256': '951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d'}, 'interactive': True, 'positive_points': 1, 'negative_points': 0, 'box': False, 'hu_window': 'soft_tissue', 'generation': 10, 'candidate_sha256': '951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d', 'mask_name_prefix': 'AI - MedSAM2'}
+ROI Viewer: AI accepted 'AI - MedSAM2 2' sha256=951efd86358724f7aa0c73a4eb4ab3ee2dce5a4198004837f1a5f0f2f707724d (identical to the candidate)
+PASSED
+tests/ct3d/test_ai_preview_integration.py::test_accept_commits_exactly_the_preview_once ROI Viewer: AI preview ready - {'provider_id': 'stub', 'provider_name': 'Stub stub', 'model_name': 'stub-model', 'model_version': '1', 'device': 'cpu', 'runtime_seconds': 0.00968390004709363, 'prompt_count': 3, 'structure': None, 'mode': None, 'provider_details': {}, 'interactive': False, 'positive_points': 1, 'negative_points': 1, 'box': True, 'hu_window': None, 'generation': 2, 'candidate_sha256': 'e773738a854afde8b7330512f4666f479c05bd1b778214ec2e5e78de92f7c408', 'mask_name_prefix': None}
+ROI Viewer: AI accepted 'AI Segmentation 2' sha256=e773738a854afde8b7330512f4666f479c05bd1b778214ec2e5e78de92f7c408 (identical to the candidate)
+PASSED
+tests/ct3d/test_ai_preview_integration.py::test_locked_roi_ai_still_runs_and_accept_creates_unlocked_roi ROI Viewer: AI preview ready - {'provider_id': 'stub', 'provider_name': 'Stub stub', 'model_name': 'stub-model', 'model_version': '1', 'device': 'cpu', 'runtime_seconds': 0.011362300021573901, 'prompt_count': 3, 'structure': None, 'mode': None, 'provider_details': {}, 'interactive': False, 'positive_points': 1, 'negative_points': 1, 'box': True, 'hu_window': None, 'generation': 2, 'candidate_sha256': 'e773738a854afde8b7330512f4666f479c05bd1b778214ec2e5e78de92f7c408', 'mask_name_prefix': None}
+ROI Viewer: AI accepted 'AI Segmentation 2' sha256=e773738a854afde8b7330512f4666f479c05bd1b778214ec2e5e78de92f7c408 (identical to the candidate)
+PASSED
+tests/ct3d/test_ai_preview_integration.py::test_ai_candidate_accepted_as_0_255_integers ROI Viewer: AI preview ready - {'provider_id': 'stub', 'provider_name': 'Stub stub', 'model_name': 'stub-model', 'model_version': '1', 'device': 'cpu', 'runtime_seconds': 0.012199099874123931, 'prompt_count': 3, 'structure': None, 'mode': None, 'provider_details': {}, 'interactive': False, 'positive_points': 1, 'negative_points': 1, 'box': True, 'hu_window': None, 'generation': 2, 'candidate_sha256': 'e773738a854afde8b7330512f4666f479c05bd1b778214ec2e5e78de92f7c408', 'mask_name_prefix': None}
+ROI Viewer: AI accepted 'AI Segmentation 2' sha256=e773738a854afde8b7330512f4666f479c05bd1b778214ec2e5e78de92f7c408 (identical to the candidate)
+PASSED
+tests/ct3d/test_ai_preview_integration.py::test_ai_accepted_mask_save_open_round_trip PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_otsu_preview_does_not_create_project_mask PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_otsu_preview_threshold_matches_existing_otsu PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_otsu_accept_creates_one_real_mask PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_otsu_cancel_creates_no_mask PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_otsu_accept_uses_same_threshold_as_preview PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_otsu_classic_mode_unchanged_when_flag_off PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_region_preview_does_not_create_mask PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_region_preview_matches_existing_region_growing_output PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_region_preview_stats_match PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_oversized_region_warning_state_preserved PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_region_accept_creates_exactly_one_mask PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_region_cancel_creates_zero_masks PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_stale_async_region_result_ignored PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_was_edited_semantics_preserved PASSED
+tests/ct3d/test_segmentation_preview_commit.py::test_classic_region_growing_unchanged_when_flag_off PASSED
+tests/ct3d/test_native_mask_contract.py::test_committed_region_survives_first_view_of_every_slice PASSED
+tests/ct3d/test_native_mask_contract.py::test_commit_is_exact_when_views_threshold_during_creation PASSED
+tests/ct3d/test_native_mask_contract.py::test_cleanup_on_lazily_computed_threshold_mask_uses_whole_mask ROI Viewer: Keep largest - {'component_count_before': 2, 'removed_component_count': 1, 'removed_voxels': 8}
+PASSED
+tests/ct3d/test_native_mask_contract.py::test_cleanup_keeps_brush_erasures ROI Viewer: Keep largest - {'component_count_before': 2, 'removed_component_count': 1, 'removed_voxels': 8}
+PASSED
+tests/ct3d/test_native_mask_contract.py::test_e4_current_roi_reads_whole_mask_without_erasures PASSED
+tests/ct3d/test_native_mask_contract.py::test_measure_volume_counts_whole_mask_without_erasures PASSED
+tests/ct3d/test_native_mask_contract.py::test_numpy_export_writes_whole_mask_without_erasures PASSED
+tests/ct3d/test_native_mask_contract.py::test_write_marks_every_slice_and_discards_view_buffers PASSED
+tests/ct3d/test_native_mask_contract.py::test_commit_rejects_wrong_shape_before_creating_a_mask PASSED
+tests/ct3d/test_native_mask_contract.py::test_logical_foreground_matches_what_the_views_colour PASSED
+============================== warnings summary ===============================
+invesalius\reader\bitmap_reader.py:19
+  D:\Learns\DeAn\invesalius\invesalius3\invesalius\reader\bitmap_reader.py:19: DeprecationWarning: 'imghdr' is deprecated and slated for removal in Python 3.13
+    import imghdr
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_interactive_ai_panel.py::test_prompt_preview_refine_cancel_accept
+tests/ct3d/test_native_mask_contract.py::test_cleanup_keeps_brush_erasures
+  D:\PyTools\invx-venv\Lib\site-packages\_pytest\unraisableexception.py:85: PytestUnraisableExceptionWarning: Exception ignored in: <function Mask.__del__ at 0x000002AFD0926A20>
+
+  Traceback (most recent call last):
+    File "D:\Learns\DeAn\invesalius\invesalius3\invesalius\data\mask.py", line 577, in __del__
+      os.remove(self.temp_file)
+  PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\NGUYEN~1\\AppData\\Local\\Temp\\tmphhzwp0st'
+
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+tests/ct3d/test_native_mask_contract.py::test_e4_current_roi_reads_whole_mask_without_erasures
+  D:\PyTools\invx-venv\Lib\site-packages\_pytest\unraisableexception.py:85: PytestUnraisableExceptionWarning: Exception ignored in: <function Mask.__del__ at 0x000002AFD0926A20>
+
+  Traceback (most recent call last):
+    File "D:\Learns\DeAn\invesalius\invesalius3\invesalius\data\mask.py", line 577, in __del__
+      os.remove(self.temp_file)
+  PermissionError: [WinError 32] The process cannot access the file because it is being used by another process: 'C:\\Users\\NGUYEN~1\\AppData\\Local\\Temp\\tmpv58fbqm8'
+
+    warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============== 30 passed, 19 deselected, 16 warnings in 2.79s ================
+exit=0

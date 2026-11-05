@@ -1,0 +1,54 @@
+# Runtime probe - 05/11/2026
+## 1. Production configuration on this machine (plugin default loader, isolated XDG_CONFIG_HOME; temp path shortened):
+available False | reason not_configured: no_file | worker started False
+## 2. Operator smoke probe script against the FakeInteractiveAIWorker (protocol fixture, NOT MedSAM2):
+HELLO (0.3 s): {
+ "request_id": 1,
+ "generation_id": 0,
+ "volume_id": "",
+ "status": "ok",
+ "error_code": "",
+ "message": "",
+ "protocol_name": "roi-viewer-interactive-ai",
+ "protocol": 1,
+ "worker_version": "1",
+ "provider": "fake",
+}
+PROBE (0.0 s): {
+ "request_id": 2,
+ "generation_id": 0,
+ "volume_id": "",
+ "status": "ok",
+ "error_code": "",
+ "message": "",
+ "provider_info": {
+  "name": "FakeInteractiveAIWorker",
+  "version": "test-1",
+  "available": true,
+  "reason": "",
+  "detail": "",
+  "devices": [
+   "cpu"
+  ],
+  "checkpoint": "none (deterministic fixture)",
+  "window_presets": [
+   "soft_tissue",
+   "lung",
+   "bone"
+  ],
+  "capabilities": {
+   "positive_point": true,
+   "negative_point": true,
+   "box": true,
+   "box_kind": "3d_voxel_box",
+   "propagation_3d": true,
+   "multi_object": false,
+   "refinement": true,
+   "cpu": true,
+   "cuda": false
+  }
+ }
+}
+probe_runtime.py exit code: 0
+## 3. Real MedSAM2 worker provider probe in invx-venv (no sam2 here - must report, not raise):
+{'name': 'MedSAM2', 'available': False, 'reason': 'dependency_missing', 'detail': "sam2 (MedSAM2): No module named 'sam2'"}

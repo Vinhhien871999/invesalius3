@@ -1,0 +1,4 @@
+# Final regression run 2 - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ python -m pytest tests/ct3d -q
+823 passed, 2 skipped, 26 warnings in 136.79s (0:02:16)
+exit=0

@@ -1,0 +1,3 @@
+# diff --check - 05/11/2026, final working tree (after stripping trailing whitespace from captured pytest output in evidence text)
+# $ git add -N docs tools tests plugins && git diff --check
+exit=0

@@ -1,0 +1,11 @@
+# Infrastructure timing - FakeInteractiveAIWorker on the 0543 volume size (300x512x512 int16), 05/11/2026. NOT MedSAM2 timings (model BLOCKED).
+# Model load / preprocessing / inference / peak VRAM: NOT MEASURED (no model). E2 overlay / E4 build: not separately timed here (same code paths as E2/E4).
+volume shape (300, 512, 512) dtype int16 min -1000 max 3095 (150 MiB)
+fingerprint (blake2b) 0.25 s
+worker start + HELLO 0.26 s, PROBE 0.001 s
+first PREDICT incl. fingerprint+volume write 0.14 s + LOAD_VOLUME 0.10 s + PREDICT 0.60 s = 1.21 s total
+refinement PREDICT (volume cached, fingerprint only) 1.09 s
+candidate (300, 512, 512) uint8, voxels 2610; sha256 0.14 s
+host RSS 486 MiB
+close (SHUTDOWN + temp cleanup) 0.03 s; worker alive False
+NOTE: fake deterministic worker - these are protocol/IO timings, not MedSAM2 timings.

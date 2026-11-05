@@ -1,0 +1,7 @@
+# Final regression run 1 - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ python -m pytest tests/ct3d -q
+823 passed, 2 skipped, 26 warnings in 126.08s (0:02:06)
+exit=0
+## invx-venv pip freeze sha256 (baseline: see 01_baseline.txt)
+fb9bb7cb5d547fad18e75fdfd3ced86d0795b9a5de914751bd98d3b93783430c *-
+sam2|medsam packages: 0

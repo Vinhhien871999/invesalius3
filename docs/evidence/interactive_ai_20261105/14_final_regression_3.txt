@@ -1,0 +1,7 @@
+# Final regression run 3 - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ python -m pytest tests/ct3d -q
+823 passed, 2 skipped, 26 warnings in 8488.72s (2:21:28)
+exit=0
+# NOTE: run 3 took 2:21:28 wall time while runs 1-2 took ~2:10 and the same 823 tests passed. Cause not established
+# (no test failed or was skipped beyond the usual 2; the machine was unattended - suspend/contention suspected).
+# Extra run 4, same code, right afterwards: 823 passed, 2 skipped, 26 warnings in 143.23s (0:02:23), exit=0.

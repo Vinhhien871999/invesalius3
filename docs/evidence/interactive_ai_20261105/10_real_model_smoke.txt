@@ -1,0 +1,22 @@
+# Real MedSAM2 smoke test - 05/11/2026
+MEDSAM2_REAL_GATE = BLOCKED
+
+Preconditions (spec §47) - none met on this machine:
+  separate MedSAM2 environment     NOT PRESENT (no conda; no MedSAM2 venv; nothing named *medsam*/sam2 found under D:\ and the user profile, depth 4)
+  checkpoint                       NOT PRESENT (MedSAM2_latest.pt must be downloaded by the operator after reading its licence - not downloaded by me)
+  WSL (documented platform)        Ubuntu distro installed, but `wsl -d Ubuntu` fails:
+                                   "The operation could not be started because a required feature is not installed.
+                                    Error code: Wsl/Service/CreateInstance/CreateVm/HCS/HCS_E_SERVICE_NOT_AVAILABLE"
+  GPU                              NVIDIA GeForce RTX 4060 Laptop GPU, 8188 MiB, driver 560.92 (nvidia-smi)
+
+Not run, therefore NOT recorded (no invented numbers): prompt voxel, device, runtime, peak VRAM, candidate voxels/bounds,
+orientation check, refinement sequence A/B/C.
+
+What IS verified without the model:
+  * the worker provider's numpy parts (window/uint8, slice preprocessing, prompt mapping, DICOM row flip round trip,
+    box slice range, largest component) - tests/ct3d/test_interactive_ai_geometry.py
+  * its probe in an environment without sam2 reports unavailable ("dependency_missing"), never raises
+  * the whole host <-> worker path with the deterministic FakeInteractiveAIWorker (protocol fixture, not model evidence)
+
+To unblock: tools/interactive_ai_runtime/README.md (setup script by hand, checkpoint by hand, config file,
+probe_runtime.py exit 0), then Manual QA IA-B..IA-N on 0543.

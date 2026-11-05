@@ -1,0 +1,55 @@
+# Protocol / worker / process / temp / config tests - 05/11/2026, HEAD 70720ca8 + working tree, isolated XDG_CONFIG_HOME
+# $ /d/PyTools/invx-venv/Scripts/python.exe -m pytest -p no:cacheprovider tests/ct3d/test_interactive_ai_protocol.py -v
+============================= test session starts =============================
+platform win32 -- Python 3.11.7, pytest-8.3.5, pluggy-1.6.0 -- D:\PyTools\invx-venv\Scripts\python.exe
+rootdir: D:\Learns\DeAn\invesalius\invesalius3
+configfile: pyproject.toml
+plugins: anyio-4.14.2, mock-3.14.0
+collecting ... collected 40 items
+tests/ct3d/test_interactive_ai_protocol.py::test_protocol_copies_are_identical PASSED [  2%]
+tests/ct3d/test_interactive_ai_protocol.py::test_json_lines_roundtrip_and_envelope PASSED [  5%]
+tests/ct3d/test_interactive_ai_protocol.py::test_decode_rejects_anything_but_one_json_object[empty] PASSED [  7%]
+tests/ct3d/test_interactive_ai_protocol.py::test_decode_rejects_anything_but_one_json_object[array] PASSED [ 10%]
+tests/ct3d/test_interactive_ai_protocol.py::test_decode_rejects_anything_but_one_json_object[text] PASSED [ 12%]
+tests/ct3d/test_interactive_ai_protocol.py::test_decode_rejects_anything_but_one_json_object[not-utf8] PASSED [ 15%]
+tests/ct3d/test_interactive_ai_protocol.py::test_decode_rejects_anything_but_one_json_object[nan] PASSED [ 17%]
+tests/ct3d/test_interactive_ai_protocol.py::test_decode_rejects_anything_but_one_json_object[too-long] PASSED [ 20%]
+tests/ct3d/test_interactive_ai_protocol.py::test_encode_rejects_nan_and_objects_and_reserved_keys PASSED [ 22%]
+tests/ct3d/test_interactive_ai_protocol.py::test_malformed_response_envelope[request_id] PASSED [ 25%]
+tests/ct3d/test_interactive_ai_protocol.py::test_malformed_response_envelope[generation_id] PASSED [ 27%]
+tests/ct3d/test_interactive_ai_protocol.py::test_malformed_response_envelope[volume_id] PASSED [ 30%]
+tests/ct3d/test_interactive_ai_protocol.py::test_malformed_response_envelope[status] PASSED [ 32%]
+tests/ct3d/test_interactive_ai_protocol.py::test_malformed_response_envelope[error_code] PASSED [ 35%]
+tests/ct3d/test_interactive_ai_protocol.py::test_malformed_response_envelope[message] PASSED [ 37%]
+tests/ct3d/test_interactive_ai_protocol.py::test_prompt_payload_validation PASSED [ 40%]
+tests/ct3d/test_interactive_ai_protocol.py::test_worker_hello_and_unknown_command PASSED [ 42%]
+tests/ct3d/test_interactive_ai_protocol.py::test_worker_reports_bad_envelope_and_unknown_provider PASSED [ 45%]
+tests/ct3d/test_interactive_ai_protocol.py::test_worker_unknown_provider_is_an_error PASSED [ 47%]
+tests/ct3d/test_interactive_ai_protocol.py::test_stale_response_is_discarded PASSED [ 50%]
+tests/ct3d/test_interactive_ai_protocol.py::test_library_noise_on_stdout_does_not_corrupt_the_protocol PASSED [ 52%]
+tests/ct3d/test_interactive_ai_protocol.py::test_shutdown_is_clean PASSED [ 55%]
+tests/ct3d/test_interactive_ai_protocol.py::test_worker_exits_when_host_closes_stdin PASSED [ 57%]
+tests/ct3d/test_interactive_ai_protocol.py::test_timeout_kills_only_its_worker PASSED [ 60%]
+tests/ct3d/test_interactive_ai_protocol.py::test_malformed_worker_output_kills_the_worker PASSED [ 62%]
+tests/ct3d/test_interactive_ai_protocol.py::test_worker_crash_is_reported PASSED [ 65%]
+tests/ct3d/test_interactive_ai_protocol.py::test_missing_executable_is_a_start_failure PASSED [ 67%]
+tests/ct3d/test_interactive_ai_protocol.py::test_cancelled_request_answers_cancelled PASSED [ 70%]
+tests/ct3d/test_interactive_ai_protocol.py::test_cancel_ignored_by_the_model_kills_the_worker PASSED [ 72%]
+tests/ct3d/test_interactive_ai_protocol.py::test_predict_without_volume_or_prompt PASSED [ 75%]
+tests/ct3d/test_interactive_ai_protocol.py::test_worker_rejects_wrong_shape_output PASSED [ 77%]
+tests/ct3d/test_interactive_ai_protocol.py::test_load_candidate_validation PASSED [ 80%]
+tests/ct3d/test_interactive_ai_protocol.py::test_fingerprint_is_deterministic_and_sensitive PASSED [ 82%]
+tests/ct3d/test_interactive_ai_protocol.py::test_session_directory_and_files_carry_no_patient_data PASSED [ 85%]
+tests/ct3d/test_interactive_ai_protocol.py::test_cleanup_abandoned_deletes_only_old_owned_directories PASSED [ 87%]
+tests/ct3d/test_interactive_ai_protocol.py::test_wsl_path_mapping PASSED [ 90%]
+tests/ct3d/test_interactive_ai_protocol.py::test_config_absent_disabled_invalid_valid PASSED [ 92%]
+tests/ct3d/test_interactive_ai_protocol.py::test_default_config_path_follows_xdg PASSED [ 95%]
+tests/ct3d/test_interactive_ai_protocol.py::test_plugin_never_writes_the_config PASSED [ 97%]
+tests/ct3d/test_interactive_ai_protocol.py::test_standalone_probe_script PASSED [100%]
+============================== warnings summary ===============================
+invesalius\reader\bitmap_reader.py:19
+  D:\Learns\DeAn\invesalius\invesalius3\invesalius\reader\bitmap_reader.py:19: DeprecationWarning: 'imghdr' is deprecated and slated for removal in Python 3.13
+    import imghdr
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================== 40 passed, 1 warning in 9.49s ========================
+exit=0
