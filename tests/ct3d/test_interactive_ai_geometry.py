@@ -183,6 +183,12 @@ def test_slice_preprocessing_shape_and_normalisation():
     mean, std = np.array(m2w.IMAGENET_MEAN), np.array(m2w.IMAGENET_STD)
     assert np.allclose(out[0].reshape(3, -1).mean(1), (0 - mean) / std, atol=1e-5)
     assert np.allclose(out[1].reshape(3, -1).mean(1), (1 - mean) / std, atol=1e-5)
+    # the worker keeps uint8 and normalises on the device: same numbers
+    u8 = m2w.resize_slices_uint8(vol)
+    assert u8.shape == (2, 3, 512, 512) and u8.dtype == np.uint8
+    renorm = (u8.astype(np.float32) / 255.0 - mean[:, None, None].astype(np.float32)) / std[:, None, None].astype(
+        np.float32)
+    assert np.allclose(renorm, out, atol=1e-6)
 
 
 @pytest.mark.parametrize("name", GEOMETRIES)

@@ -16,7 +16,8 @@
 #     images, H, W), add_new_points_or_box(frame_idx=key, obj_id=1, ...),
 #     propagate_in_video forward, reset_state, the same prompts again,
 #     propagate_in_video(reverse=True);
-#   * logits > 0 (the predictor resizes them back to H x W bilinearly);
+#   * logits > 0 (the predictor resizes them back to H x W bilinearly), both
+#     passes OR-ed into the volume;
 #   * largest connected component (getLargestCC, full connectivity).
 # Deviations, all explicit (provider_config):
 #   * the window is chosen by the operator (preset or [lower, upper]); the
@@ -30,6 +31,8 @@
 #   * prompts on several slices (official: one key slice): every slice with
 #     prompts is a conditioning frame; forward from the first, reverse from
 #     the last;
+#   * images are float32 on the device (official: float64) - the model runs
+#     under bfloat16 autocast either way;
 #   * a 3D box (two corners on different slices) becomes the 2D box on its
 #     middle slice, and the result is limited to the box's slice range.
 #     A box set on a single slice propagates through the whole volume,
@@ -119,6 +122,19 @@ def map_prompts(prompts, shape_zyx, flip_rows: bool):
         if z1 > z0:
             z_range = (int(z0), int(z1))
     return frames, z_range
+
+
+def resize_slices_uint8(volume_uint8, size=IMAGE_SIZE) -> np.ndarray:
+    """(D, H, W) uint8 -> (D, 3, size, size) uint8: the official
+    resize_grayscale_to_rgb_and_resize (PIL "RGB", resize default filter)."""
+    from PIL import Image
+
+    d = volume_uint8.shape[0]
+    out = np.empty((d, 3, size, size), dtype=np.uint8)
+    for i in range(d):
+        rgb = Image.fromarray(np.ascontiguousarray(volume_uint8[i])).convert("RGB").resize((size, size))
+        out[i] = np.asarray(rgb).transpose(2, 0, 1)
+    return out
 
 
 def preprocess_slices(volume_uint8, size=IMAGE_SIZE) -> np.ndarray:
@@ -278,7 +294,9 @@ class MedSAM2Provider:
         if window not in self._prepared:
             t0 = time.perf_counter()
             volume_u8 = window_to_uint8(to_model_rows(self._volume, self.flip_rows), *window)
-            self._prepared = {window: preprocess_slices(volume_u8)}  # only the current window is kept
+            # uint8 on the host (1/4 of float32); normalised per prediction on
+            # the device, as the official script does (/255, mean/std on GPU).
+            self._prepared = {window: resize_slices_uint8(volume_u8)}  # only the current window is kept
             self.timings["preprocess_s"] = time.perf_counter() - t0
         return self._prepared[window]
 
@@ -316,13 +334,20 @@ class MedSAM2Provider:
         if dev == "cuda":
             torch.cuda.reset_peak_memory_stats()
         seg = np.zeros((nz, ny, nx), dtype=bool)
-        first, last = min(frames), max(frames)
+        first, last = min(frames), max(frames)  # conditioning frames (reported)
         t0 = time.perf_counter()
         autocast = (torch.autocast("cuda", dtype=torch.bfloat16) if dev == "cuda"
                     else torch.autocast("cpu", enabled=False))
         try:
             with torch.inference_mode(), autocast:
-                tensor = torch.from_numpy(images).to(dev)
+                # (D, 3, 512, 512) float32 on the device, filled in chunks so the
+                # host never holds the float copy (official: float64 on GPU).
+                tensor = torch.empty(images.shape, dtype=torch.float32, device=dev)
+                mean = torch.tensor(IMAGENET_MEAN, dtype=torch.float32, device=dev)[:, None, None]
+                std = torch.tensor(IMAGENET_STD, dtype=torch.float32, device=dev)[:, None, None]
+                for c0 in range(0, images.shape[0], 32):
+                    chunk = torch.from_numpy(images[c0:c0 + 32]).to(dev).float() / 255.0
+                    tensor[c0:c0 + 32] = (chunk - mean) / std
                 init_kwargs = {}
                 if self.offload_video and "offload_video_to_cpu" in inspect.signature(predictor.init_state).parameters:
                     init_kwargs["offload_video_to_cpu"] = True
@@ -339,8 +364,10 @@ class MedSAM2Provider:
                 progress("running")
                 add_prompts()
                 done = 0
+                # Both passes OR into the volume, as the official script
+                # (segs_3D[idx, logits > 0] = 1).
                 for frame_idx, _obj_ids, logits in predictor.propagate_in_video(state):
-                    seg[frame_idx] = (logits[0] > 0.0).cpu().numpy()[0]
+                    seg[frame_idx] |= (logits[0] > 0.0).cpu().numpy()[0]
                     done += 1
                     if is_cancelled():
                         raise _error("cancelled", "cancelled during forward propagation")
@@ -348,8 +375,7 @@ class MedSAM2Provider:
                 predictor.reset_state(state)
                 add_prompts()
                 for frame_idx, _obj_ids, logits in predictor.propagate_in_video(state, reverse=True):
-                    if frame_idx < first:
-                        seg[frame_idx] = (logits[0] > 0.0).cpu().numpy()[0]
+                    seg[frame_idx] |= (logits[0] > 0.0).cpu().numpy()[0]
                     done += 1
                     if is_cancelled():
                         raise _error("cancelled", "cancelled during reverse propagation")
